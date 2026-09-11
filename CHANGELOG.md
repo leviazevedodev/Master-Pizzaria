@@ -1,5 +1,23 @@
 # Histórico de versões
 
+## 2.22.0 — Atendimento presencial integrado
+
+- pedidos presenciais agora aparecem na aba **Atendimento**, sem entrar na fila de entregadores;
+- cartões do salão exibem selo **Presencial**, nome da mesa e identificação visual própria;
+- as filas **Recebidos** e **Em preparação** passam a mostrar também as rodadas do salão;
+- criada a fila **Pronto para servir**, com destaque e ação para o garçom confirmar o serviço;
+- comandas servidas permanecem em aberto até a baixa do pagamento na mesa;
+- no celular, tocar em uma mesa ocupada ou terminar de abri-la rola a tela diretamente para **Adicionar itens**;
+- adicionados testes para garantir a separação entre atendimento presencial, pedidos comuns e entregas.
+
+## 2.21.1 — Contraste das comandas e cozinha
+
+- o seletor de quantidade de sabores deixou de manter fundo branco no modo escuro;
+- corrigido o contraste do aviso de rodadas ainda em preparo e do botão de fechamento desabilitado;
+- etiquetas **NOVO**, **EM PREPARO**, **PRONTO** e **ATENDIMENTO NO SALÃO** agora possuem fundos e textos próprios para o tema escuro;
+- corrigidos horário, observações e botão de impressão dos cartões da cozinha;
+- adicionada verificação automatizada de contraste mínimo WCAG AA nas cores corrigidas.
+
 ## 2.21.0 — Pagamentos configuráveis e retenção automática
 
 - administrador pode cadastrar, ativar, desativar e remover formas de pagamento personalizadas;

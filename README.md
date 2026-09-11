@@ -1,4 +1,4 @@
-# Master Pizza Profissional v2.21.0
+# Master Pizza Profissional v2.22.0
 
 Aplicação de cardápio e gestão de pizzaria com React, Express, PostgreSQL e Prisma. Inclui pedidos, entrega/retirada, atendimento em mesas, agendamento, pagamento pelo Mercado Pago, painel administrativo, cozinha, garçons, entregadores, estoque, promoções, cupons e relatórios.
 
@@ -42,6 +42,8 @@ Fluxo operacional:
 6. A baixa conclui os pedidos, registra o responsável e libera a mesa automaticamente.
 
 Pedidos presenciais não aparecem para entregadores. A mesma mesa não pode ter duas comandas abertas simultaneamente, e cancelamentos ficam registrados com motivo e restauração de estoque quando aplicável.
+
+No painel do administrador, as comandas do salão também aparecem em **Atendimento**, identificadas como **Presencial** e com o nome da mesa. Elas acompanham as filas **Recebidos** e **Em preparação** e, quando a cozinha conclui a rodada, ficam separadas em **Pronto para servir**. Em celulares, tocar numa mesa ocupada leva diretamente à seção **Adicionar itens**.
 
 ## Pagamentos personalizados e retenção
 

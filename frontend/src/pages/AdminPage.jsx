@@ -58,6 +58,7 @@ import { settleWithConcurrency } from "../lib/async";
 import MotoIcon from "../components/MotoIcon";
 import { fitImageFile } from "../lib/imageFit";
 import { etaRange, money } from "../lib/format";
+import { buildOrderBuckets } from "../lib/orderBuckets";
 import {
   InventoryAdmin,
   KitchenAdmin,
@@ -106,6 +107,7 @@ const ORDER_VIEW_LABELS = {
   PREPARING: "Em preparação",
   READY_FOR_DELIVERY: "Prontos para entrega",
   READY_FOR_PICKUP: "Prontos p/ retirada",
+  READY_FOR_TABLE: "Pronto para servir",
   SCHEDULED: "Agendamentos",
   OUT_FOR_DELIVERY: "Entregando",
   DELIVERED: "Entregues",
@@ -453,48 +455,18 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
     setError(err.response?.data?.message || fallback);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
-  const orderBuckets = useMemo(() => {
-    const allowed = (o) =>
-      o.fulfillmentType !== "DINE_IN" &&
-      (!isDeliveryStaff || o.fulfillmentType === "DELIVERY");
-    return {
-      OPEN: orders.filter(
-        (o) =>
-          allowed(o) &&
-          [
-            "RECEIVED",
-            "PREPARING",
-            "READY_FOR_DELIVERY",
-            "OUT_FOR_DELIVERY",
-            "READY_FOR_PICKUP",
-          ].includes(o.status),
-      ),
-      PREP_QUEUE: orders.filter(
-        (o) => allowed(o) && ["RECEIVED", "PREPARING"].includes(o.status),
-      ),
-      RECEIVED: orders.filter((o) => allowed(o) && o.status === "RECEIVED"),
-      PREPARING: orders.filter((o) => allowed(o) && o.status === "PREPARING"),
-      READY_FOR_DELIVERY: orders.filter(
-        (o) => allowed(o) && o.status === "READY_FOR_DELIVERY",
-      ),
-      READY_FOR_PICKUP: orders.filter(
-        (o) => allowed(o) && o.status === "READY_FOR_PICKUP",
-      ),
-      SCHEDULED: orders
-        .filter((o) => allowed(o) && o.status === "SCHEDULED")
-        .slice()
-        .sort(
-          (a, b) =>
-            new Date(a.scheduledAt || a.createdAt) -
-            new Date(b.scheduledAt || b.createdAt),
-        ),
-      OUT_FOR_DELIVERY: orders.filter(
-        (o) => allowed(o) && o.status === "OUT_FOR_DELIVERY",
-      ),
-      DELIVERED: orders.filter((o) => allowed(o) && o.status === "DELIVERED"),
-      CANCELED: orders.filter((o) => allowed(o) && o.status === "CANCELED"),
-    };
-  }, [orders, isDeliveryStaff]);
+  const orderBuckets = useMemo(
+    () => buildOrderBuckets(orders, { deliveryOnly: isDeliveryStaff }),
+    [orders, isDeliveryStaff],
+  );
+  const overviewBuckets = useMemo(
+    () =>
+      buildOrderBuckets(orders, {
+        includeDineIn: !isDeliveryStaff,
+        deliveryOnly: isDeliveryStaff,
+      }),
+    [orders, isDeliveryStaff],
+  );
   useEffect(() => {
     if (
       isDeliveryStaff &&
@@ -523,7 +495,7 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
       }),
     [currentBucket, orderSearch],
   );
-  const overviewOrders = orderBuckets[overviewView] || [];
+  const overviewOrders = overviewBuckets[overviewView] || [];
   const filteredCustomers = useMemo(
     () =>
       customers.filter((c) => {
@@ -540,11 +512,31 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
     if (statusSavingId === id) return;
     setStatusSavingId(id);
     try {
-      const { data } = await api.patch(
-        `/admin/orders/${id}/status`,
-        { status, cancelReason },
-        headers,
-      );
+      const order = orders.find((item) => item.id === id);
+      let data;
+      if (order?.fulfillmentType === "DINE_IN") {
+        if (status === "SERVED") {
+          ({ data } = await api.post(
+            `/admin/table-orders/${id}/served`,
+            {},
+            headers,
+          ));
+        } else if (status === "CANCELED") {
+          ({ data } = await api.post(
+            `/admin/table-orders/${id}/cancel`,
+            { reason: cancelReason },
+            headers,
+          ));
+        } else {
+          throw new Error("A cozinha é responsável por esta etapa da comanda.");
+        }
+      } else {
+        ({ data } = await api.patch(
+          `/admin/orders/${id}/status`,
+          { status, cancelReason },
+          headers,
+        ));
+      }
       setOrders((list) => list.map((o) => (o.id === id ? data : o)));
       if (selectedOrder?.id === id) setSelectedOrder(data);
       notify(
@@ -1298,7 +1290,7 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
   const currentTabLabel =
     availableTabs.find(([id]) => id === tab)?.[2] || "Painel";
   const scheduledCount =
-    dashboard?.scheduledOrders ?? orderBuckets.SCHEDULED.length;
+    dashboard?.scheduledOrders ?? overviewBuckets.SCHEDULED.length;
   return (
     <div className={`admin-shell ${adminDark ? "admin-dark" : ""}`}>
       <aside className="admin-sidebar">
@@ -1411,14 +1403,16 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
                         ? "Pedidos recém-chegados esperando aceite da equipe."
                         : overviewView === "PREPARING"
                           ? "Pedidos já aceitos e em produção."
-                          : "Visualização separada para facilitar o trabalho da equipe."}
+                          : overviewView === "READY_FOR_TABLE"
+                            ? "Pedidos do salão concluídos pela cozinha e aguardando o garçom."
+                            : "Visualização separada para facilitar o trabalho da equipe."}
                   </p>
                 </div>
                 <div className="panel-actions">
                   <OverviewOrderTabs
                     value={overviewView}
                     onChange={setOverviewView}
-                    buckets={orderBuckets}
+                    buckets={overviewBuckets}
                     deliveryOnly={isDeliveryStaff}
                   />
                   {can("orders") && (
@@ -1953,6 +1947,7 @@ function OverviewOrderTabs({ value, onChange, buckets, deliveryOnly = false }) {
         "OPEN",
         "RECEIVED",
         "PREPARING",
+        "READY_FOR_TABLE",
         "READY_FOR_DELIVERY",
         "SCHEDULED",
         "OUT_FOR_DELIVERY",
@@ -1962,6 +1957,7 @@ function OverviewOrderTabs({ value, onChange, buckets, deliveryOnly = false }) {
     OPEN: "Em aberto",
     RECEIVED: "Recebidos",
     PREPARING: "Em preparação",
+    READY_FOR_TABLE: "Pronto para servir",
     READY_FOR_DELIVERY: "Prontos para entrega",
     SCHEDULED: "Agendamentos",
     OUT_FOR_DELIVERY: "Entregando",
@@ -1972,7 +1968,7 @@ function OverviewOrderTabs({ value, onChange, buckets, deliveryOnly = false }) {
     <div className="order-view-tabs overview-order-tabs">
       {views.map((key) => {
         const count = buckets[key]?.length || 0;
-        const calling = key === "RECEIVED" && count > 0;
+        const calling = ["RECEIVED", "READY_FOR_TABLE"].includes(key) && count > 0;
         return (
           <button
             key={key}
@@ -2041,7 +2037,11 @@ function Stat({ label, value }) {
 }
 
 function deadlineState(order, minutes = 30) {
-  if (["DELIVERED", "CANCELED"].includes(order.status) || !order.estimatedTo)
+  if (
+    order.fulfillmentType === "DINE_IN" ||
+    ["DELIVERED", "CANCELED"].includes(order.status) ||
+    !order.estimatedTo
+  )
     return "";
   const remaining = new Date(order.estimatedTo).getTime() - Date.now();
   if (!Number.isFinite(remaining)) return "";
@@ -2051,6 +2051,8 @@ function deadlineState(order, minutes = 30) {
 }
 
 function nextStatusForOrder(order) {
+  if (order.fulfillmentType === "DINE_IN")
+    return order.status === "READY_FOR_TABLE" ? "SERVED" : null;
   if (order.status === "SCHEDULED") return "RECEIVED";
   if (order.status === "RECEIVED") return "PREPARING";
   if (order.status === "PREPARING")
@@ -2067,6 +2069,8 @@ function nextStatusForOrder(order) {
 }
 function nextStatusLabel(order) {
   const next = nextStatusForOrder(order);
+  if (order.fulfillmentType === "DINE_IN" && next === "SERVED")
+    return "Marcar como servido";
   if (order.status === "RECEIVED" && next === "PREPARING")
     return "Aceitar pedido e iniciar preparo";
   return next ? `Avançar para ${STATUS_LABEL[next]}` : "Pedido concluído";
@@ -2115,6 +2119,8 @@ function OrderStatusActions({
   const next = nextStatusForOrder(order);
   const final = ["DELIVERED", "CANCELED"].includes(order.status);
   const waitingCourier = order.status === "READY_FOR_DELIVERY";
+  const waitingTablePayment =
+    order.fulfillmentType === "DINE_IN" && order.status === "SERVED";
   return (
     <div
       className={`status-step-actions ${compact ? "compact" : ""}`}
@@ -2132,6 +2138,9 @@ function OrderStatusActions({
       )}
       {waitingCourier && (
         <span className="final-status-label">Aguardando entregador</span>
+      )}
+      {waitingTablePayment && (
+        <span className="final-status-label">Servido • aguardando fechamento</span>
       )}
       {!final && (
         <button
@@ -2171,12 +2180,17 @@ function OrderList({
         const eta = etaRange(o);
         return (
           <article
-            className={`admin-order clickable status-card-${String(o.status).toLowerCase()} ${urgency ? `deadline-${urgency}` : ""}`}
+            className={`admin-order clickable status-card-${String(o.status).toLowerCase()} ${o.fulfillmentType === "DINE_IN" ? "dine-in-order" : ""} ${urgency ? `deadline-${urgency}` : ""}`}
             key={o.id}
             onClick={() => onOpen(o)}
           >
             <div className="order-code">
               <b>#{o.shortCode}</b>
+              {o.fulfillmentType === "DINE_IN" && (
+                <em className="dine-in-order-badge">
+                  <UtensilsCrossed size={12} /> Presencial
+                </em>
+              )}
               <small>
                 {new Date(o.createdAt).toLocaleString("pt-BR", {
                   day: "2-digit",
@@ -2196,7 +2210,7 @@ function OrderList({
                   })}
                 </em>
               )}
-              {eta && (
+              {eta && o.fulfillmentType !== "DINE_IN" && (
                 <span className="admin-order-eta">
                   <Clock3 size={13} />
                   {o.fulfillmentType === "PICKUP" ? "Pronto" : "Entrega"}:{" "}
@@ -2206,9 +2220,15 @@ function OrderList({
             </div>
             <div className="order-client">
               <b>{o.customerName}</b>
-              <small>{formatPhoneSimple(o.customerPhone)}</small>
               <small>
-                {o.fulfillmentType === "PICKUP"
+                {o.fulfillmentType === "DINE_IN"
+                  ? o.table?.name || `Mesa ${o.table?.number || "—"}`
+                  : formatPhoneSimple(o.customerPhone)}
+              </small>
+              <small>
+                {o.fulfillmentType === "DINE_IN"
+                  ? "Atendimento no salão"
+                  : o.fulfillmentType === "PICKUP"
                   ? "Retirada"
                   : `Entrega • ${o.neighborhood || o.city || ""}`}
               </small>
@@ -2263,6 +2283,9 @@ function OrderDetailModal({
   deliveryOnly = false,
   savingId = null,
 }) {
+  const isDineIn = order.fulfillmentType === "DINE_IN";
+  const tableName =
+    order.table?.name || `Mesa ${order.table?.number || "não identificada"}`;
   const fullAddress =
     order.fulfillmentType === "DELIVERY"
       ? [
@@ -2276,7 +2299,9 @@ function OrderDetailModal({
         ]
           .filter(Boolean)
           .join(", ")
-      : "Retirada na loja";
+      : isDineIn
+        ? `${tableName} • Atendimento no salão`
+        : "Retirada na loja";
   const eta = etaRange(order);
   return (
     <div
@@ -2286,7 +2311,9 @@ function OrderDetailModal({
       <section className="order-detail-modal">
         <div className="modal-head">
           <div>
-            <span className="eyebrow dark">Pedido #{order.shortCode}</span>
+            <span className="eyebrow dark">
+              {isDineIn ? "Pedido presencial" : "Pedido"} #{order.shortCode}
+            </span>
             <h2>{order.customerName}</h2>
             <p>{new Date(order.createdAt).toLocaleString("pt-BR")}</p>
           </div>
@@ -2294,7 +2321,7 @@ function OrderDetailModal({
             <X />
           </button>
         </div>
-        {eta && (
+        {eta && !isDineIn && (
           <div className="order-detail-eta">
             <Clock3 />
             <span>
@@ -2320,8 +2347,10 @@ function OrderDetailModal({
             />
           </article>
           <article>
-            <small>Telefone</small>
-            <b>{formatPhoneSimple(order.customerPhone)}</b>
+            <small>{isDineIn ? "Mesa" : "Telefone"}</small>
+            <b>
+              {isDineIn ? tableName : formatPhoneSimple(order.customerPhone)}
+            </b>
           </article>
           <article className="span-2">
             <small>Endereço / operação</small>
@@ -2343,7 +2372,9 @@ function OrderDetailModal({
             <small>Pagamento</small>
             <b>{paymentLabel(order)}</b>
             <small>
-              {order.paymentStatus === "APPROVED"
+              {isDineIn
+                ? "Pagamento realizado no fechamento da mesa"
+                : order.paymentStatus === "APPROVED"
                 ? "Pagamento aprovado"
                 : order.paymentStatus === "CASH_PENDING"
                   ? "Pagamento na entrega/retirada"
@@ -2369,10 +2400,12 @@ function OrderDetailModal({
               <b>{new Date(order.acceptedAt).toLocaleString("pt-BR")}</b>
             </article>
           )}
-          <article>
-            <small>Troco para</small>
-            <b>{order.changeFor ? money(order.changeFor) : "Não informado"}</b>
-          </article>
+          {!isDineIn && (
+            <article>
+              <small>Troco para</small>
+              <b>{order.changeFor ? money(order.changeFor) : "Não informado"}</b>
+            </article>
+          )}
           {order.status === "CANCELED" && order.cancelReason && (
             <article className="span-2 cancel-reason-admin">
               <small>Motivo do cancelamento</small>

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Armchair,
   Check,
@@ -90,6 +90,7 @@ export default function TablesAdmin({
     paymentMethod: "CASH",
     amountPaid: "",
   });
+  const orderPanelRef = useRef(null);
   const paymentOptions = useMemo(
     () => [
       ...Object.entries(PAYMENT).map(([value, label]) => ({ value, label })),
@@ -159,6 +160,21 @@ export default function TablesAdmin({
     (sum, item) => sum + Number(item.price) * Number(item.quantity),
     0,
   );
+
+  function scrollToOrderPanelOnMobile() {
+    if (!window.matchMedia("(max-width: 760px)").matches) return;
+    window.setTimeout(() => {
+      orderPanelRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 120);
+  }
+
+  function selectOccupiedTable(table) {
+    setSelectedId(table.id);
+    scrollToOrderPanelOnMobile();
+  }
 
   function addToCart(item) {
     setCart((current) => {
@@ -258,6 +274,7 @@ export default function TablesAdmin({
       setOpenTarget(null);
       setOpenForm(EMPTY_OPEN);
       await load({ quiet: true });
+      scrollToOrderPanelOnMobile();
     } catch (error) {
       fail(error, "Não foi possível abrir a mesa.");
     } finally {
@@ -453,7 +470,7 @@ export default function TablesAdmin({
                 disabled={!table.active}
                 onClick={() =>
                   table.occupied
-                    ? setSelectedId(table.id)
+                    ? selectOccupiedTable(table)
                     : (setOpenTarget(table), setOpenForm(EMPTY_OPEN))
                 }
               >
@@ -591,7 +608,10 @@ export default function TablesAdmin({
             </div>
           </div>
 
-          <aside className="admin-panel table-order-panel">
+          <aside
+            ref={orderPanelRef}
+            className="admin-panel table-order-panel"
+          >
             <div className="panel-title">
               <div><span>Novo lançamento</span><h2>Adicionar itens</h2></div>
               <ChefHat />

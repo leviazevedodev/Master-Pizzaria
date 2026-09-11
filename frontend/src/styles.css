@@ -5285,6 +5285,95 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+/* v2.21.1 — contraste final de comandas e cozinha no tema escuro. */
+.admin-shell.admin-dark .flavor-count-choice.compact-count {
+  background: #171b20 !important;
+  color: #f4f5f7 !important;
+  border-color: #3b444e !important;
+}
+.admin-shell.admin-dark .flavor-count-choice.compact-count b {
+  color: #f8fafc !important;
+}
+.admin-shell.admin-dark .flavor-count-choice.compact-count > div:first-child > svg {
+  color: #ff6269 !important;
+}
+.admin-shell.admin-dark .flavor-count-choice.compact-count button {
+  background: #242a30 !important;
+  color: #eef2f6 !important;
+  border-color: #46515c !important;
+}
+.admin-shell.admin-dark .flavor-count-choice.compact-count button:hover {
+  background: #303740 !important;
+  color: #fff !important;
+}
+.admin-shell.admin-dark .flavor-count-choice.compact-count button.active {
+  background: #e31b23 !important;
+  color: #fff !important;
+  border-color: #ff5e65 !important;
+}
+.admin-shell.admin-dark .table-payment-warning {
+  background: #352b12 !important;
+  color: #ffd978 !important;
+  border: 1px solid #69551d !important;
+}
+.admin-shell.admin-dark .table-payment-warning svg {
+  color: #ffd978 !important;
+}
+.admin-shell.admin-dark .table-close-btn:disabled {
+  background: #5a2025 !important;
+  color: #ffd6d8 !important;
+  border: 1px solid #854047 !important;
+  opacity: 1 !important;
+}
+.admin-shell.admin-dark .table-abandon-btn {
+  background: #21191b !important;
+  color: #ff9da2 !important;
+  border-color: #6a3439 !important;
+}
+.admin-shell.admin-dark .kitchen-ticket-head > span {
+  background: #2b3138 !important;
+  color: #e8edf2 !important;
+  border: 1px solid #48515c !important;
+}
+.admin-shell.admin-dark .kitchen-ticket.status-received .kitchen-ticket-head > span {
+  background: #3a1e22 !important;
+  color: #ffb4b8 !important;
+  border-color: #6e343a !important;
+}
+.admin-shell.admin-dark .kitchen-ticket.status-preparing .kitchen-ticket-head > span {
+  background: #352b12 !important;
+  color: #ffd978 !important;
+  border-color: #69551d !important;
+}
+.admin-shell.admin-dark .kitchen-ticket.status-ready_for_table .kitchen-ticket-head > span,
+.admin-shell.admin-dark .kitchen-ticket.status-ready_for_pickup .kitchen-ticket-head > span {
+  background: #173124 !important;
+  color: #b8ebcc !important;
+  border-color: #2f6849 !important;
+}
+.admin-shell.admin-dark .kitchen-table-badge {
+  background: #3a2d0f !important;
+  color: #ffd978 !important;
+  border: 1px solid #70591d !important;
+}
+.admin-shell.admin-dark .kitchen-items {
+  border-color: #4b545e !important;
+}
+.admin-shell.admin-dark .kitchen-items small,
+.admin-shell.admin-dark .kitchen-ticket-footer > small {
+  color: #b9c1ca !important;
+}
+.admin-shell.admin-dark .kitchen-ticket-footer button:not(.kitchen-advance-btn) {
+  background: #242a30 !important;
+  color: #e6ebef !important;
+  border-color: #46515c !important;
+}
+.admin-shell.admin-dark .kitchen-ticket-footer .kitchen-advance-btn {
+  background: #147343 !important;
+  color: #fff !important;
+  border-color: #26965e !important;
+}
 .admin-stats {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -15756,4 +15845,45 @@ html.dark-mode textarea {
   .table-round > footer {
     flex-wrap: wrap;
   }
+}
+
+/* Atendimento presencial integrado à fila principal. */
+.admin-order.dine-in-order {
+  border-left: 4px solid #c98000;
+  background: linear-gradient(90deg, #fffaf0 0, #fff 150px);
+}
+.dine-in-order-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: max-content;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #fff0bd;
+  color: #755300;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.admin-order.status-card-ready_for_table {
+  border-color: #d8a330;
+}
+.admin-order.status-card-ready_for_table:hover {
+  border-color: #b87600;
+}
+.table-order-panel {
+  scroll-margin-top: 14px;
+}
+.admin-shell.admin-dark .admin-order.dine-in-order {
+  border-left-color: #e5ac3b !important;
+  background: linear-gradient(90deg, #2b271d 0, #191c20 160px) !important;
+}
+.admin-shell.admin-dark .dine-in-order-badge {
+  background: #493c1d;
+  color: #ffd978;
+}
+.admin-shell.admin-dark .admin-order.status-card-ready_for_table {
+  border-color: #7d6228 !important;
 }
