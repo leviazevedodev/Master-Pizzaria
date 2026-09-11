@@ -1,0 +1,11 @@
+const DATABASE_AVAILABILITY_CODES = new Set([
+  "P1001", // banco inacessivel
+  "P1002", // conexao expirou
+  "P1008", // operacao expirou
+  "P1017", // servidor encerrou a conexao
+  "P2024", // pool de conexoes esgotado
+]);
+
+export function isDatabaseAvailabilityError(error) {
+  return DATABASE_AVAILABILITY_CODES.has(error?.code);
+}

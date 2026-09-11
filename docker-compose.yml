@@ -1,0 +1,78 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-master_pizza}
+      POSTGRES_USER: ${POSTGRES_USER:-master}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    volumes:
+      - master_pizza_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?Defina DATABASE_URL com a senha codificada para URL}
+      DIRECT_URL: ${DIRECT_URL:-}
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET com pelo menos 32 caracteres aleatorios}
+      PORT: 3333
+      TRUST_PROXY: 1
+      CORS_ORIGIN: ${PUBLIC_SITE_URL:?Defina PUBLIC_SITE_URL com a URL HTTPS do site}
+      FRONTEND_URL: ${PUBLIC_SITE_URL}
+      PUBLIC_BACKEND_URL: ${PUBLIC_SITE_URL}
+      MERCADOPAGO_ACCESS_TOKEN: ${MERCADOPAGO_ACCESS_TOKEN:-}
+      MERCADOPAGO_WEBHOOK_SECRET: ${MERCADOPAGO_WEBHOOK_SECRET:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      WHATSAPP_WEBHOOK_URL: ${WHATSAPP_WEBHOOK_URL:-}
+      WHATSAPP_WEBHOOK_TOKEN: ${WHATSAPP_WEBHOOK_TOKEN:-}
+      NOMINATIM_EMAIL: ${NOMINATIM_EMAIL:-}
+      ADMIN_SEED_NAME: ${ADMIN_SEED_NAME:-Administrador}
+      ADMIN_SEED_EMAIL: ${ADMIN_SEED_EMAIL:-}
+      ADMIN_SEED_PHONE: ${ADMIN_SEED_PHONE:-}
+      ADMIN_SEED_PASSWORD: ${ADMIN_SEED_PASSWORD:-}
+      ADMIN_SEED_ROTATE_PASSWORD: ${ADMIN_SEED_ROTATE_PASSWORD:-false}
+      ADMIN_SEED_PROMOTE_EXISTING: ${ADMIN_SEED_PROMOTE_EXISTING:-false}
+      SEED_FORCE_DEFAULTS: ${SEED_FORCE_DEFAULTS:-false}
+    expose:
+      - "3333"
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "5173:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  master_pizza_pgdata:
