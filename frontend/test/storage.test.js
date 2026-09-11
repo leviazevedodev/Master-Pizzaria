@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  readExpiringStoredJson,
   readStoredJson,
   readStoredStringArray,
+  writeExpiringStoredJson,
   writeStoredJson,
 } from "../src/lib/storage.js";
 
@@ -17,6 +19,10 @@ class MemoryStorage {
 
   setItem(key, value) {
     this.entries.set(key, String(value));
+  }
+
+  removeItem(key) {
+    this.entries.delete(key);
   }
 }
 
@@ -43,4 +49,37 @@ test("stored string lists discard invalid values and respect their limit", () =>
   });
 
   assert.deepEqual(readStoredStringArray(storage, "orders", 2), ["ABC", "DEF"]);
+});
+
+test("expiring JSON is removed after its retention period", () => {
+  const storage = new MemoryStorage();
+  const start = Date.UTC(2026, 0, 1);
+  const twoWeeks = 14 * 24 * 60 * 60 * 1000;
+  assert.equal(
+    writeExpiringStoredJson(storage, "cart", [{ id: "pizza" }], start),
+    true,
+  );
+  assert.deepEqual(
+    readExpiringStoredJson(
+      storage,
+      "cart",
+      [],
+      twoWeeks,
+      Array.isArray,
+      start + twoWeeks - 1,
+    ),
+    [{ id: "pizza" }],
+  );
+  assert.deepEqual(
+    readExpiringStoredJson(
+      storage,
+      "cart",
+      [],
+      twoWeeks,
+      Array.isArray,
+      start + twoWeeks,
+    ),
+    [],
+  );
+  assert.equal(storage.getItem("cart"), null);
 });

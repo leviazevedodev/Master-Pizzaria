@@ -28,6 +28,7 @@ enum PaymentMethod {
   BANESE_DEBIT
   PIX
   CARD
+  CUSTOM
 }
 
 enum PaymentStatus {
@@ -92,6 +93,7 @@ model User {
   courierOrders     Order[]              @relation("CourierOrders")
 
   @@index([createdAt])
+  @@index([isAdmin, lastLoginAt, updatedAt])
 }
 
 model PasswordResetToken {
@@ -104,6 +106,7 @@ model PasswordResetToken {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
+  @@index([createdAt])
 }
 
 model Category {
@@ -376,30 +379,32 @@ model RestaurantTable {
 }
 
 model TableSession {
-  id            String             @id @default(cuid())
-  tableId       String
-  table         RestaurantTable    @relation(fields: [tableId], references: [id], onDelete: Restrict)
-  openKey       String?            @unique
-  status        TableSessionStatus @default(OPEN)
-  customerName  String?
-  guestCount    Int?
-  notes         String?
-  openedById    String?
-  openedByName  String
-  closedById    String?
-  closedByName  String?
-  paymentMethod PaymentMethod?
-  subtotal      Decimal            @default(0) @db.Decimal(10, 2)
-  total         Decimal            @default(0) @db.Decimal(10, 2)
-  amountPaid    Decimal?           @db.Decimal(10, 2)
-  changeAmount  Decimal?           @db.Decimal(10, 2)
-  openedAt      DateTime           @default(now())
-  closedAt      DateTime?
-  updatedAt     DateTime           @updatedAt
-  orders        Order[]
+  id                 String             @id @default(cuid())
+  tableId            String
+  table              RestaurantTable    @relation(fields: [tableId], references: [id], onDelete: Restrict)
+  openKey            String?            @unique
+  status             TableSessionStatus @default(OPEN)
+  customerName       String?
+  guestCount         Int?
+  notes              String?
+  openedById         String?
+  openedByName       String
+  closedById         String?
+  closedByName       String?
+  paymentMethod      PaymentMethod?
+  paymentMethodLabel String?
+  subtotal           Decimal            @default(0) @db.Decimal(10, 2)
+  total              Decimal            @default(0) @db.Decimal(10, 2)
+  amountPaid         Decimal?           @db.Decimal(10, 2)
+  changeAmount       Decimal?           @db.Decimal(10, 2)
+  openedAt           DateTime           @default(now())
+  closedAt           DateTime?
+  updatedAt          DateTime           @updatedAt
+  orders             Order[]
 
   @@index([tableId, status, openedAt])
   @@index([openedById, status])
+  @@index([status, closedAt])
 }
 
 model Order {
@@ -440,6 +445,7 @@ model Order {
   outForDeliveryAt     DateTime?
   deliveredAt          DateTime?
   paymentMethod        PaymentMethod
+  paymentMethodLabel   String?
   paymentStatus        PaymentStatus        @default(CASH_PENDING)
   paymentProvider      String?
   paymentExternalId    String?
@@ -578,6 +584,7 @@ model CustomerAddress {
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, isDefault])
+  @@index([updatedAt])
 }
 
 model InventoryItem {
@@ -648,6 +655,7 @@ model WhatsAppOutbox {
 
   @@index([status, createdAt])
   @@index([orderId])
+  @@index([createdAt])
 }
 
 model BusinessSettings {
@@ -695,6 +703,7 @@ model BusinessSettings {
   manualOpenUntilMinutes       Int?
   cashPaymentEnabled           Boolean             @default(true)
   onlinePaymentEnabled         Boolean             @default(false)
+  customPaymentMethods         Json                @default("[]")
   browserNotificationsEnabled  Boolean             @default(true)
   newOrderSoundEnabled         Boolean             @default(true)
   autoPrintEnabled             Boolean             @default(false)
@@ -780,6 +789,45 @@ model AdminLog {
   @@index([userId, createdAt])
 }
 
+model TechnicalLog {
+  id        String   @id @default(cuid())
+  level     String   @default("ERROR")
+  event     String
+  message   String
+  requestId String?
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([event, createdAt])
+}
+
+model TableClosureRecord {
+  id                 String             @id @default(cuid())
+  sourceSessionId    String             @unique
+  tableId            String
+  tableNumber        Int
+  tableName          String?
+  customerName       String?
+  status             TableSessionStatus
+  paymentMethod      PaymentMethod?
+  paymentMethodLabel String?
+  subtotal           Decimal            @default(0) @db.Decimal(10, 2)
+  total              Decimal            @default(0) @db.Decimal(10, 2)
+  amountPaid         Decimal?           @db.Decimal(10, 2)
+  changeAmount       Decimal?           @db.Decimal(10, 2)
+  openedById         String?
+  openedByName       String
+  closedById         String?
+  closedByName       String?
+  openedAt           DateTime
+  closedAt           DateTime
+  createdAt          DateTime           @default(now())
+
+  @@index([closedAt])
+  @@index([tableId, closedAt])
+}
+
 model CashSession {
   id            String    @id @default(cuid())
   userId        String
@@ -792,6 +840,7 @@ model CashSession {
   notes         String?
 
   @@index([userId, openedAt])
+  @@index([closedAt])
 }
 
 model BusinessGoal {

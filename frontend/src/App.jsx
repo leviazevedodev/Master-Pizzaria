@@ -21,7 +21,12 @@ import {
   DEMO_SUBCATEGORIES,
 } from "./data/demo";
 import { api, authHeaders } from "./lib/api";
-import { readStoredJson, writeStoredJson } from "./lib/storage";
+import {
+  readExpiringStoredJson,
+  readStoredJson,
+  writeExpiringStoredJson,
+  writeStoredJson,
+} from "./lib/storage";
 const PizzaBuilderModal = lazy(() => import("./components/PizzaBuilderModal"));
 const AccountPage = lazy(() => import("./pages/AccountPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
@@ -53,9 +58,16 @@ function readSession() {
         null,
         validSession,
       ) ||
-      readStoredJson(localStorage, "master-pizza-session", null, validSession);
+      readExpiringStoredJson(
+        localStorage,
+        "master-pizza-session",
+        null,
+        14 * 24 * 60 * 60 * 1000,
+        validSession,
+      );
     if (session?.user?.isAdmin === true) {
       localStorage.removeItem("master-pizza-session");
+      localStorage.removeItem("master-pizza-session:updated-at");
       writeStoredJson(sessionStorage, "master-pizza-session", session);
     }
     return session;
@@ -88,10 +100,11 @@ export default function App() {
   const hidePublicHeader = location.pathname.startsWith("/gestao");
   const [initialPublic] = useState(readPublicCache);
   const [cart, setCart] = useState(() =>
-    readStoredJson(
+    readExpiringStoredJson(
       localStorage,
       "master-pizza-cart",
       [],
+      14 * 24 * 60 * 60 * 1000,
       (value) =>
         Array.isArray(value) &&
         value.length <= 100 &&
@@ -176,7 +189,7 @@ export default function App() {
     [],
   );
   useEffect(() => {
-    writeStoredJson(localStorage, "master-pizza-cart", cart);
+    writeExpiringStoredJson(localStorage, "master-pizza-cart", cart);
   }, [cart]);
   useEffect(() => {
     if (location.pathname === "/" && !location.hash)
@@ -279,6 +292,7 @@ export default function App() {
   useEffect(() => {
     const expire = () => {
       localStorage.removeItem("master-pizza-session");
+      localStorage.removeItem("master-pizza-session:updated-at");
       sessionStorage.removeItem("master-pizza-session");
       setSessionState(null);
     };
@@ -309,16 +323,16 @@ export default function App() {
   function setSession(next, persist = true) {
     setSessionState(next);
     localStorage.removeItem("master-pizza-session");
+    localStorage.removeItem("master-pizza-session:updated-at");
     sessionStorage.removeItem("master-pizza-session");
     if (next)
-      writeStoredJson(
-        next.user?.isAdmin ? sessionStorage : localStorage,
-        "master-pizza-session",
-        next,
-      );
+      next.user?.isAdmin
+        ? writeStoredJson(sessionStorage, "master-pizza-session", next)
+        : writeExpiringStoredJson(localStorage, "master-pizza-session", next);
   }
   function logout(showToast = true) {
     localStorage.removeItem("master-pizza-session");
+    localStorage.removeItem("master-pizza-session:updated-at");
     sessionStorage.removeItem("master-pizza-session");
     setSessionState(null);
     if (showToast) notify("Você saiu da sua conta.");

@@ -53,6 +53,15 @@ test("pagamento eletrônico baixa exatamente o total", () => {
   });
 });
 
+test("pagamento personalizado baixa exatamente o total", () => {
+  assert.deepEqual(calculateTablePayment(31.25, "CUSTOM", undefined), {
+    ok: true,
+    total: 31.25,
+    amountPaid: 31.25,
+    changeAmount: 0,
+  });
+});
+
 test("tableLabel usa apelido e possui fallback", () => {
   assert.equal(tableLabel({ number: 4, name: "Varanda" }), "Varanda");
   assert.equal(tableLabel({ number: 4 }), "Mesa 4");

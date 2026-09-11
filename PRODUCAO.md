@@ -9,7 +9,7 @@ Use um `JWT_SECRET` aleatório com pelo menos 32 caracteres. A senha do banco de
 No Neon, copie as duas conexões no painel:
 
 ```env
-DATABASE_URL="postgresql://...-pooler.../neondb?sslmode=require&connection_limit=5&pool_timeout=20&connect_timeout=10"
+DATABASE_URL="postgresql://...-pooler.../neondb?sslmode=require&connection_limit=5&pool_timeout=30&connect_timeout=10"
 DIRECT_URL="postgresql://.../neondb?sslmode=require"
 ```
 
@@ -32,6 +32,8 @@ docker compose run --rm backend npm run prisma:migrate
 ```
 
 Não use `prisma db push` nem `migrate reset` no banco real. Faça backup antes de atualizar e valide a restauração em um banco separado.
+
+A migration `20260911000000_payment_methods_and_data_retention` é obrigatória para os pagamentos personalizados e a limpeza automática. Ela adiciona colunas, tabelas de arquivo/log e índices sem apagar os dados existentes durante a instalação.
 
 ## 3. Administrador inicial
 

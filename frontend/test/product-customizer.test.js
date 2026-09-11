@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   customizerBlockReason,
   initialModifierSelections,
+  isTableCatalogProduct,
 } from "../src/lib/productCustomizer.js";
 
 test("pré-seleciona a borda padrão gratuita", () => {
@@ -20,6 +21,19 @@ test("pré-seleciona a borda padrão gratuita", () => {
   ];
 
   assert.deepEqual(initialModifierSelections(groups), { crust: ["plain"] });
+});
+
+test("pizza vendável continua no catálogo mesmo sendo opção de sabor", () => {
+  assert.equal(
+    isTableCatalogProduct({
+      id: "calabresa",
+      available: true,
+      stockAvailable: true,
+      isFlavorOption: true,
+    }),
+    true,
+  );
+  assert.equal(isTableCatalogProduct({ available: false }), false);
 });
 
 test("explica exatamente o que falta para liberar a inclusão", () => {

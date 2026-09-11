@@ -5,6 +5,7 @@ export const TABLE_PAYMENT_METHODS = Object.freeze([
   "DEBIT",
   "CREDIT",
   "BANESE_DEBIT",
+  "CUSTOM",
 ]);
 
 export const TABLE_ACTIVE_ORDER_STATUSES = Object.freeze([

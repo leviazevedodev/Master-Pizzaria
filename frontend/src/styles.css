@@ -5811,6 +5811,114 @@ textarea {
   line-height: 1.45;
   color: var(--muted);
 }
+
+.custom-payment-manager {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #e5e7eb;
+}
+.custom-payment-manager > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+.custom-payment-manager small {
+  color: #64748b;
+}
+.custom-payment-add {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 10px;
+}
+.custom-payment-add input {
+  min-width: 0;
+}
+.custom-payment-list {
+  display: grid;
+  gap: 8px;
+}
+.custom-payment-list article {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
+}
+.custom-payment-list label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+}
+.custom-payment-name {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.custom-payment-name input[type="text"] {
+  min-width: 0;
+}
+.custom-payment-list input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+.retention-policy-card {
+  margin: 0 0 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #faf9f7;
+}
+.retention-policy-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 9px;
+}
+.retention-policy-grid span {
+  display: grid;
+  gap: 4px;
+  padding: 11px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+}
+.retention-policy-grid b {
+  color: #117747;
+}
+.retention-policy-grid small {
+  color: #64748b;
+  line-height: 1.4;
+}
+.admin-shell.admin-dark .custom-payment-manager {
+  border-top-color: #34404d;
+}
+.admin-shell.admin-dark .retention-policy-card,
+.admin-shell.admin-dark .retention-policy-grid span {
+  background: #171c22;
+  border-color: #34404d;
+}
+.admin-shell.admin-dark .custom-payment-list article {
+  background: #171c22;
+  border-color: #34404d;
+  color: #f8fafc;
+}
+@media (max-width: 720px) {
+  .custom-payment-add,
+  .custom-payment-list article {
+    grid-template-columns: 1fr;
+  }
+  .retention-policy-grid {
+    grid-template-columns: 1fr;
+  }
+  .custom-payment-list article .icon-action {
+    justify-self: end;
+  }
+}
 .visual-control-panel {
   overflow: hidden;
 }

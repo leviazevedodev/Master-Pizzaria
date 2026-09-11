@@ -91,6 +91,9 @@ export default function HomePage({
     settings.onlinePaymentEnabled &&
       settings.onlinePaymentConfigured &&
       "Pagamento online (Pix/cartão)",
+    ...(settings.customPaymentMethods || [])
+      .filter((method) => method.active !== false && method.siteEnabled !== false)
+      .map((method) => method.label),
   ].filter(Boolean);
   function chooseCategory(slug) {
     setCategory(slug);

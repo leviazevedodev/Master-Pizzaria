@@ -7,5 +7,11 @@ const DATABASE_AVAILABILITY_CODES = new Set([
 ]);
 
 export function isDatabaseAvailabilityError(error) {
-  return DATABASE_AVAILABILITY_CODES.has(error?.code);
+  if (DATABASE_AVAILABILITY_CODES.has(error?.code)) return true;
+  return (
+    error?.code === "P2028" &&
+    /expired transaction|transaction already closed|timeout/i.test(
+      String(error?.meta?.error || error?.message || ""),
+    )
+  );
 }

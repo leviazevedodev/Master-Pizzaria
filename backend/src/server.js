@@ -21,16 +21,28 @@ import {
 import { missingDeliveryAddressFields } from "./order-validation.js";
 import { booleanValue, boundedInteger, validSlug } from "./input-validation.js";
 import { isDatabaseAvailabilityError } from "./database-errors.js";
+import { createAsyncTtlCache } from "./async-ttl-cache.js";
 import {
   calculateTablePayment,
   summarizeTableOrders,
   tableLabel,
 } from "./table-service.js";
+import { retentionCutoffs } from "./data-retention.js";
+import {
+  CUSTOM_PAYMENT_PREFIX,
+  normalizeCustomPaymentMethods,
+  resolveCustomPaymentMethod,
+} from "./payment-methods.js";
 
 dotenv.config({ quiet: true });
 
 const app = express();
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  transactionOptions: {
+    maxWait: 15_000,
+    timeout: 30_000,
+  },
+});
 const PORT = Number(process.env.PORT || 3333);
 const isProduction = process.env.NODE_ENV === "production";
 const JWT_SECRET = String(process.env.JWT_SECRET || "").trim();
@@ -373,6 +385,9 @@ const normalizeCity = (value) =>
 
 const serializeSettings = (settings) => ({
   ...settings,
+  customPaymentMethods: normalizeCustomPaymentMethods(
+    settings.customPaymentMethods,
+  ),
   instagramUrl: safeExternalUrl(settings.instagramUrl, 600),
   logoImage: safeMediaUrl(settings.logoImage),
   heroImage: safeMediaUrl(settings.heroImage),
@@ -428,6 +443,7 @@ const serializePublicSettings = (settings) => {
     "cashPaymentEnabled",
     "onlinePaymentEnabled",
     "onlinePaymentConfigured",
+    "customPaymentMethods",
     "logoImage",
     "heroEyebrow",
     "heroImage",
@@ -869,6 +885,7 @@ const serializeCustomerOrder = (order) => {
     total: serialized.total,
     couponCode: serialized.couponCode,
     paymentMethod: serialized.paymentMethod,
+    paymentMethodLabel: serialized.paymentMethodLabel || null,
     paymentStatus: serialized.paymentStatus,
     paymentUrl: serialized.paymentUrl,
     scheduledAt: serialized.scheduledAt,
@@ -931,6 +948,12 @@ function issueToken(user) {
     },
   );
 }
+// Consultas administrativas chegam em rajadas. A deduplicação mantém a
+// validação no banco, mas evita várias buscas idênticas pelo mesmo usuário.
+const authenticatedUserCache = createAsyncTtlCache({
+  ttlMs: 1_000,
+  maxEntries: 500,
+});
 async function authenticateBearer(req) {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) return null;
@@ -939,7 +962,10 @@ async function authenticateBearer(req) {
     issuer: "master-pizza-api",
     audience: "master-pizza-web",
   });
-  const user = await prisma.user.findUnique({ where: { id: payload.id } });
+  const cacheKey = `${payload.id}:${Number(payload.sv || 0)}`;
+  const user = await authenticatedUserCache.get(cacheKey, () =>
+    prisma.user.findUnique({ where: { id: payload.id } }),
+  );
   if (!user || Number(payload.sv) !== Number(user.sessionVersion || 0))
     throw new Error("INVALID_SESSION");
   if (user.isAdmin && user.staffActive === false)
@@ -2460,6 +2486,7 @@ const orderInclude = {
       openedAt: true,
       closedAt: true,
       paymentMethod: true,
+      paymentMethodLabel: true,
       subtotal: true,
       total: true,
       amountPaid: true,
@@ -3138,7 +3165,11 @@ app.post(
   const notes = cleanText(req.body?.notes, 300) || null;
   const referencePoint = cleanText(req.body?.referencePoint, 180) || null;
   const deliveryAreaId = cleanText(req.body?.deliveryAreaId, 80) || null;
-  let paymentMethod = cleanText(req.body?.paymentMethod, 30);
+  const requestedPaymentMethod = cleanText(req.body?.paymentMethod, 80);
+  let paymentMethod = requestedPaymentMethod.startsWith(CUSTOM_PAYMENT_PREFIX)
+    ? requestedPaymentMethod
+    : requestedPaymentMethod.toUpperCase();
+  let paymentMethodLabel = null;
   const items = req.body?.items;
   let tableSession = null;
   if (isDineIn) {
@@ -3174,7 +3205,11 @@ app.post(
       .json({ message: "Informe um telefone válido com DDD." });
   if (!["DELIVERY", "PICKUP", "DINE_IN"].includes(fulfillmentType))
     return res.status(400).json({ message: "Tipo de operação inválido." });
-  if (!isDineIn && !["CASH", "CARD"].includes(paymentMethod))
+  if (
+    !isDineIn &&
+    !["CASH", "CARD"].includes(paymentMethod) &&
+    !paymentMethod.startsWith(CUSTOM_PAYMENT_PREFIX)
+  )
     return res.status(400).json({ message: "Forma de pagamento inválida." });
   if (!Array.isArray(items) || !items.length || items.length > 30)
     return res.status(400).json({ message: "Carrinho inválido." });
@@ -3205,6 +3240,19 @@ app.post(
 
   let settings = await getSettings();
   settings = await autoCloseStoreIfNeeded(settings);
+  if (!isDineIn && paymentMethod.startsWith(CUSTOM_PAYMENT_PREFIX)) {
+    const customPayment = resolveCustomPaymentMethod(
+      settings,
+      paymentMethod,
+      "SITE",
+    );
+    if (!customPayment)
+      return res.status(409).json({
+        message: "Esta forma de pagamento não está mais disponível.",
+      });
+    paymentMethod = "CUSTOM";
+    paymentMethodLabel = customPayment.label;
+  }
   const dailyLimit = Math.max(
     1,
     Math.min(100, Number(settings.customerDailyOrderLimit || 5)),
@@ -3801,7 +3849,8 @@ app.post(
         notes,
         referencePoint,
         paymentMethod,
-        paymentStatus: paymentMethod === "CASH" ? "CASH_PENDING" : "PENDING",
+        paymentMethodLabel,
+        paymentStatus: paymentMethod === "CARD" ? "PENDING" : "CASH_PENDING",
         paymentProvider: paymentMethod === "CARD" ? "MERCADO_PAGO" : null,
         changeFor,
         subtotal,
@@ -3948,14 +3997,14 @@ app.post(
   const serialized = isDineIn
     ? serializeOrder(order)
     : serializeCustomerOrder(order);
-  if (!isDineIn && paymentMethod === "CASH")
+  if (!isDineIn && paymentMethod !== "CARD")
     queueWhatsApp(serialized, "ORDER_CREATED", "Recebido").catch(() => {});
   res.status(201).json({
     ...serialized,
     requiresPayment: !isDineIn && paymentMethod === "CARD",
     paymentUrl: order.paymentUrl || null,
     visibleToStore:
-      isDineIn || paymentMethod === "CASH" || order.paymentStatus === "APPROVED",
+      isDineIn || paymentMethod !== "CARD" || order.paymentStatus === "APPROVED",
   });
 });
 
@@ -4016,6 +4065,7 @@ app.get(
         trackingCode: true,
         paymentStatus: true,
         paymentMethod: true,
+        paymentMethodLabel: true,
         paymentUrl: true,
         status: true,
         scheduledAt: true,
@@ -4050,6 +4100,7 @@ app.get(
       scheduledAt: o.scheduledAt,
       paymentStatus: o.paymentStatus,
       paymentMethod: o.paymentMethod,
+      paymentMethodLabel: o.paymentMethodLabel,
       estimatedDeliveryMin: o.estimatedDeliveryMin,
       estimatedDeliveryMax: o.estimatedDeliveryMax,
       estimatedFrom: o.estimatedFrom,
@@ -4568,7 +4619,25 @@ app.post("/api/admin/table-sessions/:id/cancel", auth, admin, async (req, res) =
 app.post("/api/admin/table-sessions/:id/close", auth, admin, async (req, res) => {
   if (!hasTableAccess(req))
     return res.status(403).json({ message: "Acesso às mesas não autorizado." });
-  const paymentMethod = cleanText(req.body?.paymentMethod, 30).toUpperCase();
+  const requestedPaymentMethod = cleanText(req.body?.paymentMethod, 80);
+  let paymentMethod = requestedPaymentMethod.startsWith(CUSTOM_PAYMENT_PREFIX)
+    ? requestedPaymentMethod
+    : requestedPaymentMethod.toUpperCase();
+  let paymentMethodLabel = null;
+  if (paymentMethod.startsWith(CUSTOM_PAYMENT_PREFIX)) {
+    const customPayment = resolveCustomPaymentMethod(
+      await getSettings(),
+      paymentMethod,
+      "TABLE",
+    );
+    if (!customPayment)
+      return res.status(409).json({
+        code: "TABLE_PAYMENT_INVALID",
+        message: "Esta forma de pagamento não está mais disponível.",
+      });
+    paymentMethod = "CUSTOM";
+    paymentMethodLabel = customPayment.label;
+  }
   const rawAmountPaid =
     typeof req.body?.amountPaid === "string"
       ? Number(req.body.amountPaid.replace(/[^0-9,.-]/g, "").replace(",", "."))
@@ -4605,6 +4674,7 @@ app.post("/api/admin/table-sessions/:id/close", auth, admin, async (req, res) =>
       data: {
         status: "DELIVERED",
         paymentMethod,
+        paymentMethodLabel,
         paymentStatus: "APPROVED",
         paidAt: closedAt,
         deliveredAt: closedAt,
@@ -4629,6 +4699,7 @@ app.post("/api/admin/table-sessions/:id/close", auth, admin, async (req, res) =>
         closedById: req.adminUser.id,
         closedByName: req.adminUser.name,
         paymentMethod,
+        paymentMethodLabel,
         subtotal: payment.total,
         total: payment.total,
         amountPaid: payment.amountPaid,
@@ -4640,6 +4711,7 @@ app.post("/api/admin/table-sessions/:id/close", auth, admin, async (req, res) =>
   await writeAdminLog(req, "CLOSE_TABLE", "TableSession", row.id, {
     tableId: row.tableId,
     paymentMethod,
+    paymentMethodLabel,
     total: Number(row.total),
   });
   res.json(serializeTableSession(row));
@@ -4648,7 +4720,10 @@ app.post("/api/admin/table-sessions/:id/close", auth, admin, async (req, res) =>
 app.get("/api/admin/table-sessions/history", auth, admin, async (req, res) => {
   const limit = boundedInteger(req.query.limit ?? 30, 1, 100) || 30;
   const rows = await prisma.tableSession.findMany({
-    where: { status: { in: ["CLOSED", "CANCELED"] } },
+    where: {
+      status: { in: ["CLOSED", "CANCELED"] },
+      closedAt: { gte: new Date(Date.now() - 12 * 60 * 60 * 1000) },
+    },
     include: { table: true },
     orderBy: { closedAt: "desc" },
     take: limit,
@@ -4807,6 +4882,7 @@ app.get("/api/admin/team-analytics", auth, admin, async (req, res) => {
       createdAt: true,
       updatedAt: true,
       paymentMethod: true,
+      paymentMethodLabel: true,
       paymentStatus: true,
       customerName: true,
       customerPhone: true,
@@ -4917,6 +4993,7 @@ app.get("/api/admin/team-analytics", auth, admin, async (req, res) => {
       customerName: order.customerName,
       customerPhone: order.customerPhone,
       paymentMethod: order.paymentMethod,
+      paymentMethodLabel: order.paymentMethodLabel,
       paymentStatus: order.paymentStatus,
       total: Number(order.total || 0),
       deliveryFee: Number(order.deliveryFee || 0),
@@ -8197,6 +8274,20 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
       });
     data.homeProductLimit = v;
   }
+  if (req.body?.customPaymentMethods !== undefined) {
+    if (!Array.isArray(req.body.customPaymentMethods))
+      return res.status(400).json({
+        message: "A lista de formas de pagamento personalizadas é inválida.",
+      });
+    const requested = req.body.customPaymentMethods;
+    const normalized = normalizeCustomPaymentMethods(requested);
+    if (requested.length > 20 || normalized.length !== requested.length)
+      return res.status(400).json({
+        message:
+          "Use até 20 formas de pagamento, com nomes únicos de 2 a 40 caracteres.",
+      });
+    data.customPaymentMethods = normalized;
+  }
   for (const f of [
     "deliveryEnabled",
     "pickupEnabled",
@@ -8279,6 +8370,27 @@ async function writeAdminLog(
         entity,
         entityId,
         details,
+      },
+    });
+  } catch {}
+}
+async function writeTechnicalLog(event, error, req = null, details = null) {
+  try {
+    await prisma.technicalLog.create({
+      data: {
+        level: "ERROR",
+        event: cleanText(event, 80) || "APPLICATION_ERROR",
+        message: cleanText(error?.message || String(error), 500),
+        requestId: cleanText(req?.requestId, 100) || null,
+        details:
+          details ||
+          (req
+            ? {
+                method: req.method,
+                path: cleanText(req.originalUrl, 300),
+                code: cleanText(error?.code, 80) || null,
+              }
+            : undefined),
       },
     });
   } catch {}
@@ -8964,7 +9076,9 @@ app.use((err, req, res, next) => {
   if (err?.code === "P2025")
     return res.status(404).json({ message: "Registro não encontrado." });
   if (isDatabaseAvailabilityError(err)) {
-    logServerError();
+    console.warn(
+      `[database:${err.code}] ${req.method} ${req.originalUrl} temporariamente indisponível (request ${req.requestId || "sem-id"}).`,
+    );
     return res.status(503).json({
       code: "DATABASE_UNAVAILABLE",
       message:
@@ -9001,16 +9115,222 @@ app.use((err, req, res, next) => {
   if (["OUT_OF_STOCK", "INGREDIENT_OUT_OF_STOCK"].includes(err?.code))
     return res.status(409).json({ code: err.code, message: err.message });
   logServerError();
+  void writeTechnicalLog("UNHANDLED_REQUEST_ERROR", err, req);
   res.status(500).json({ message: "Erro interno do servidor." });
 });
 
 const server = app.listen(PORT, () =>
   console.log(`Master Pizza API rodando na porta ${PORT}`),
 );
-const automationTimer = setInterval(() => {
-  autoCloseStoreIfNeeded().catch(() => {});
-  activateDueScheduledOrders().catch(() => {});
-}, 20_000);
+let automationInProgress = false;
+let lastRetentionRunAt = 0;
+const RETENTION_INTERVAL_MS = 5 * 60 * 1000;
+
+async function archiveExpiredTableSessions(cutoff) {
+  let archived = 0;
+  for (let page = 0; page < 4; page += 1) {
+    const sessions = await prisma.tableSession.findMany({
+      where: {
+        status: { in: ["CLOSED", "CANCELED"] },
+        closedAt: { lt: cutoff },
+      },
+      include: { table: true },
+      orderBy: { closedAt: "asc" },
+      take: 250,
+    });
+    if (!sessions.length) break;
+    const ids = sessions.map((session) => session.id);
+    await prisma.$transaction([
+      prisma.tableClosureRecord.createMany({
+        data: sessions.map((session) => ({
+          sourceSessionId: session.id,
+          tableId: session.tableId,
+          tableNumber: session.table.number,
+          tableName: session.table.name,
+          customerName: session.customerName,
+          status: session.status,
+          paymentMethod: session.paymentMethod,
+          paymentMethodLabel: session.paymentMethodLabel,
+          subtotal: session.subtotal,
+          total: session.total,
+          amountPaid: session.amountPaid,
+          changeAmount: session.changeAmount,
+          openedById: session.openedById,
+          openedByName: session.openedByName,
+          closedById: session.closedById,
+          closedByName: session.closedByName,
+          openedAt: session.openedAt,
+          closedAt: session.closedAt,
+        })),
+        skipDuplicates: true,
+      }),
+      prisma.order.updateMany({
+        where: { tableSessionId: { in: ids } },
+        data: { tableSessionId: null },
+      }),
+      prisma.tableSession.deleteMany({ where: { id: { in: ids } } }),
+    ]);
+    archived += sessions.length;
+    if (sessions.length < 250) break;
+  }
+  return archived;
+}
+
+async function deleteExpiredOrders(cutoff) {
+  let deleted = 0;
+  for (let page = 0; page < 4; page += 1) {
+    const rows = await prisma.order.findMany({
+      where: { createdAt: { lt: cutoff } },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+      take: 250,
+    });
+    if (!rows.length) break;
+    const ids = rows.map((row) => row.id);
+    await prisma.$transaction([
+      prisma.review.deleteMany({ where: { orderId: { in: ids } } }),
+      prisma.whatsAppOutbox.deleteMany({ where: { orderId: { in: ids } } }),
+      prisma.inventoryMovement.deleteMany({ where: { orderId: { in: ids } } }),
+      prisma.order.deleteMany({ where: { id: { in: ids } } }),
+    ]);
+    deleted += rows.length;
+    if (rows.length < 250) break;
+  }
+  return deleted;
+}
+
+async function runDataRetention(now = new Date()) {
+  const cutoffs = retentionCutoffs(now);
+  const summary = {
+    tableSessions: await archiveExpiredTableSessions(cutoffs.tableSessions),
+  };
+  const orderPersonalFields = [
+    "postalCode",
+    "street",
+    "addressNumber",
+    "complement",
+    "neighborhood",
+    "city",
+    "state",
+    "latitude",
+    "longitude",
+    "referencePoint",
+  ];
+  summary.anonymizedOrders = (
+    await prisma.order.updateMany({
+      where: {
+        createdAt: { lt: cutoffs.personalData },
+        OR: [
+          { customerPhone: { not: "" } },
+          ...orderPersonalFields.map((field) => ({ [field]: { not: null } })),
+        ],
+      },
+      data: {
+        customerPhone: "",
+        postalCode: null,
+        street: null,
+        addressNumber: null,
+        complement: null,
+        neighborhood: null,
+        city: null,
+        state: null,
+        latitude: null,
+        longitude: null,
+        referencePoint: null,
+      },
+    })
+  ).count;
+  summary.deletedAddresses = (
+    await prisma.customerAddress.deleteMany({
+      where: { updatedAt: { lt: cutoffs.personalData } },
+    })
+  ).count;
+  summary.anonymizedCustomers = (
+    await prisma.user.updateMany({
+      where: {
+        isAdmin: false,
+        OR: [
+          { lastLoginAt: { lt: cutoffs.personalData } },
+          { lastLoginAt: null, updatedAt: { lt: cutoffs.personalData } },
+        ],
+        AND: [
+          {
+            OR: [
+              { phone: { not: null } },
+              { postalCode: { not: null } },
+              { street: { not: null } },
+              { addressNumber: { not: null } },
+              { complement: { not: null } },
+              { neighborhood: { not: null } },
+              { city: { not: null } },
+              { state: { not: null } },
+              { referencePoint: { not: null } },
+            ],
+          },
+        ],
+      },
+      data: {
+        phone: null,
+        postalCode: null,
+        street: null,
+        addressNumber: null,
+        complement: null,
+        neighborhood: null,
+        city: null,
+        state: null,
+        referencePoint: null,
+      },
+    })
+  ).count;
+  summary.expiredResetTokens = (
+    await prisma.passwordResetToken.deleteMany({
+      where: { createdAt: { lt: cutoffs.abandonedSessions } },
+    })
+  ).count;
+  summary.technicalLogs = (
+    await prisma.technicalLog.deleteMany({
+      where: { createdAt: { lt: cutoffs.technicalLogs } },
+    })
+  ).count;
+  summary.integrationLogs = (
+    await prisma.whatsAppOutbox.deleteMany({
+      where: { createdAt: { lt: cutoffs.technicalLogs } },
+    })
+  ).count;
+  summary.tableClosures = (
+    await prisma.tableClosureRecord.deleteMany({
+      where: { closedAt: { lt: cutoffs.financialData } },
+    })
+  ).count;
+  summary.cashClosures = (
+    await prisma.cashSession.deleteMany({
+      where: { closedAt: { lt: cutoffs.financialData } },
+    })
+  ).count;
+  summary.orders = await deleteExpiredOrders(cutoffs.financialData);
+  return summary;
+}
+
+async function runAutomationCycle() {
+  if (automationInProgress) return;
+  automationInProgress = true;
+  try {
+    await autoCloseStoreIfNeeded();
+    await activateDueScheduledOrders();
+    if (Date.now() - lastRetentionRunAt >= RETENTION_INTERVAL_MS) {
+      lastRetentionRunAt = Date.now();
+      await runDataRetention().catch((error) => {
+        void writeTechnicalLog("DATA_RETENTION_ERROR", error);
+      });
+    }
+  } finally {
+    automationInProgress = false;
+  }
+}
+const automationTimer = setInterval(
+  () => runAutomationCycle().catch(() => {}),
+  20_000,
+);
 automationTimer.unref?.();
 async function shutdown() {
   clearInterval(automationTimer);

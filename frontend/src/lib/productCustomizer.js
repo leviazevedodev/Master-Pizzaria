@@ -51,3 +51,11 @@ export function customizerBlockReason({
   }
   return "";
 }
+
+export function isTableCatalogProduct(product) {
+  return Boolean(
+    product &&
+      product.available !== false &&
+      product.stockAvailable !== false,
+  );
+}

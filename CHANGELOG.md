@@ -1,5 +1,28 @@
 # Histórico de versões
 
+## 2.21.0 — Pagamentos configuráveis e retenção automática
+
+- administrador pode cadastrar, ativar, desativar e remover formas de pagamento personalizadas;
+- cada método próprio pode ser liberado separadamente no site e nas mesas;
+- o nome escolhido é gravado no pedido e permanece correto em comandas, histórico e desempenho mesmo se a configuração mudar;
+- comandas encerradas são removidas após 12 horas, preservando um resumo financeiro por 5 anos e os pedidos usados nos relatórios;
+- pedidos e dados financeiros expiram em 5 anos;
+- endereços e telefones antigos são anonimizados ou removidos após 6 meses;
+- carrinhos e sessões locais abandonados expiram em 2 semanas;
+- logs técnicos e de integração expiram em 1 semana;
+- índices específicos reduzem o custo das rotinas de retenção no PostgreSQL/Neon;
+- novos testes cobrem prazos, armazenamento expirável e autorização dos meios personalizados.
+
+## 2.20.4 — Catálogo das mesas e resiliência transacional
+
+- corrigido o filtro que escondia pizzas vendáveis da lista **Adicionar itens** apenas porque elas também podiam ser usadas como sabor;
+- transações interativas passaram de 5 para 30 segundos, com espera máxima de 15 segundos, evitando `P2028` em conexões Neon lentas;
+- validações simultâneas do mesmo usuário agora compartilham a mesma consulta e possuem cache de apenas 1 segundo, reduzindo `P2024` sem enfraquecer significativamente a revogação de sessão;
+- consultas da tela de mesas passaram a ser sequenciais para respeitar pools pequenos;
+- automações internas não rodam mais sobrepostas e usam consultas sequenciais;
+- expiração transacional é classificada como indisponibilidade temporária (`503`), em vez de erro interno;
+- logs temporários do banco ficaram concisos e mantêm o identificador da requisição.
+
 ## 2.20.3 — Inclusão na comanda e contraste escuro
 
 - personalizador da comanda agora usa a ação clara **Adicionar à comanda** e confirma a inclusão na próxima rodada;

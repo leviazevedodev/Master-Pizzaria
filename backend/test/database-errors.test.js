@@ -8,4 +8,11 @@ test("classifica indisponibilidade e esgotamento do pool do Prisma", () => {
 
   assert.equal(isDatabaseAvailabilityError(new Error("jwt expired")), false);
   assert.equal(isDatabaseAvailabilityError({ code: "P2002" }), false);
+  assert.equal(
+    isDatabaseAvailabilityError({
+      code: "P2028",
+      meta: { error: "Transaction already closed: expired transaction" },
+    }),
+    true,
+  );
 });

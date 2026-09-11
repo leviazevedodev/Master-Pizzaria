@@ -1,4 +1,4 @@
-# Master Pizza Profissional v2.20.3
+# Master Pizza Profissional v2.21.0
 
 Aplicação de cardápio e gestão de pizzaria com React, Express, PostgreSQL e Prisma. Inclui pedidos, entrega/retirada, atendimento em mesas, agendamento, pagamento pelo Mercado Pago, painel administrativo, cozinha, garçons, entregadores, estoque, promoções, cupons e relatórios.
 
@@ -43,6 +43,20 @@ Fluxo operacional:
 
 Pedidos presenciais não aparecem para entregadores. A mesma mesa não pode ter duas comandas abertas simultaneamente, e cancelamentos ficam registrados com motivo e restauração de estoque quando aplicável.
 
+## Pagamentos personalizados e retenção
+
+Em **Loja → Pagamento**, o administrador pode cadastrar até 20 formas de pagamento próprias, escolher se cada uma aparece no site e/ou nas mesas e desativá-las sem alterar pedidos antigos. Dinheiro, Mercado Pago, Pix e cartões do atendimento presencial continuam como opções padrão.
+
+A limpeza automática roda em segundo plano com os seguintes prazos:
+
+- comandas encerradas deixam a tela e são removidas após 12 horas; antes da exclusão, um resumo financeiro da baixa é preservado;
+- carrinhos e sessões locais abandonados expiram em 2 semanas;
+- logs técnicos e de integração expiram em 1 semana;
+- telefone e endereço de pedidos antigos são anonimizados, e endereços favoritos inativos são removidos, após 6 meses;
+- pedidos, faturamento, pagamentos e fechamentos são removidos após 5 anos.
+
+Os pedidos permanecem independentes da comanda encerrada, portanto continuam em **Desempenho**, **Relatórios** e **Gestão 360°** até completar o prazo financeiro de 5 anos.
+
 ## Desenvolvimento sem Docker
 
 Crie `backend/.env` a partir de `backend/.env.example` e execute:
@@ -71,7 +85,7 @@ npm run dev
 - `npm run prisma:migrate`: aplica migrations pendentes sem apagar dados.
 - `npm run seed`: cria dados ausentes e preserva alterações já feitas no painel.
 
-Para o Neon, mantenha a conexão pooled e limite o pool por processo. Um exemplo de final da URL é `?sslmode=require&connection_limit=5&pool_timeout=20&connect_timeout=10` (use `&` no lugar de `?` se a URL já possuir parâmetros).
+Para o Neon, mantenha a conexão pooled e limite o pool por processo. Um exemplo de final da URL é `?sslmode=require&connection_limit=5&pool_timeout=30&connect_timeout=10` (use `&` no lugar de `?` se a URL já possuir parâmetros).
 
 Não use `prisma db push` neste projeto: há histórico de migrations e o comando pode criar divergência entre o banco e os arquivos versionados. Também não use `migrate reset` em banco com dados reais.
 

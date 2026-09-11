@@ -603,7 +603,11 @@ function OrderCard({ order, reorder, reordering }) {
             ? "Retirada na loja"
             : `Entrega • ${order.neighborhood || order.city || ""}`}
         </span>
-        <span>{PAYMENT_LABEL[order.paymentMethod] || order.paymentMethod}</span>
+        <span>
+          {order.paymentMethodLabel ||
+            PAYMENT_LABEL[order.paymentMethod] ||
+            order.paymentMethod}
+        </span>
         {order.scheduledAt && (
           <span>
             Agendado: {new Date(order.scheduledAt).toLocaleString("pt-BR")}

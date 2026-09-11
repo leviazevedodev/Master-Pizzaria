@@ -8,6 +8,10 @@
 
 > Hotfix v2.20.3 (10 de setembro de 2026): o fluxo de inclusão de pizzas em comandas ganhou seleção padrão segura, mensagem explícita para campos ainda pendentes e confirmação da inclusão. O tema escuro passou a cobrir integralmente o personalizador e os logs administrativos.
 
+> Hotfix v2.20.4 (10 de setembro de 2026): corrigido o filtro que ocultava pizzas marcadas como opções de sabor nas comandas. Transações lentas do Neon receberam limites adequados, autenticações simultâneas foram deduplicadas e consultas da tela de mesas e automações passaram a respeitar pools pequenos.
+
+> Versão v2.21.0 (11 de setembro de 2026): adicionados meios de pagamento personalizados com validação no backend e identificação preservada nos pedidos. Implantada retenção automática por finalidade: comandas 12 horas com arquivo financeiro mínimo, carrinho/sessão 2 semanas, logs técnicos 1 semana, telefone/endereço 6 meses e dados financeiros 5 anos. A rotina usa lotes, execução serial e índices próprios para não pressionar o pool do Neon.
+
 Data da revisão final: 4 de setembro de 2026.
 
 Arquivo de origem analisado: `master-pizza-profissional-v2.19.16-darkmode-adicionais-preco-dinamico.zip`.

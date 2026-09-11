@@ -20,6 +20,7 @@ import {
 import { api, authHeaders, mediaUrl } from "../lib/api";
 import { money } from "../lib/format";
 import PizzaBuilderModal from "./PizzaBuilderModal";
+import { isTableCatalogProduct } from "../lib/productCustomizer";
 
 const STATUS = {
   RECEIVED: "Enviado à cozinha",
@@ -62,6 +63,7 @@ function sessionTitle(table) {
 
 export default function TablesAdmin({
   session,
+  settings = {},
   notify = () => {},
   fail = () => {},
 }) {
@@ -88,30 +90,36 @@ export default function TablesAdmin({
     paymentMethod: "CASH",
     amountPaid: "",
   });
+  const paymentOptions = useMemo(
+    () => [
+      ...Object.entries(PAYMENT).map(([value, label]) => ({ value, label })),
+      ...(settings.customPaymentMethods || [])
+        .filter(
+          (method) => method.active !== false && method.tableEnabled !== false,
+        )
+        .map((method) => ({
+          value: `CUSTOM:${method.id}`,
+          label: method.label,
+        })),
+    ],
+    [settings.customPaymentMethods],
+  );
 
   async function load({ quiet = false } = {}) {
     if (!quiet) setLoading(true);
     try {
       const tablePath = `/admin/tables${canConfigure && showInactive ? "?all=1" : ""}`;
-      const [tableResult, historyResult] = await Promise.all([
-        api.get(tablePath, headers),
-        api.get("/admin/table-sessions/history?limit=30", headers),
-      ]);
+      const tableResult = await api.get(tablePath, headers);
+      const historyResult = await api.get(
+        "/admin/table-sessions/history?limit=30",
+        headers,
+      );
       setTables(tableResult.data);
       setHistory(historyResult.data);
       if (!quiet) {
-        const [productResult, categoryResult] = await Promise.all([
-          api.get("/products"),
-          api.get("/categories"),
-        ]);
-        setCatalog(
-          productResult.data.filter(
-            (product) =>
-              product.available !== false &&
-              product.stockAvailable !== false &&
-              !product.isFlavorOption,
-          ),
-        );
+        const productResult = await api.get("/products");
+        const categoryResult = await api.get("/categories");
+        setCatalog(productResult.data.filter(isTableCatalogProduct));
         setCategories(categoryResult.data);
       }
     } catch (error) {
@@ -628,7 +636,7 @@ export default function TablesAdmin({
               <CreditCard />
             </div>
             <strong className="table-payment-total">{money(selected.currentSession.summary.subtotal)}</strong>
-            <label>Forma de pagamento<select value={closeForm.paymentMethod} onChange={(event) => setCloseForm((form) => ({ ...form, paymentMethod: event.target.value }))}>{Object.entries(PAYMENT).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+            <label>Forma de pagamento<select value={closeForm.paymentMethod} onChange={(event) => setCloseForm((form) => ({ ...form, paymentMethod: event.target.value }))}>{paymentOptions.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select></label>
             {closeForm.paymentMethod === "CASH" && (
               <label>Valor recebido<input type="number" min={selected.currentSession.summary.subtotal} step="0.01" required value={closeForm.amountPaid} onChange={(event) => setCloseForm((form) => ({ ...form, amountPaid: event.target.value }))} placeholder={selected.currentSession.summary.subtotal.toFixed(2)} /></label>
             )}
@@ -648,7 +656,7 @@ export default function TablesAdmin({
           {history.map((row) => (
             <article key={row.id}>
               <span><b>{row.table?.name || `Mesa ${row.table?.number}`}</b><small>{row.customerName || "Sem identificação"} • {new Date(row.closedAt).toLocaleString("pt-BR")}</small></span>
-              <span><small>{row.closedByName || "Equipe"}</small><b>{row.status === "CANCELED" ? "Cancelada" : PAYMENT[row.paymentMethod] || "—"}</b></span>
+              <span><small>{row.closedByName || "Equipe"}</small><b>{row.status === "CANCELED" ? "Cancelada" : row.paymentMethodLabel || PAYMENT[row.paymentMethod] || "—"}</b></span>
               <strong>{row.status === "CANCELED" ? "—" : money(row.total)}</strong>
             </article>
           ))}

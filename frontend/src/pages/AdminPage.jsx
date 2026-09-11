@@ -89,6 +89,17 @@ const PAYMENT_LABEL = {
   CREDIT: "Crédito",
   BANESE_DEBIT: "Banese débito",
 };
+const paymentLabel = (order) =>
+  order?.paymentMethodLabel ||
+  PAYMENT_LABEL[order?.paymentMethod] ||
+  order?.paymentMethod ||
+  "—";
+const paymentFilterKey = (order) =>
+  order?.paymentMethod === "CUSTOM"
+    ? `CUSTOM:${order.paymentMethodLabel || "Personalizado"}`
+    : order?.paymentMethod;
+const paymentFilterLabel = (key) =>
+  key?.startsWith("CUSTOM:") ? key.slice(7) : PAYMENT_LABEL[key] || key;
 const ORDER_VIEW_LABELS = {
   OPEN: "Em aberto",
   RECEIVED: "Recebidos",
@@ -1494,7 +1505,12 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
           />
         )}
         {tab === "tables" && can("tables") && (
-          <TablesAdmin session={session} notify={notify} fail={fail} />
+          <TablesAdmin
+            session={session}
+            settings={settings}
+            notify={notify}
+            fail={fail}
+          />
         )}
         {tab === "operations" && can("operations") && (
           <OperationsAdmin
@@ -2203,7 +2219,7 @@ function OrderList({
                   {item.quantity}× {item.name}
                 </span>
               ))}
-              <small>{PAYMENT_LABEL[o.paymentMethod] || o.paymentMethod}</small>
+              <small>{paymentLabel(o)}</small>
             </div>
             {urgency && (
               <span
@@ -2325,7 +2341,7 @@ function OrderDetailModal({
           )}
           <article>
             <small>Pagamento</small>
-            <b>{PAYMENT_LABEL[order.paymentMethod] || order.paymentMethod}</b>
+            <b>{paymentLabel(order)}</b>
             <small>
               {order.paymentStatus === "APPROVED"
                 ? "Pagamento aprovado"
@@ -2639,12 +2655,12 @@ function TeamAnalytics({ data }) {
   const memberAll = member?.details?.delivered || [];
   const memberPeriod = memberAll.filter((item) => item.periods?.[period]);
   const paymentOptions = [
-    ...new Set(memberPeriod.map((item) => item.paymentMethod).filter(Boolean)),
+    ...new Set(memberPeriod.map(paymentFilterKey).filter(Boolean)),
   ];
   const details =
     paymentFilter === "ALL"
       ? memberPeriod
-      : memberPeriod.filter((item) => item.paymentMethod === paymentFilter);
+      : memberPeriod.filter((item) => paymentFilterKey(item) === paymentFilter);
   const sum = (key) =>
     details.reduce((total, item) => total + Number(item[key] || 0), 0);
   const filteredTotal = sum("total"),
@@ -3058,7 +3074,7 @@ function TeamAnalytics({ data }) {
                 <option value="ALL">Todas as formas</option>
                 {paymentOptions.map((key) => (
                   <option key={key} value={key}>
-                    {PAYMENT_LABEL[key] || key}
+                    {paymentFilterLabel(key)}
                   </option>
                 ))}
               </select>
@@ -3108,8 +3124,7 @@ function TeamAnalytics({ data }) {
                     <span>
                       <small>Pagamento</small>
                       <b>
-                        {PAYMENT_LABEL[item.paymentMethod] ||
-                          item.paymentMethod}
+                        {paymentLabel(item)}
                       </b>
                       <small>
                         {item.paymentStatus === "APPROVED"
@@ -4417,6 +4432,43 @@ function StoreSettings({
   uploadMedia,
   imageUploading,
 }) {
+  const [newPaymentName, setNewPaymentName] = useState("");
+  const customPaymentMethods = Array.isArray(settings.customPaymentMethods)
+    ? settings.customPaymentMethods
+    : [];
+  const updateCustomPayment = (id, patch) =>
+    setSettings((current) => ({
+      ...current,
+      customPaymentMethods: (current.customPaymentMethods || []).map((method) =>
+        method.id === id ? { ...method, ...patch } : method,
+      ),
+    }));
+  const addCustomPayment = () => {
+    const label = newPaymentName.trim().replace(/\s+/g, " ").slice(0, 40);
+    if (label.length < 2) return;
+    if (
+      customPaymentMethods.some(
+        (method) => method.label.toLocaleLowerCase("pt-BR") === label.toLocaleLowerCase("pt-BR"),
+      )
+    )
+      return window.alert("Essa forma de pagamento já foi adicionada.");
+    const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+    setSettings((current) => ({
+      ...current,
+      customPaymentMethods: [
+        ...(current.customPaymentMethods || []),
+        { id, label, active: true, siteEnabled: true, tableEnabled: true },
+      ],
+    }));
+    setNewPaymentName("");
+  };
+  const removeCustomPayment = (id) =>
+    setSettings((current) => ({
+      ...current,
+      customPaymentMethods: (current.customPaymentMethods || []).filter(
+        (method) => method.id !== id,
+      ),
+    }));
   const uploadSetting = (key, file) => {
     const config = {
       logoImage: ["Logo do site", 16 / 7],
@@ -4622,6 +4674,115 @@ function StoreSettings({
                 </small>
               </span>
             </label>
+          </div>
+          <div className="custom-payment-manager">
+            <div>
+              <b>Outras formas de pagamento</b>
+              <small>
+                Digite o nome que o cliente verá. Dinheiro, pagamento online,
+                Pix e cartões já continuam disponíveis como opções padrão.
+              </small>
+            </div>
+            <div className="custom-payment-add">
+              <input
+                value={newPaymentName}
+                maxLength={40}
+                placeholder="Ex.: Vale-refeição"
+                onChange={(event) => setNewPaymentName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addCustomPayment();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="ghost-dark-btn"
+                disabled={newPaymentName.trim().length < 2 || customPaymentMethods.length >= 20}
+                onClick={addCustomPayment}
+              >
+                <Plus size={16} /> Adicionar
+              </button>
+            </div>
+            {customPaymentMethods.length > 0 && (
+              <div className="custom-payment-list">
+                {customPaymentMethods.map((method) => (
+                  <article key={method.id}>
+                    <div className="custom-payment-name">
+                      <input
+                        type="checkbox"
+                        aria-label={`Ativar ${method.label}`}
+                        checked={method.active !== false}
+                        onChange={(event) =>
+                          updateCustomPayment(method.id, { active: event.target.checked })
+                        }
+                      />
+                      <input
+                        value={method.label}
+                        maxLength={40}
+                        aria-label="Nome da forma de pagamento"
+                        onChange={(event) =>
+                          updateCustomPayment(method.id, { label: event.target.value })
+                        }
+                      />
+                    </div>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={method.siteEnabled !== false}
+                        onChange={(event) =>
+                          updateCustomPayment(method.id, {
+                            siteEnabled: event.target.checked,
+                          })
+                        }
+                      />
+                      Site
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={method.tableEnabled !== false}
+                        onChange={(event) =>
+                          updateCustomPayment(method.id, {
+                            tableEnabled: event.target.checked,
+                          })
+                        }
+                      />
+                      Mesas
+                    </label>
+                    <button
+                      type="button"
+                      className="icon-action danger"
+                      title={`Remover ${method.label}`}
+                      onClick={() => removeCustomPayment(method.id)}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="retention-policy-card">
+          <div className="panel-title compact">
+            <div>
+              <span>Privacidade e retenção</span>
+              <h3>Exclusão automática de dados</h3>
+              <p>
+                A limpeza é executada em segundo plano. Relatórios continuam
+                íntegros durante o prazo fiscal definido.
+              </p>
+            </div>
+            <ShieldCheck />
+          </div>
+          <div className="retention-policy-grid">
+            <span><b>12 horas</b><small>Comandas encerradas na tela</small></span>
+            <span><b>2 semanas</b><small>Carrinho e sessões abandonadas</small></span>
+            <span><b>1 semana</b><small>Logs técnicos e de integração</small></span>
+            <span><b>6 meses</b><small>Endereços e telefones</small></span>
+            <span><b>5 anos</b><small>Pedidos, faturamento, pagamentos e fechamentos</small></span>
           </div>
         </div>
         <div className="settings-grid">

@@ -120,11 +120,20 @@ export default function CheckoutPage({
   storeHours = [],
   session,
 }) {
+  const customPaymentMethods = (settings.customPaymentMethods || []).filter(
+    (method) => method.active !== false && method.siteEnabled !== false,
+  );
   const onlineAvailable = Boolean(
     settings.onlinePaymentEnabled && settings.onlinePaymentConfigured,
   );
   const cashAvailable = settings.cashPaymentEnabled !== false;
-  const defaultPayment = cashAvailable ? "CASH" : onlineAvailable ? "CARD" : "";
+  const defaultPayment = cashAvailable
+    ? "CASH"
+    : onlineAvailable
+      ? "CARD"
+      : customPaymentMethods[0]
+        ? `CUSTOM:${customPaymentMethods[0].id}`
+        : "";
   const u = session?.user || {};
   const [form, setForm] = useState({
     customerName: u.name || "",
@@ -163,6 +172,24 @@ export default function CheckoutPage({
     [selectedFavorite, setSelectedFavorite] = useState(""),
     [saveFavoriteAddress, setSaveFavoriteAddress] = useState(false),
     [favoriteAddressLabel, setFavoriteAddressLabel] = useState("Casa");
+  useEffect(() => {
+    const available = [
+      ...(cashAvailable ? ["CASH"] : []),
+      ...(onlineAvailable ? ["CARD"] : []),
+      ...customPaymentMethods.map((method) => `CUSTOM:${method.id}`),
+    ];
+    if (!available.includes(form.paymentMethod))
+      setForm((current) => ({
+        ...current,
+        paymentMethod: available[0] || "",
+        changeFor: "",
+      }));
+  }, [
+    cashAvailable,
+    onlineAvailable,
+    settings.customPaymentMethods,
+    form.paymentMethod,
+  ]);
   const subtotal = cart.reduce(
     (sum, item) => sum + Number(item.price) * item.quantity,
     0,
@@ -1202,6 +1229,27 @@ export default function CheckoutPage({
                   <i>{form.paymentMethod === "CARD" ? "✓" : ""}</i>
                 </button>
               )}
+              {customPaymentMethods.map((method) => {
+                const value = `CUSTOM:${method.id}`;
+                return (
+                  <button
+                    key={method.id}
+                    type="button"
+                    className={`payment-option ${form.paymentMethod === value ? "active" : ""}`}
+                    onClick={() => {
+                      set("paymentMethod", value);
+                      set("changeFor", "");
+                    }}
+                  >
+                    <CreditCard size={19} />
+                    <span>
+                      <b>{method.label}</b>
+                      <small>Pagamento combinado com a loja</small>
+                    </span>
+                    <i>{form.paymentMethod === value ? "✓" : ""}</i>
+                  </button>
+                );
+              })}
             </div>
             {settings.onlinePaymentEnabled &&
               !settings.onlinePaymentConfigured && (
