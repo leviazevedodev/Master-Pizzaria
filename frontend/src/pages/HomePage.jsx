@@ -91,9 +91,6 @@ export default function HomePage({
     settings.onlinePaymentEnabled &&
       settings.onlinePaymentConfigured &&
       "Pagamento online (Pix/cartão)",
-    ...(settings.customPaymentMethods || [])
-      .filter((method) => method.active !== false && method.siteEnabled !== false)
-      .map((method) => method.label),
   ].filter(Boolean);
   function chooseCategory(slug) {
     setCategory(slug);
@@ -323,7 +320,7 @@ export default function HomePage({
 
         <section className="about-section container" id="sobre">
           <div className="about-visual">
-            <img src={aboutImage} alt="Master Pizza" loading="lazy" />
+            <img src={aboutImage} alt="Master Pizzaria" loading="lazy" />
             <span className="about-chip">Feita na hora</span>
           </div>
           <div className="about-copy">

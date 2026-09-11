@@ -14,13 +14,13 @@ export default function ProductCard({ product, onAdd }) {
     ? Math.max(0, Number(product.compareAtPrice) - Number(product.price))
     : 0;
   const displayPrice = hasSizes
-    ? Math.max(
-        0,
-        Math.min(
-          ...product.availableSizes.map((size) =>
-            Number(size.price || product.price),
-          ),
-        ) - promoDiscount,
+    ? Math.min(
+        ...product.availableSizes.map((size) => {
+          const promotional = Number(size.promoPrice);
+          return size.promoPrice != null && Number.isFinite(promotional)
+            ? promotional
+            : Math.max(0, Number(size.price || product.price) - promoDiscount);
+        }),
       )
     : Number(product.price);
   const soldOut = product.stockAvailable === false;

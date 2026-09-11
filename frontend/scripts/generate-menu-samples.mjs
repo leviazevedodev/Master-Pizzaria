@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { createMenuPdf, createQrCodePdf } from "../src/lib/menuPdf.js";
@@ -65,6 +65,7 @@ const products = pizzaNames.map((name, index) => ({
           activeNow: true,
           originalPrice: 39.9,
           promoPrice: 34.9,
+          sizePrices: { p: 24.9, m: 31.9, g: 39.9, gg: 49.9 },
         }
       : null,
 }));
@@ -92,11 +93,14 @@ const products = pizzaNames.map((name, index) => ({
 );
 
 const settings = {
-  storeName: "Master Pizza",
+  storeName: "Master Pizzaria",
   phone: "(79) 99999-9999",
   address: "Av. Principal, 100 • Centro",
+  logoImage: `data:image/png;base64,${(
+    await readFile(resolve(here, "../public/images/master-pizzaria-logo.png"))
+  ).toString("base64")}`,
 };
-const menuUrl = "https://pizzaria.exemplo.com/cardapio";
+const menuUrl = "https://masterpizzaria.netlify.app/gestao/cardapiodigital";
 
 await mkdir(outputDir, { recursive: true });
 const menu = await createMenuPdf({
@@ -109,7 +113,7 @@ const menu = await createMenuPdf({
   download: false,
 });
 const qr = await createQrCodePdf({ settings, menuUrl, download: false });
-const menuFile = "exemplo-cardapio-master-pizza.pdf";
+const menuFile = "exemplo-cardapio-master-pizzaria.pdf";
 const qrFile = "exemplo-qr-code-cardapio.pdf";
 await Promise.all([
   writeFile(resolve(outputDir, menuFile), Buffer.from(menu.doc.output("arraybuffer"))),

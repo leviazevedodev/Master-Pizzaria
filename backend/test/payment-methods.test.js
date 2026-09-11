@@ -13,6 +13,7 @@ test("normaliza métodos personalizados e remove nomes duplicados", () => {
   ]);
   assert.equal(methods.length, 2);
   assert.equal(methods[0].label, "Vale refeição");
+  assert.equal(methods[0].siteEnabled, false);
   assert.equal(methods[1].siteEnabled, false);
   assert.equal(methods[1].tableEnabled, true);
 });

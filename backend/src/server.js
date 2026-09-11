@@ -46,6 +46,7 @@ const PORT = Number(process.env.PORT || 3333);
 const isProduction = process.env.NODE_ENV === "production";
 const JWT_SECRET = String(process.env.JWT_SECRET || "").trim();
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+const secureSessionCookie = /^https:\/\//i.test(FRONTEND_URL);
 const PUBLIC_BACKEND_URL = (
   process.env.PUBLIC_BACKEND_URL || `http://localhost:${PORT}`
 ).replace(/\/$/, "");
@@ -85,7 +86,7 @@ const MERCADOPAGO_NOTIFICATION_URL = /^https:\/\//i.test(PUBLIC_BACKEND_URL)
   : "";
 const PUBLIC_MENU_URL = (() => {
   try {
-    const url = new URL("/cardapio", FRONTEND_URL);
+    const url = new URL("/gestao/cardapiodigital", FRONTEND_URL);
     return ["http:", "https:"].includes(url.protocol) ? url.href : "";
   } catch {
     return "";
@@ -179,7 +180,8 @@ app.use(
       return callback(new Error("Origem não permitida pelo CORS."));
     },
     methods: ["GET", "POST", "PATCH", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Session-Refresh"],
+    credentials: true,
   }),
 );
 app.use(express.json({ limit: "512kb" }));
@@ -352,7 +354,13 @@ const normalizePhone = (value) => {
 };
 const validPhone = (phone) => /^\d{10,11}$/.test(phone);
 const validEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
-const validPassword = (password) =>
+const validCustomerPassword = (password) =>
+  typeof password === "string" &&
+  password.length >= 8 &&
+  password.length <= 128 &&
+  /[A-Za-z]/.test(password) &&
+  /\d/.test(password);
+const validStaffPassword = (password) =>
   typeof password === "string" &&
   password.length >= 12 &&
   password.length <= 128 &&
@@ -474,7 +482,6 @@ const serializePublicSettings = (settings) => {
     "mercadoPagoPublicKey",
     "passwordEmailConfigured",
     "publicMenuUrl",
-    "customPaymentMethods",
     "logoImage",
     "heroEyebrow",
     "heroImage",
@@ -582,12 +589,65 @@ const promotionIsActive = (promotion, now = new Date()) =>
       (!promotion.startAt || promotion.startAt <= now) &&
       (!promotion.endAt || promotion.endAt >= now),
   );
+const normalizedPromotionSizePrices = (value) => {
+  if (!value || Array.isArray(value) || typeof value !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([sizeId, price]) => [cleanText(sizeId, 80), Number(price)])
+      .filter(
+        ([sizeId, price]) =>
+          sizeId && Number.isFinite(price) && price >= 0,
+      ),
+  );
+};
+const validatePromotionSizePrices = (value, productSizes = []) => {
+  if (value == null) return { ok: true, value: {} };
+  if (Array.isArray(value) || typeof value !== "object")
+    return { ok: false, value: {} };
+  const basePrices = new Map(
+    productSizes.map((entry) => [entry.sizeId, Number(entry.price)]),
+  );
+  const normalized = {};
+  for (const [rawSizeId, rawPrice] of Object.entries(value)) {
+    const sizeId = cleanText(rawSizeId, 80);
+    if (rawPrice === "" || rawPrice == null) continue;
+    const price = Number(rawPrice);
+    const basePrice = basePrices.get(sizeId);
+    if (
+      !sizeId ||
+      !Number.isFinite(basePrice) ||
+      !Number.isFinite(price) ||
+      price < 0 ||
+      price >= basePrice
+    )
+      return { ok: false, value: {} };
+    normalized[sizeId] = roundMoney(price);
+  }
+  return { ok: true, value: normalized };
+};
+const effectiveProductSizePrice = (product, productSize) => {
+  const base = Number(productSize?.price ?? product?.price ?? 0);
+  const promotion = promotionIsActive(product?.promotion)
+    ? product.promotion
+    : null;
+  if (!promotion) return base;
+  const configured = normalizedPromotionSizePrices(promotion.sizePrices)[
+    productSize?.sizeId
+  ];
+  if (Number.isFinite(configured) && configured < base) return configured;
+  const discount = Math.max(
+    0,
+    Number(promotion.originalPrice) - Number(promotion.promoPrice),
+  );
+  return Math.max(0, base - discount);
+};
 const serializePromotion = (promotion) =>
   promotion
     ? {
         ...promotion,
         originalPrice: Number(promotion.originalPrice),
         promoPrice: Number(promotion.promoPrice),
+        sizePrices: normalizedPromotionSizePrices(promotion.sizePrices),
         activeNow: promotionIsActive(promotion),
       }
     : null;
@@ -695,6 +755,7 @@ const serializePublicPromotion = (promotion) => {
         image: safeMediaUrl(serialized.image),
         originalPrice: serialized.originalPrice,
         promoPrice: serialized.promoPrice,
+        sizePrices: serialized.sizePrices,
         activeNow: serialized.activeNow,
         sortOrder: serialized.sortOrder,
         startAt: serialized.startAt,
@@ -751,7 +812,12 @@ const serializePublicProduct = (product) => {
       !product.stockTracked || Number(product.stockQuantity || 0) > 0,
     promotion: promo ? serializePublicPromotion(promo) : null,
     availableSizes: (product.productSizes || [])
-      .map(serializeProductSize)
+      .map((entry) => ({
+        ...serializeProductSize(entry),
+        promoPrice: promotionIsActive(product?.promotion)
+          ? effectiveProductSizePrice(product, entry)
+          : null,
+      }))
       .filter((size) => size.active)
       .sort((a, b) => a.sortOrder - b.sortOrder),
     availableFlavors: (product.productFlavors || [])
@@ -901,6 +967,12 @@ const serializeCustomerOrder = (order) => {
     customerName: serialized.customerName,
     customerPhone: serialized.customerPhone,
     fulfillmentType: serialized.fulfillmentType,
+    table: serialized.table
+      ? {
+          number: serialized.table.number,
+          name: serialized.table.name || `Mesa ${serialized.table.number}`,
+        }
+      : null,
     postalCode: serialized.postalCode,
     street: serialized.street,
     addressNumber: serialized.addressNumber,
@@ -966,18 +1038,88 @@ const serializeCustomerOrder = (order) => {
   };
 };
 
-function issueToken(user) {
+const REFRESH_COOKIE = secureSessionCookie
+  ? "__Secure-master_pizzaria_refresh"
+  : "master_pizzaria_refresh";
+const ACCESS_TOKEN_SECONDS = 60 * 60;
+const refreshTokenSeconds = (user) =>
+  user?.isAdmin ? 12 * 60 * 60 : 30 * 24 * 60 * 60;
+
+function parseCookies(req) {
+  return String(req.headers.cookie || "")
+    .split(";")
+    .reduce((cookies, part) => {
+      const separator = part.indexOf("=");
+      if (separator < 1) return cookies;
+      const key = part.slice(0, separator).trim();
+      const value = part.slice(separator + 1).trim();
+      try {
+        cookies[key] = decodeURIComponent(value);
+      } catch {
+        cookies[key] = value;
+      }
+      return cookies;
+    }, {});
+}
+
+function refreshCookieOptions(maxAgeSeconds = 0) {
+  return [
+    `${REFRESH_COOKIE}=`,
+    "Path=/api/auth",
+    "HttpOnly",
+    secureSessionCookie ? "Secure" : "",
+    `SameSite=${secureSessionCookie ? "None" : "Lax"}`,
+    `Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}`,
+  ]
+    .filter(Boolean)
+    .join("; ");
+}
+
+function issueAccessToken(user) {
   return jwt.sign(
-    { id: user.id, sv: Number(user.sessionVersion || 0) },
+    { id: user.id, sv: Number(user.sessionVersion || 0), type: "access" },
     JWT_SECRET,
     {
       algorithm: "HS256",
-      expiresIn: user.isAdmin ? "2h" : "7d",
+      expiresIn: ACCESS_TOKEN_SECONDS,
       issuer: "master-pizza-api",
       audience: "master-pizza-web",
       jwtid: crypto.randomUUID(),
     },
   );
+}
+
+function issueRefreshToken(user) {
+  return jwt.sign(
+    { id: user.id, sv: Number(user.sessionVersion || 0), type: "refresh" },
+    JWT_SECRET,
+    {
+      algorithm: "HS256",
+      expiresIn: refreshTokenSeconds(user),
+      issuer: "master-pizza-api",
+      audience: "master-pizza-refresh",
+      jwtid: crypto.randomUUID(),
+    },
+  );
+}
+
+function startSession(res, user) {
+  const refreshSeconds = refreshTokenSeconds(user);
+  const cookie = refreshCookieOptions(refreshSeconds).replace(
+    `${REFRESH_COOKIE}=`,
+    `${REFRESH_COOKIE}=${encodeURIComponent(issueRefreshToken(user))}`,
+  );
+  res.setHeader("Set-Cookie", cookie);
+  return {
+    token: issueAccessToken(user),
+    user: publicUser(user),
+    accessTokenExpiresIn: ACCESS_TOKEN_SECONDS,
+    sessionExpiresIn: refreshSeconds,
+  };
+}
+
+function endSession(res) {
+  res.setHeader("Set-Cookie", refreshCookieOptions(0));
 }
 // Consultas administrativas chegam em rajadas. A deduplicação mantém a
 // validação no banco, mas evita várias buscas idênticas pelo mesmo usuário.
@@ -993,6 +1135,7 @@ async function authenticateBearer(req) {
     issuer: "master-pizza-api",
     audience: "master-pizza-web",
   });
+  if (payload.type !== "access") throw new Error("INVALID_SESSION");
   const cacheKey = `${payload.id}:${Number(payload.sv || 0)}`;
   const user = await authenticatedUserCache.get(cacheKey, () =>
     prisma.user.findUnique({ where: { id: payload.id } }),
@@ -1172,9 +1315,9 @@ async function sendResetEmail(user, token) {
     body: JSON.stringify({
       from: process.env.EMAIL_FROM,
       to: [user.email],
-      subject: "Redefinição de senha • Master Pizza",
+      subject: "Redefinição de senha • Master Pizzaria",
       text: `Olá, ${user.name}. Use este link para criar uma nova senha: ${resetUrl}\n\nO link expira em 30 minutos. Se você não pediu a alteração, ignore este e-mail.`,
-      html: `<div style="background:#111214;padding:32px 16px;font-family:Arial,sans-serif;color:#f7f5f1"><div style="max-width:560px;margin:auto;background:#1d2025;border:1px solid #343941;border-radius:18px;padding:28px"><div style="height:5px;background:#e31b23;border-radius:5px;margin-bottom:24px"></div><h2 style="margin:0 0 14px">Redefinição de senha</h2><p>Olá, ${escapeHtml(user.name)}.</p><p style="color:#c8cbd0;line-height:1.6">Recebemos uma solicitação para redefinir a senha da sua conta Master Pizza.</p><p style="margin:24px 0"><a href="${escapeHtml(resetUrl)}" style="display:inline-block;background:#e31b23;color:#fff;text-decoration:none;padding:13px 19px;border-radius:10px;font-weight:700">Criar nova senha</a></p><p style="color:#9fa4ac;font-size:13px;line-height:1.5">Este link é de uso único e expira em 30 minutos. Se você não pediu a alteração, ignore este e-mail.</p></div></div>`,
+      html: `<div style="background:#111214;padding:32px 16px;font-family:Arial,sans-serif;color:#f7f5f1"><div style="max-width:560px;margin:auto;background:#1d2025;border:1px solid #343941;border-radius:18px;padding:28px"><div style="height:5px;background:#e31b23;border-radius:5px;margin-bottom:24px"></div><h2 style="margin:0 0 14px">Redefinição de senha</h2><p>Olá, ${escapeHtml(user.name)}.</p><p style="color:#c8cbd0;line-height:1.6">Recebemos uma solicitação para redefinir a senha da sua conta Master Pizzaria.</p><p style="margin:24px 0"><a href="${escapeHtml(resetUrl)}" style="display:inline-block;background:#e31b23;color:#fff;text-decoration:none;padding:13px 19px;border-radius:10px;font-weight:700">Criar nova senha</a></p><p style="color:#9fa4ac;font-size:13px;line-height:1.5">Este link é de uso único e expira em 30 minutos. Se você não pediu a alteração, ignore este e-mail.</p></div></div>`,
     }),
   });
   if (!response.ok) {
@@ -2905,12 +3048,12 @@ app.post("/api/auth/register", authRateLimit, async (req, res) => {
       field: "phone",
       message: "Informe um número de telefone válido com DDD.",
     });
-  if (!validPassword(password))
+  if (!validCustomerPassword(password))
     return res.status(400).json({
       code: "WEAK_PASSWORD",
       field: "password",
       message:
-        "A senha precisa ter pelo menos 12 caracteres, uma letra e um número.",
+        "A senha precisa ter pelo menos 8 caracteres, uma letra e um número.",
     });
   const [emailInUse, phoneInUse] = await Promise.all([
     prisma.user.findUnique({ where: { email } }),
@@ -2944,7 +3087,7 @@ app.post("/api/auth/register", authRateLimit, async (req, res) => {
       referencePoint: cleanText(req.body?.referencePoint, 180) || null,
     },
   });
-  res.status(201).json({ token: issueToken(user), user: publicUser(user) });
+  res.status(201).json(startSession(res, user));
 });
 
 app.post("/api/auth/login", authRateLimit, async (req, res) => {
@@ -2994,7 +3137,7 @@ app.post("/api/auth/login", authRateLimit, async (req, res) => {
     where: { id: user.id },
     data: { lastLoginAt: new Date() },
   });
-  res.json({ token: issueToken(user), user: publicUser(user) });
+  res.json(startSession(res, user));
 });
 
 app.post("/api/auth/forgot-password", authRateLimit, async (req, res) => {
@@ -3033,13 +3176,22 @@ app.post("/api/auth/reset-password", authRateLimit, async (req, res) => {
     typeof req.body?.password === "string" ? req.body.password : "";
   if (!token)
     return res.status(400).json({ message: "Token de redefinição ausente." });
-  if (!validPassword(password))
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  const resetOwner = await prisma.passwordResetToken.findUnique({
+    where: { tokenHash },
+    include: { user: { select: { isAdmin: true } } },
+  });
+  const passwordValid = resetOwner?.user?.isAdmin
+    ? validStaffPassword(password)
+    : validCustomerPassword(password);
+  if (!passwordValid)
     return res.status(400).json({
       code: "WEAK_PASSWORD",
       message:
-        "A nova senha precisa ter pelo menos 12 caracteres, uma letra e um número.",
+        resetOwner?.user?.isAdmin
+          ? "A nova senha administrativa precisa ter pelo menos 12 caracteres, uma letra e um número."
+          : "A nova senha precisa ter pelo menos 8 caracteres, uma letra e um número.",
     });
-  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
   const passwordHash = await bcrypt.hash(password, 12);
   try {
     await prisma.$transaction(async (tx) => {
@@ -3083,12 +3235,59 @@ app.post("/api/auth/reset-password", authRateLimit, async (req, res) => {
 });
 
 app.get("/api/auth/me", auth, async (req, res) => {
-  const user = await prisma.user.findUnique({ where: { id: req.user.id } });
-  if (!user)
-    return res
-      .status(404)
-      .json({ code: "USER_NOT_FOUND", message: "Conta não encontrada." });
-  res.json({ user: publicUser(user) });
+  res.json({ user: publicUser(req.authUser) });
+});
+
+app.post("/api/auth/refresh", authIpRateLimit, async (req, res) => {
+  if (req.headers["x-session-refresh"] !== "1")
+    return res.status(400).json({
+      code: "REFRESH_HEADER_REQUIRED",
+      message: "Solicitação de renovação inválida.",
+    });
+  try {
+    const token = parseCookies(req)[REFRESH_COOKIE];
+    if (!token) throw new Error("REFRESH_REQUIRED");
+    const payload = jwt.verify(token, JWT_SECRET, {
+      algorithms: ["HS256"],
+      issuer: "master-pizza-api",
+      audience: "master-pizza-refresh",
+    });
+    if (payload.type !== "refresh") throw new Error("INVALID_REFRESH");
+    const user = await prisma.user.findUnique({ where: { id: payload.id } });
+    if (!user || Number(payload.sv) !== Number(user.sessionVersion || 0))
+      throw new Error("INVALID_REFRESH");
+    if (user.isAdmin && user.staffActive === false)
+      throw new Error("INVALID_REFRESH");
+    if (!user.isAdmin && user.customerBlocked)
+      throw new Error("INVALID_REFRESH");
+    res.json({
+      token: issueAccessToken(user),
+      user: publicUser(user),
+      accessTokenExpiresIn: ACCESS_TOKEN_SECONDS,
+    });
+  } catch (error) {
+    if (isDatabaseAvailabilityError(error)) throw error;
+    endSession(res);
+    res.status(401).json({
+      code: "REFRESH_EXPIRED",
+      message: "Sua sessão terminou. Entre novamente.",
+    });
+  }
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  endSession(res);
+  res.json({ ok: true });
+});
+
+app.post("/api/auth/logout-all", auth, async (req, res) => {
+  await prisma.user.update({
+    where: { id: req.user.id },
+    data: { sessionVersion: { increment: 1 } },
+  });
+  authenticatedUserCache.clear();
+  endSession(res);
+  res.json({ ok: true });
 });
 
 app.patch("/api/me/address", auth, async (req, res) => {
@@ -3207,6 +3406,21 @@ app.get("/api/me/orders/:id/reorder", auth, async (req, res) => {
   res.json({ items, unavailable });
 });
 
+app.get("/api/digital-tables", trackingRateLimit, async (req, res) => {
+  const tables = await prisma.restaurantTable.findMany({
+    where: { active: true },
+    select: { number: true, name: true, seats: true },
+    orderBy: [{ sortOrder: "asc" }, { number: "asc" }],
+  });
+  res.json(
+    tables.map((table) => ({
+      number: table.number,
+      name: table.name || `Mesa ${table.number}`,
+      seats: table.seats,
+    })),
+  );
+});
+
 app.post(
   "/api/orders",
   optionalAuth,
@@ -3218,6 +3432,8 @@ app.post(
   const fulfillmentType =
     cleanText(req.body?.fulfillmentType, 20) || "DELIVERY";
   const isDineIn = fulfillmentType === "DINE_IN";
+  const isDigitalTableOrder =
+    isDineIn && booleanValue(req.body?.digitalTableOrder);
   const postalCode = cleanText(req.body?.postalCode, 12) || null;
   const street = cleanText(req.body?.street, 120) || null;
   const addressNumber = cleanText(req.body?.addressNumber, 16) || null;
@@ -3235,28 +3451,43 @@ app.post(
   let paymentMethodLabel = null;
   const items = req.body?.items;
   let tableSession = null;
+  let digitalTable = null;
   if (isDineIn) {
-    if (!hasAuthenticatedTableAccess(req))
+    if (!hasAuthenticatedTableAccess(req) && !isDigitalTableOrder)
       return res.status(403).json({
         code: "TABLE_ACCESS_REQUIRED",
         message: "Somente a equipe autorizada pode lançar pedidos em mesas.",
       });
-    const tableSessionId = cleanText(req.body?.tableSessionId, 80);
-    tableSession = tableSessionId
-      ? await prisma.tableSession.findFirst({
-          where: { id: tableSessionId, status: "OPEN", openKey: { not: null } },
-          include: { table: true },
-        })
-      : null;
-    if (!tableSession?.table?.active)
-      return res.status(409).json({
-        code: "TABLE_SESSION_CLOSED",
-        message: "A comanda desta mesa não está aberta. Atualize as mesas.",
-      });
-    customerName =
-      customerName ||
-      cleanText(tableSession.customerName, 80) ||
-      tableLabel(tableSession.table);
+    if (isDigitalTableOrder) {
+      const tableNumber = boundedInteger(req.body?.tableNumber, 1, 10_000);
+      digitalTable = tableNumber
+        ? await prisma.restaurantTable.findFirst({
+            where: { number: tableNumber, active: true },
+          })
+        : null;
+      if (!digitalTable)
+        return res.status(400).json({
+          code: "DIGITAL_TABLE_INVALID",
+          message: "Escolha uma mesa válida do salão.",
+        });
+    } else {
+      const tableSessionId = cleanText(req.body?.tableSessionId, 80);
+      tableSession = tableSessionId
+        ? await prisma.tableSession.findFirst({
+            where: { id: tableSessionId, status: "OPEN", openKey: { not: null } },
+            include: { table: true },
+          })
+        : null;
+      if (!tableSession?.table?.active)
+        return res.status(409).json({
+          code: "TABLE_SESSION_CLOSED",
+          message: "A comanda desta mesa não está aberta. Atualize as mesas.",
+        });
+      customerName =
+        customerName ||
+        cleanText(tableSession.customerName, 80) ||
+        tableLabel(tableSession.table);
+    }
     customerPhone = "";
     customerEmail = "";
     paymentMethod = "CASH";
@@ -3273,8 +3504,7 @@ app.post(
     return res.status(400).json({ message: "Tipo de operação inválido." });
   if (
     !isDineIn &&
-    !["CASH", "CARD", "PIX"].includes(paymentMethod) &&
-    !paymentMethod.startsWith(CUSTOM_PAYMENT_PREFIX)
+    !["CASH", "CARD", "PIX"].includes(paymentMethod)
   )
     return res.status(400).json({ message: "Forma de pagamento inválida." });
   if (!Array.isArray(items) || !items.length || items.length > 30)
@@ -3314,19 +3544,11 @@ app.post(
 
   let settings = await getSettings();
   settings = await autoCloseStoreIfNeeded(settings);
-  if (!isDineIn && paymentMethod.startsWith(CUSTOM_PAYMENT_PREFIX)) {
-    const customPayment = resolveCustomPaymentMethod(
-      settings,
-      paymentMethod,
-      "SITE",
-    );
-    if (!customPayment)
-      return res.status(409).json({
-        message: "Esta forma de pagamento não está mais disponível.",
-      });
-    paymentMethod = "CUSTOM";
-    paymentMethodLabel = customPayment.label;
-  }
+  if (isDigitalTableOrder && !settings.isOpen)
+    return res.status(409).json({
+      code: "STORE_CLOSED",
+      message: "O atendimento digital do salão está fechado no momento.",
+    });
   const dailyLimit = Math.max(
     1,
     Math.min(100, Number(settings.customerDailyOrderLimit || 5)),
@@ -3512,15 +3734,8 @@ app.post(
           .status(400)
           .json({ message: `Escolha um tamanho válido para ${base.name}.` });
     }
-    const promoDiscount = promotionIsActive(base.promotion)
-      ? Math.max(
-          0,
-          Number(base.promotion.originalPrice) -
-            Number(base.promotion.promoPrice),
-        )
-      : 0;
     const basePrice = chosenSize
-      ? Math.max(0, Number(chosenSize.price) - promoDiscount)
+      ? effectiveProductSizePrice(base, chosenSize)
       : effectiveProductPrice(base);
     const flavorIds = [
       ...new Set(
@@ -3590,14 +3805,7 @@ app.post(
               entry.size?.active !== false,
           );
           if (sameSize) {
-            const discount = promotionIsActive(flavor.promotion)
-              ? Math.max(
-                  0,
-                  Number(flavor.promotion.originalPrice) -
-                    Number(flavor.promotion.promoPrice),
-                )
-              : 0;
-            return Math.max(0, Number(sameSize.price) - discount);
+            return effectiveProductSizePrice(flavor, sameSize);
           }
         }
         return effectiveProductPrice(flavor);
@@ -3684,11 +3892,14 @@ app.post(
         productId: f.id,
         name: f.name,
         unitPrice: chosenSize
-          ? Number(
-              (f.productSizes || []).find(
+          ? (() => {
+              const matchingSize = (f.productSizes || []).find(
                 (entry) => entry.size?.slug === chosenSize.size.slug,
-              )?.price ?? effectiveProductPrice(f),
-            )
+              );
+              return matchingSize
+                ? effectiveProductSizePrice(f, matchingSize)
+                : effectiveProductPrice(f);
+            })()
           : effectiveProductPrice(f),
       })),
       options: chosenOptions.map((o) => ({
@@ -3799,22 +4010,52 @@ app.post(
   }
   const resolved = quote.address || null;
   let order = await prisma.$transaction(async (tx) => {
+    let sessionForOrder = tableSession;
     if (isDineIn) {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('master-pizza-table-session'), hashtext(${tableSession.id}))`;
-      const stillOpen = await tx.tableSession.findFirst({
-        where: {
-          id: tableSession.id,
-          tableId: tableSession.tableId,
-          status: "OPEN",
-          openKey: tableSession.tableId,
-        },
-        select: { id: true },
-      });
-      if (!stillOpen)
-        throw Object.assign(
-          new Error("A comanda foi fechada. Atualize as mesas antes de lançar novos itens."),
-          { code: "TABLE_SESSION_CLOSED" },
-        );
+      if (isDigitalTableOrder) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('master-pizza-table'), hashtext(${digitalTable.id}))`;
+        const activeTable = await tx.restaurantTable.findFirst({
+          where: { id: digitalTable.id, active: true },
+        });
+        if (!activeTable)
+          throw Object.assign(new Error("Esta mesa não está disponível."), {
+            code: "DIGITAL_TABLE_INVALID",
+          });
+        sessionForOrder = await tx.tableSession.findFirst({
+          where: {
+            tableId: activeTable.id,
+            status: "OPEN",
+            openKey: activeTable.id,
+          },
+        });
+        if (!sessionForOrder)
+          sessionForOrder = await tx.tableSession.create({
+            data: {
+              tableId: activeTable.id,
+              openKey: activeTable.id,
+              status: "OPEN",
+              customerName,
+              guestCount: 1,
+              openedByName: "Cardápio digital",
+            },
+          });
+      } else {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('master-pizza-table-session'), hashtext(${tableSession.id}))`;
+        const stillOpen = await tx.tableSession.findFirst({
+          where: {
+            id: tableSession.id,
+            tableId: tableSession.tableId,
+            status: "OPEN",
+            openKey: tableSession.tableId,
+          },
+          select: { id: true },
+        });
+        if (!stillOpen)
+          throw Object.assign(
+            new Error("A comanda foi fechada. Atualize as mesas antes de lançar novos itens."),
+            { code: "TABLE_SESSION_CLOSED" },
+          );
+      }
     }
     if (scheduleReservation) {
       const slotKey = scheduleReservation.slotStart.toISOString();
@@ -3936,11 +4177,13 @@ app.post(
         total,
         discountAmount,
         couponCode,
-        orderOrigin: isDineIn ? "TABLE" : "SITE",
-        tableId: isDineIn ? tableSession.tableId : null,
-        tableSessionId: isDineIn ? tableSession.id : null,
-        createdByStaffId: isDineIn ? req.authUser.id : null,
-        createdByStaffName: isDineIn ? req.authUser.name : null,
+        orderOrigin: isDigitalTableOrder ? "DIGITAL_TABLE" : isDineIn ? "TABLE" : "SITE",
+        tableId: isDineIn ? sessionForOrder.tableId : null,
+        tableSessionId: isDineIn ? sessionForOrder.id : null,
+        createdByStaffId:
+          isDineIn && !isDigitalTableOrder ? req.authUser.id : null,
+        createdByStaffName:
+          isDineIn && !isDigitalTableOrder ? req.authUser.name : null,
         scheduledAt,
         estimatedDeliveryMin: Number(settings.estimatedDeliveryMin || 30),
         estimatedDeliveryMax: Number(settings.estimatedDeliveryMax || 45),
@@ -3962,9 +4205,15 @@ app.post(
         history: {
           create: {
             status: initialStatus,
-            changedByUserId: isDineIn ? req.authUser.id : null,
-            changedByName: isDineIn ? req.authUser.name : customerName,
-            changedByRole: isDineIn ? "GARÇOM" : "CLIENTE",
+            changedByUserId:
+              isDineIn && !isDigitalTableOrder ? req.authUser.id : null,
+            changedByName:
+              isDineIn && !isDigitalTableOrder ? req.authUser.name : customerName,
+            changedByRole: isDigitalTableOrder
+              ? "CLIENTE_MESA"
+              : isDineIn
+                ? "GARÇOM"
+                : "CLIENTE",
           },
         },
       },
@@ -4080,7 +4329,7 @@ app.post(
       });
     }
   }
-  const serialized = isDineIn
+  const serialized = isDineIn && !isDigitalTableOrder
     ? serializeOrder(order)
     : serializeCustomerOrder(order);
   if (!isDineIn && !["CARD", "PIX"].includes(paymentMethod))
@@ -4308,6 +4557,7 @@ app.get(
       trackingCode: o.trackingCode,
       status: o.status,
       fulfillmentType: o.fulfillmentType,
+      table: o.table,
       total: o.total,
       createdAt: o.createdAt,
       scheduledAt: o.scheduledAt,
@@ -4951,8 +5201,10 @@ app.get("/api/admin/dashboard", auth, admin, async (req, res) => {
     new Date(),
     settings.timezone || "America/Maceio",
   );
+  // Uma única transação em lote usa uma conexão do pool. O antigo Promise.all
+  // abria quatro consultas simultâneas e podia esgotar o limite pequeno do Neon.
   const [todayOrders, openOrders, scheduledOrders, activeOrders] =
-    await Promise.all([
+    await prisma.$transaction([
       prisma.order.count({
         where: {
           createdAt: { gte: start },
@@ -4966,10 +5218,6 @@ app.get("/api/admin/dashboard", auth, admin, async (req, res) => {
             in: [
               "RECEIVED",
               "PREPARING",
-              "OUT_FOR_DELIVERY",
-              "READY_FOR_PICKUP",
-              "READY_FOR_TABLE",
-              "SERVED",
             ],
           },
         },
@@ -7065,10 +7313,19 @@ app.post("/api/admin/promotions", auth, admin, async (req, res) => {
     });
   const productExists = await prisma.product.findUnique({
     where: { id: productId },
-    select: { id: true },
+    select: { id: true, productSizes: { select: { sizeId: true, price: true } } },
   });
   if (!productExists)
     return res.status(400).json({ message: "Produto não encontrado." });
+  const parsedSizePrices = validatePromotionSizePrices(
+    req.body?.sizePrices,
+    productExists.productSizes,
+  );
+  if (!parsedSizePrices.ok)
+    return res.status(400).json({
+      message:
+        "Cada valor promocional por tamanho deve ser menor que o preço base daquele tamanho.",
+    });
   const row = await prisma.promotion.create({
     data: {
       productId,
@@ -7077,6 +7334,7 @@ app.post("/api/admin/promotions", auth, admin, async (req, res) => {
       image,
       originalPrice,
       promoPrice,
+      sizePrices: parsedSizePrices.value,
       active:
         req.body?.active === undefined ? true : booleanValue(req.body.active),
       sortOrder,
@@ -7109,17 +7367,8 @@ app.patch("/api/admin/promotions/:id", auth, admin, async (req, res) => {
       data[f] = v;
     }
   }
-  if (req.body?.productId !== undefined) {
+  if (req.body?.productId !== undefined)
     data.productId = cleanText(req.body.productId, 80);
-    const productExists = data.productId
-      ? await prisma.product.findUnique({
-          where: { id: data.productId },
-          select: { id: true },
-        })
-      : null;
-    if (!productExists)
-      return res.status(400).json({ message: "Produto não encontrado." });
-  }
   if (req.body?.active !== undefined)
     data.active = booleanValue(req.body.active);
   if (req.body?.sortOrder !== undefined) {
@@ -7142,6 +7391,27 @@ app.patch("/api/admin/promotions/:id", auth, admin, async (req, res) => {
   });
   if (!currentPromotion)
     return res.status(404).json({ message: "Promoção não encontrada." });
+  const targetProductId = data.productId || currentPromotion.productId;
+  const targetProduct = await prisma.product.findUnique({
+    where: { id: targetProductId },
+    select: { id: true, productSizes: { select: { sizeId: true, price: true } } },
+  });
+  if (!targetProduct)
+    return res.status(400).json({ message: "Produto não encontrado." });
+  if (req.body?.sizePrices !== undefined) {
+    const parsedSizePrices = validatePromotionSizePrices(
+      req.body.sizePrices,
+      targetProduct.productSizes,
+    );
+    if (!parsedSizePrices.ok)
+      return res.status(400).json({
+        message:
+          "Cada valor promocional por tamanho deve ser menor que o preço base daquele tamanho.",
+      });
+    data.sizePrices = parsedSizePrices.value;
+  } else if (data.productId && data.productId !== currentPromotion.productId) {
+    data.sizePrices = {};
+  }
   const original = Number(data.originalPrice ?? currentPromotion.originalPrice);
   const promo = Number(data.promoPrice ?? currentPromotion.promoPrice);
   if (original <= promo)
@@ -7359,7 +7629,7 @@ app.post("/api/admin/staff", auth, admin, ownerOnly, async (req, res) => {
     return res.status(400).json({
       message: "Informe um telefone válido com DDD ou deixe em branco.",
     });
-  if (!validPassword(password))
+  if (!validStaffPassword(password))
     return res.status(400).json({
       message:
         "A senha temporária precisa ter pelo menos 12 caracteres, uma letra e um número.",
@@ -7414,7 +7684,7 @@ app.patch("/api/admin/staff/:id", auth, admin, ownerOnly, async (req, res) => {
     data.phone = phone || null;
   }
   if (req.body?.password) {
-    if (!validPassword(req.body.password))
+    if (!validStaffPassword(req.body.password))
       return res.status(400).json({
         message:
           "A nova senha precisa ter pelo menos 12 caracteres, uma letra e um número.",
@@ -9318,6 +9588,7 @@ app.use((err, req, res, next) => {
       "TABLE_SESSION_HAS_ORDERS",
       "TABLE_PAYMENT_INVALID",
       "TABLE_ORDERS_PENDING",
+      "DIGITAL_TABLE_INVALID",
       "KITCHEN_ORDER_UNAVAILABLE",
     ].includes(err?.code)
   )
@@ -9334,7 +9605,7 @@ app.use((err, req, res, next) => {
 });
 
 const server = app.listen(PORT, () =>
-  console.log(`Master Pizza API rodando na porta ${PORT}`),
+  console.log(`Master Pizzaria API rodando na porta ${PORT}`),
 );
 let automationInProgress = false;
 let lastRetentionRunAt = 0;

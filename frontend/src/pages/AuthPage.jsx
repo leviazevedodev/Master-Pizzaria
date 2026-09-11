@@ -3,6 +3,8 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  Eye,
+  EyeOff,
   LockKeyhole,
   Mail,
   Phone,
@@ -32,6 +34,8 @@ export default function AuthPage({
   });
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [sessionNotice] = useState(() => {
     try {
       const msg = sessionStorage.getItem("master-pizza-auth-message") || "";
@@ -127,7 +131,7 @@ export default function AuthPage({
           <Link className="back-link light-link" to="/">
             <ArrowLeft size={15} /> Voltar ao cardápio
           </Link>
-          <img src="/images/master-pizza-logo.jpg" alt="Master Pizza" />
+          <img src="/images/master-pizzaria-logo.png" alt="Master Pizzaria" />
           <span className="eyebrow">Conta Master</span>
           <h1>Seu pedido fica ainda mais fácil na próxima vez.</h1>
           <p>
@@ -212,7 +216,7 @@ export default function AuthPage({
                 <div className="input-with-icon">
                   <LockKeyhole size={18} />
                   <input
-                    type="password"
+                    type={showLoginPassword ? "text" : "password"}
                     autoComplete="current-password"
                     value={loginForm.password}
                     onChange={(e) =>
@@ -221,6 +225,14 @@ export default function AuthPage({
                     placeholder="Sua senha"
                     required
                   />
+                  <button
+                    type="button"
+                    className="password-visibility"
+                    onClick={() => setShowLoginPassword((value) => !value)}
+                    aria-label={showLoginPassword ? "Ocultar senha" : "Mostrar senha"}
+                  >
+                    {showLoginPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
                 </div>
               </label>
               {error && (
@@ -336,7 +348,7 @@ export default function AuthPage({
                   <div className="input-with-icon">
                     <LockKeyhole size={18} />
                     <input
-                      type="password"
+                      type={showRegisterPassword ? "text" : "password"}
                       autoComplete="new-password"
                       value={registerForm.password}
                       onChange={(e) =>
@@ -345,10 +357,18 @@ export default function AuthPage({
                           password: e.target.value,
                         })
                       }
-                      placeholder="Mínimo 12 caracteres"
-                      minLength="12"
+                      placeholder="Mínimo 8 caracteres"
+                      minLength="8"
                       required
                     />
+                    <button
+                      type="button"
+                      className="password-visibility"
+                      onClick={() => setShowRegisterPassword((value) => !value)}
+                      aria-label={showRegisterPassword ? "Ocultar senhas" : "Mostrar senhas"}
+                    >
+                      {showRegisterPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
                   </div>
                 </label>
                 <label
@@ -360,7 +380,7 @@ export default function AuthPage({
                   <div className="input-with-icon">
                     <LockKeyhole size={18} />
                     <input
-                      type="password"
+                      type={showRegisterPassword ? "text" : "password"}
                       autoComplete="new-password"
                       value={registerForm.confirmPassword}
                       onChange={(e) =>
@@ -376,7 +396,7 @@ export default function AuthPage({
                 </label>
               </div>
               <small className="password-hint">
-                Use pelo menos 12 caracteres, incluindo uma letra e um número.
+                Use pelo menos 8 caracteres, incluindo uma letra e um número.
               </small>
               {error && (
                 <div className="auth-error">

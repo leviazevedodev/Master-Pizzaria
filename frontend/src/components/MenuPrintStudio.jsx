@@ -32,13 +32,17 @@ export default function MenuPrintStudio({
     [printable, categories, subcategories],
   );
   const preparedSettings = useMemo(
-    () => ({ ...settings, logoImage: mediaUrl(settings.logoImage) }),
+    () => ({
+      ...settings,
+      logoImage:
+        mediaUrl(settings.logoImage) || "/images/master-pizzaria-logo.png",
+    }),
     [settings],
   );
   const menuUrl = useMemo(
     () =>
       settings.publicMenuUrl ||
-      new URL("/cardapio", window.location.origin).href,
+      new URL("/gestao/cardapiodigital", window.location.origin).href,
     [settings.publicMenuUrl],
   );
 
@@ -98,7 +102,7 @@ export default function MenuPrintStudio({
             </span>
             <small>
               O QR Code é protegido contra link digitado incorretamente: ele
-              sempre abre somente a rota pública /cardapio desta pizzaria.
+              sempre abre somente o cardápio presencial desta pizzaria.
             </small>
           </div>
 

@@ -329,7 +329,7 @@ export const DEMO_PROMOTIONS = [
 ];
 
 export const DEMO_SETTINGS = {
-  storeName: "Master Pizza",
+  storeName: "Master Pizzaria",
   phone: "+5579988725557",
   whatsappPrimary: "+5579988725557",
   whatsappSecondary: "+5579988725557",

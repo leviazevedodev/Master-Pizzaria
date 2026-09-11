@@ -240,6 +240,7 @@ model Promotion {
   image         String?
   originalPrice Decimal   @db.Decimal(10, 2)
   promoPrice    Decimal   @db.Decimal(10, 2)
+  sizePrices    Json?
   active        Boolean   @default(true)
   sortOrder     Int       @default(0)
   startAt       DateTime?
@@ -660,7 +661,7 @@ model WhatsAppOutbox {
 
 model BusinessSettings {
   id                           String              @id @default("default")
-  storeName                    String              @default("Master Pizza")
+  storeName                    String              @default("Master Pizzaria")
   timezone                     String              @default("America/Maceio")
   phone                        String              @default("+5579988725557")
   whatsappPrimary              String              @default("+5579988725557")

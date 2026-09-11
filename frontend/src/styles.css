@@ -10847,6 +10847,368 @@ textarea {
   }
 }
 
+/* v2.25 - navegação administrativa fixa, cardápio da mesa e promoções por tamanho */
+.admin-sidebar {
+  overflow: hidden;
+}
+.admin-sidebar .admin-logo,
+.admin-sidebar-bottom {
+  flex: 0 0 auto;
+}
+.admin-sidebar nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 5px;
+  scrollbar-color: #4a4e54 transparent;
+  scrollbar-width: thin;
+}
+.admin-sidebar nav::-webkit-scrollbar {
+  width: 6px;
+}
+.admin-sidebar nav::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #4a4e54;
+}
+.admin-sidebar-bottom {
+  position: relative;
+  z-index: 2;
+  background: #090a0b;
+}
+
+.password-visibility {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #777c84;
+  cursor: pointer;
+}
+.password-visibility:hover,
+.password-visibility:focus-visible {
+  background: rgba(227, 27, 35, 0.08);
+  color: var(--red);
+  outline: none;
+}
+.password-generate-field {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+.password-generate-field .password-visibility {
+  height: 100%;
+  min-height: 40px;
+  border: 1px solid #d8d5cf;
+  background: #fff;
+}
+.admin-shell.admin-dark .password-generate-field .password-visibility {
+  border-color: #444b54;
+  background: #23282e;
+  color: #dce0e5;
+}
+
+.promotion-size-prices {
+  display: grid;
+  gap: 8px;
+  padding: 13px;
+  border: 1px solid #ddd8d0;
+  border-radius: 14px;
+  background: #f8f6f2;
+}
+.promotion-size-prices > b {
+  color: #292c31;
+  font-size: 11px;
+}
+.promotion-size-prices > small {
+  margin-top: -4px;
+  color: #777b82;
+  font-size: 9px;
+}
+.promotion-size-prices label {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) minmax(120px, 0.8fr);
+  gap: 10px;
+  align-items: center;
+}
+.promotion-size-prices label > span {
+  display: grid;
+  gap: 2px;
+  color: #34373c;
+  font-size: 10px;
+  font-weight: 800;
+}
+.promotion-size-prices label > span small {
+  color: #858990;
+  font-size: 8px;
+  font-weight: 600;
+}
+.promotion-size-prices.compact {
+  margin-top: 8px;
+  padding: 9px;
+}
+.promotion-size-prices.compact label {
+  grid-template-columns: minmax(95px, 1fr) minmax(105px, 0.8fr);
+}
+.admin-shell.admin-dark .promotion-size-prices {
+  border-color: #3c434b;
+  background: #1b2025;
+}
+.admin-shell.admin-dark .promotion-size-prices > b,
+.admin-shell.admin-dark .promotion-size-prices label > span {
+  color: #f2f4f6;
+}
+.admin-shell.admin-dark .promotion-size-prices > small,
+.admin-shell.admin-dark .promotion-size-prices label > span small {
+  color: #aeb4bc;
+}
+
+.account-session-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.digital-table-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 8px 0 36px;
+  padding: clamp(22px, 4vw, 38px);
+  border: 1px solid #343941;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 88% 12%, rgba(227, 27, 35, 0.3), transparent 35%),
+    linear-gradient(145deg, #1c2025, #0e1013);
+  color: #fff;
+  box-shadow: 0 24px 70px rgba(8, 10, 12, 0.18);
+}
+.digital-table-hero h1 {
+  margin: 7px 0 10px;
+  font: 800 clamp(28px, 5vw, 46px) / 1 "Manrope";
+  letter-spacing: -0.05em;
+}
+.digital-table-hero p {
+  max-width: 650px;
+  margin: 0;
+  color: #c8cdd3;
+  line-height: 1.65;
+}
+.digital-table-hero .primary-btn {
+  flex: 0 0 auto;
+}
+.digital-table-checkout-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 90% 2%, rgba(227, 27, 35, 0.1), transparent 32%),
+    #f4f1ec;
+}
+.digital-table-checkout {
+  padding-bottom: 80px;
+}
+.digital-checkout-heading {
+  max-width: 760px;
+  margin: 10px 0 28px;
+}
+.digital-checkout-heading h1 {
+  margin: 8px 0;
+  font: 800 clamp(34px, 6vw, 58px) / 1 "Manrope";
+  letter-spacing: -0.055em;
+}
+.digital-checkout-heading p {
+  color: #676b72;
+  line-height: 1.65;
+}
+.digital-checkout-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(310px, 390px);
+  gap: 22px;
+  align-items: start;
+}
+.digital-order-items,
+.digital-table-identification,
+.digital-empty-cart {
+  border: 1px solid #ddd8d0;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 18px 55px rgba(22, 24, 28, 0.07);
+}
+.digital-order-items,
+.digital-table-identification {
+  padding: clamp(18px, 3vw, 28px);
+}
+.digital-order-items > article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 16px 0;
+  border-bottom: 1px solid #ece8e1;
+}
+.digital-order-items > article > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+.digital-order-items > article small {
+  color: #7a7e85;
+}
+.digital-order-items > article span {
+  color: var(--red);
+  font-weight: 900;
+}
+.digital-order-items .qty {
+  display: grid;
+  grid-template-columns: 34px 30px 34px;
+  align-items: center;
+  text-align: center;
+}
+.digital-order-items .qty button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #ddd8d0;
+  border-radius: 10px;
+  background: #f7f5f1;
+  color: #282b30;
+}
+.digital-order-total {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-top: 20px;
+}
+.digital-order-total strong {
+  color: var(--red);
+  font: 900 24px/1 "Manrope";
+}
+.digital-table-identification {
+  position: sticky;
+  top: 96px;
+  display: grid;
+  gap: 15px;
+}
+.digital-table-identification > label {
+  display: grid;
+  gap: 7px;
+  color: #45494f;
+  font-size: 10px;
+  font-weight: 800;
+}
+.digital-table-identification input,
+.digital-table-identification select {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 13px;
+  border: 1px solid #d8d4cd;
+  border-radius: 12px;
+  background: #faf9f7;
+  color: #24272b;
+}
+.digital-payment-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 13px;
+  border: 1px solid #eddca9;
+  border-radius: 13px;
+  background: #fff8dc;
+  color: #6b5314;
+}
+.digital-payment-note div {
+  display: grid;
+  gap: 4px;
+}
+.digital-payment-note small,
+.digital-security-note {
+  color: #7b6b40;
+  line-height: 1.5;
+}
+.digital-security-note {
+  text-align: center;
+}
+
+@media (max-width: 780px) {
+  .admin-sidebar {
+    overflow: hidden;
+  }
+  .admin-sidebar nav {
+    flex: initial;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-right: 8px;
+  }
+  .admin-sidebar-bottom {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: #090a0b;
+  }
+  .admin-user-mini {
+    display: flex;
+    padding: 0;
+  }
+  .admin-user-mini > svg,
+  .admin-user-mini > span {
+    display: none;
+  }
+  .admin-sidebar-bottom > a {
+    display: flex;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    justify-content: center;
+    font-size: 0;
+  }
+  .admin-sidebar-bottom .admin-logout {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    justify-content: center;
+    font-size: 0;
+  }
+  .admin-sidebar-bottom .admin-logout-all {
+    display: none;
+  }
+  .digital-table-hero,
+  .digital-checkout-grid {
+    grid-template-columns: 1fr;
+  }
+  .digital-table-hero {
+    display: grid;
+  }
+  .digital-table-hero .primary-btn {
+    width: 100%;
+  }
+  .digital-table-identification {
+    position: static;
+  }
+  .promotion-size-prices label,
+  .promotion-size-prices.compact label {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .digital-order-items > article {
+    grid-template-columns: 1fr;
+  }
+  .account-session-actions {
+    justify-content: stretch;
+  }
+  .account-session-actions > * {
+    width: 100%;
+  }
+}
+
 /* v2.18 — gestão avançada, estoque, cozinha, clientes e logística */
 .stock-out-badge {
   position: absolute;

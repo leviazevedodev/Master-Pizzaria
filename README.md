@@ -1,4 +1,4 @@
-# Master Pizza Profissional v2.24.0
+# Master Pizzaria Profissional v2.25.0
 
 Aplicação de cardápio e gestão de pizzaria com React, Express, PostgreSQL e Prisma. Inclui pedidos, entrega/retirada, atendimento em mesas, agendamento, Pix e cartões transparentes pelo Mercado Pago, recuperação de senha por e-mail, painel administrativo, cozinha, garçons, entregadores, estoque, promoções, cupons e relatórios.
 
@@ -34,7 +34,7 @@ Depois de aplicar as migrations, entre no painel e abra a aba **Mesas**. O admin
 
 Fluxo operacional:
 
-1. O garçom abre uma mesa e informa quantidade de pessoas e observações.
+1. O garçom abre uma mesa e informa o cliente e a quantidade de pessoas.
 2. Adiciona produtos, tamanhos, sabores e adicionais; cada envio vira uma nova rodada na cozinha.
 3. A cozinha inicia o preparo e marca a rodada como pronta.
 4. O garçom marca a rodada como servida.
@@ -47,18 +47,30 @@ No painel do administrador, as comandas do salão também aparecem em **Atendime
 
 Pedidos em **Pronto para servir**, **Pronto para entrega** ou **Pronto para retirada** deixam a contagem e a lista **Em aberto**, permanecendo disponíveis nas respectivas filas específicas.
 
+O QR Code impresso abre `/gestao/cardapiodigital`. Nele, o cliente escolhe os produtos, informa o próprio nome e seleciona a mesa. O pedido entra como atendimento presencial nas filas **Recebidos**, **Em preparação**, **Pronto para servir** e **Aguardando fechamento**; o pagamento continua sendo baixado somente no fechamento da mesa.
+
 ## Cardápio para impressão
 
-Em **Cardápio → Impressão**, informe o endereço completo do cardápio digital e escolha uma das ações:
+Em **Cardápio → Impressão**, escolha uma das ações:
 
-- **Criar cardápio em PDF** organiza os produtos ativos por categoria e subcategoria, inclui logo, foto, descrição, preços base ou promoções ativas e adiciona o QR Code ao final;
+- **Criar cardápio em PDF** organiza os produtos ativos por categoria e subcategoria, inclui logo, descrição, preços base ou promoções ativas e adiciona o QR Code ao final;
 - **Imprimir apenas QR Code** cria uma folha A4 com o QR Code grande, nome da loja e endereço de acesso.
 
-O endereço informado é somente codificado no QR Code e não é acessado pelo painel. Produtos pausados ou arquivados ficam fora do material impresso. Se uma imagem externa não permitir leitura, o PDF usa uma identificação visual substituta e continua a geração.
+O endereço é montado pela API a partir do `FRONTEND_URL`, evitando QR Codes apontando para outro site. Produtos pausados ou arquivados ficam fora do material impresso. A logo configurada na loja é usada e, se estiver vazia, o sistema utiliza a logo padrão.
 
 ## Pagamentos personalizados e retenção
 
-Em **Loja → Pagamento**, o administrador pode cadastrar até 20 formas de pagamento próprias, escolher se cada uma aparece no site e/ou nas mesas e desativá-las sem alterar pedidos antigos. Dinheiro, Mercado Pago, Pix e cartões do atendimento presencial continuam como opções padrão.
+Em **Loja → Pagamento**, o administrador pode cadastrar até 20 formas de pagamento próprias para o fechamento das mesas e desativá-las sem alterar pedidos antigos. Formas personalizadas nunca são aceitas no checkout público; dinheiro, Mercado Pago, Pix e cartões continuam como opções padronizadas.
+
+## Sessões e senhas
+
+- clientes usam senha de pelo menos 8 caracteres, com letra e número, e sessão renovável por até 30 dias;
+- administradores e funcionários usam senha de pelo menos 12 caracteres e sessão de até 12 horas;
+- o token de acesso dura 1 hora e fica somente em memória; o refresh token permanece em cookie `HttpOnly`, `Secure` em produção e `SameSite`;
+- troca de senha, bloqueio/desativação de conta e **Sair de todos** incrementam a versão da sessão e invalidam os tokens anteriores;
+- os formulários possuem controle para mostrar ou ocultar a senha.
+
+As notificações de acompanhamento ficam em **Pedidos** do cliente e consultam atualizações a cada 20 segundos. A permissão do navegador só é solicitada após o cliente tocar em **Ativar notificações**.
 
 A limpeza automática roda em segundo plano com os seguintes prazos:
 

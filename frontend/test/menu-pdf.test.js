@@ -40,8 +40,8 @@ test("promoção reduz o mesmo desconto dos tamanhos somente quando escolhida", 
       promoPrice: 35,
     },
     availableSizes: [
-      { name: "Média", price: 42, sortOrder: 1, active: true },
-      { name: "Grande", price: 50, sortOrder: 2, active: true },
+      { id: "m", sizeId: "m", name: "Média", price: 42, sortOrder: 1, active: true },
+      { id: "g", sizeId: "g", name: "Grande", price: 50, sortOrder: 2, active: true },
     ],
   };
   assert.deepEqual(
@@ -57,5 +57,26 @@ test("promoção reduz o mesmo desconto dos tamanhos somente quando escolhida", 
       { base: 42, price: 42, promotional: false },
       { base: 50, price: 50, promotional: false },
     ],
+  );
+});
+
+test("promoção pode definir um preço próprio para cada tamanho", () => {
+  const product = {
+    price: 40,
+    promotion: {
+      active: true,
+      activeNow: true,
+      originalPrice: 40,
+      promoPrice: 35,
+      sizePrices: { m: 34.9, g: 41.9 },
+    },
+    availableSizes: [
+      { id: "m", sizeId: "m", name: "Média", price: 42, active: true },
+      { id: "g", sizeId: "g", name: "Grande", price: 50, active: true },
+    ],
+  };
+  assert.deepEqual(
+    printedPriceRows(product, true).map(({ price }) => price),
+    [34.9, 41.9],
   );
 });

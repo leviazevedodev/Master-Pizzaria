@@ -83,12 +83,28 @@ export function printedPriceRows(
     .slice()
     .sort((a, b) => numeric(a.sortOrder) - numeric(b.sortOrder));
   const sourceRows = sizes.length
-    ? sizes.map((size) => ({ label: size.name, base: numeric(size.price) }))
-    : [{ label: "", base: numeric(product?.price) }];
+    ? sizes.map((size) => ({
+        label: size.name,
+        sizeId: size.sizeId || size.id,
+        base: numeric(size.price),
+      }))
+    : [{ label: "", sizeId: null, base: numeric(product?.price) }];
 
   return sourceRows.map((row) => {
-    const promotional = includePromotions && promotion && discount > 0;
-    const price = promotional ? Math.max(0, row.base - discount) : row.base;
+    const configured = numeric(
+      promotion?.sizePrices?.[row.sizeId],
+      Number.NaN,
+    );
+    const promotional = Boolean(
+      includePromotions &&
+        promotion &&
+        ((Number.isFinite(configured) && configured < row.base) || discount > 0),
+    );
+    const price = promotional
+      ? Number.isFinite(configured) && configured < row.base
+        ? configured
+        : Math.max(0, row.base - discount)
+      : row.base;
     return {
       ...row,
       price,
@@ -167,7 +183,14 @@ export function buildMenuSections(
 }
 
 async function imageData(url, width, height) {
-  if (!url || typeof document === "undefined") return null;
+  if (!url) return null;
+  if (
+    typeof url === "string" &&
+    /^data:image\/(?:jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(url) &&
+    url.length <= 12 * 1024 * 1024
+  )
+    return url;
+  if (typeof document === "undefined") return null;
   const key = `${url}|${width}x${height}`;
   if (imageCache.has(key)) return imageCache.get(key);
   const pending = (async () => {
@@ -219,14 +242,30 @@ function paintPage(doc, settings, logoData, page) {
   if (logoData) {
     doc.setFillColor(255, 255, 255);
     doc.roundedRect(PAGE_MARGIN, 7, 32, 17, 2, 2, "F");
-    doc.addImage(logoData, "JPEG", PAGE_MARGIN + 2, 9, 28, 13, undefined, "FAST");
+    doc.addImage(
+      logoData,
+      logoData.startsWith("data:image/png") ? "PNG" : "JPEG",
+      PAGE_MARGIN + 2,
+      9,
+      28,
+      13,
+      undefined,
+      "FAST",
+    );
   } else {
     doc.setFillColor(...BRAND_RED);
     doc.roundedRect(PAGE_MARGIN, 7, 32, 17, 2, 2, "F");
     doc.setTextColor(...INK);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text("MENU", PAGE_MARGIN + 16, 17.6, { align: "center" });
+    doc.setFontSize(8.2);
+    const initials = (cleanLine(settings.storeName) || "Master Pizzaria")
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase();
+    doc.text(initials, PAGE_MARGIN + 16, 17.3, { align: "center" });
   }
   doc.setTextColor(...INK);
   doc.setFont("helvetica", "bold");
@@ -436,15 +475,19 @@ function drawMenuColumn(doc, rows, x, width, scale) {
           doc.text(label, priceX - priceWidth + 1, lineY, { align: "left" });
         if (price.promotional) {
           doc.setFontSize(4.7 * scale);
-          doc.text(formatPrice(price.base), priceX - 16 * scale, lineY, {
+          const oldPrice = formatPrice(price.base);
+          const oldPriceRight = priceX - 16 * scale;
+          doc.text(oldPrice, oldPriceRight, lineY, {
             align: "right",
           });
           doc.setDrawColor(...MUTED);
+          doc.setLineWidth(0.22 * scale);
+          const oldPriceWidth = doc.getTextWidth(oldPrice);
           doc.line(
-            priceX - 29 * scale,
-            lineY - 1.1 * scale,
-            priceX - 16 * scale,
-            lineY - 1.1 * scale,
+            oldPriceRight - oldPriceWidth - 0.35 * scale,
+            lineY - 0.65 * scale,
+            oldPriceRight + 0.35 * scale,
+            lineY - 0.65 * scale,
           );
           doc.setTextColor(...GOLD);
         } else doc.setTextColor(...INK);
@@ -547,7 +590,7 @@ export async function createMenuPdf({
     title: `Cardápio - ${cleanLine(settings.storeName) || "Restaurante"}`,
     subject: "Cardápio de produtos e preços",
     author: cleanLine(settings.storeName) || "Restaurante",
-    creator: "Master Pizza",
+    creator: "Master Pizzaria",
   });
 
   const columnsPerPage =
@@ -609,7 +652,7 @@ export async function createQrCodePdf({
     title: `QR Code do cardápio - ${cleanLine(settings.storeName) || "Restaurante"}`,
     subject: "Acesso direto ao cardápio digital",
     author: cleanLine(settings.storeName) || "Restaurante",
-    creator: "Master Pizza",
+    creator: "Master Pizzaria",
   });
   doc.setFillColor(...NIGHT);
   doc.rect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, "F");
@@ -618,7 +661,16 @@ export async function createQrCodePdf({
   if (logoData) {
     doc.setFillColor(255, 255, 255);
     doc.roundedRect(69, 23, 72, 31, 4, 4, "F");
-    doc.addImage(logoData, "JPEG", 73, 27, 64, 23, undefined, "FAST");
+    doc.addImage(
+      logoData,
+      logoData.startsWith("data:image/png") ? "PNG" : "JPEG",
+      73,
+      27,
+      64,
+      23,
+      undefined,
+      "FAST",
+    );
   }
   doc.setTextColor(...INK);
   doc.setFont("helvetica", "bold");

@@ -4,12 +4,11 @@ import {
   ArrowLeft,
   ArrowUp,
   BarChart3,
-  Bell,
-  BellRing,
   Check,
   ChevronRight,
   Clock3,
   Eye,
+  EyeOff,
   ImagePlus,
   Layers3,
   LogOut,
@@ -168,7 +167,12 @@ function toIsoDateTime(value) {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-export default function AdminPage({ session, onLogout, onCatalogChanged }) {
+export default function AdminPage({
+  session,
+  onLogout,
+  onLogoutAll,
+  onCatalogChanged,
+}) {
   const permissions = session.user.adminPermissions;
   const isOwner = permissions == null;
   const isDeliveryStaff = session.user.staffRole === "DELIVERY";
@@ -209,26 +213,6 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
   const messageTimer = useRef(null);
   const loadAllInProgress = useRef(false);
   const liveRefreshInProgress = useRef(false);
-  const previousOrderSnapshot = useRef(new Map());
-  const orderNotificationsPrimed = useRef(false);
-  const [orderNotificationsEnabled, setOrderNotificationsEnabled] = useState(
-      () => {
-        try {
-          return (
-            localStorage.getItem("master-pizza-order-notifications") === "true"
-          );
-        } catch {
-          return false;
-        }
-      },
-    ),
-    [orderNotificationPermission, setOrderNotificationPermission] = useState(
-      () =>
-        typeof Notification === "undefined"
-          ? "unsupported"
-          : Notification.permission,
-    ),
-    [orderLiveNotice, setOrderLiveNotice] = useState(null);
   const [orderSearch, setOrderSearch] = useState(""),
     [orderView, setOrderView] = useState(() =>
       isDeliveryStaff ? "READY_FOR_DELIVERY" : "OPEN",
@@ -295,6 +279,7 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
       image: "",
       originalPrice: "",
       promoPrice: "",
+      sizePrices: {},
       sortOrder: 0,
       active: true,
       startAt: "",
@@ -432,10 +417,7 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
     [],
   );
   useEffect(() => {
-    if (
-      !["overview", "orders", "analytics"].includes(tab) &&
-      !(orderNotificationsEnabled && can("orders"))
-    )
+    if (!["overview", "orders", "analytics"].includes(tab))
       return undefined;
     const timer = window.setInterval(
       async () => {
@@ -466,23 +448,12 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
             );
             setAnalytics(data);
           }
-          if (
-            orderNotificationsEnabled &&
-            can("orders") &&
-            !["overview", "orders"].includes(tab)
-          ) {
-            const { data } = await api.get(
-              "/admin/orders",
-              authHeaders(session.token),
-            );
-            setOrders(data);
-          }
         } catch {
         } finally {
           liveRefreshInProgress.current = false;
         }
       },
-      isDeliveryStaff ? 5000 : orderNotificationsEnabled ? 8000 : 20000,
+      isDeliveryStaff ? 5000 : 20000,
     );
     return () => window.clearInterval(timer);
   }, [
@@ -490,120 +461,7 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
     session.token,
     permissions,
     isDeliveryStaff,
-    orderNotificationsEnabled,
   ]);
-  useEffect(() => {
-    const current = new Map(
-      orders.map((order) => [
-        order.id,
-        `${order.status}|${order.paymentStatus}|${order.updatedAt}`,
-      ]),
-    );
-    if (!orderNotificationsPrimed.current) {
-      if (loading) return;
-      previousOrderSnapshot.current = current;
-      orderNotificationsPrimed.current = true;
-      return;
-    }
-    const changes = orders.filter(
-      (order) =>
-        !previousOrderSnapshot.current.has(order.id) ||
-        previousOrderSnapshot.current.get(order.id) !== current.get(order.id),
-    );
-    previousOrderSnapshot.current = current;
-    if (
-      !changes.length ||
-      !orderNotificationsEnabled ||
-      settings?.browserNotificationsEnabled === false
-    )
-      return;
-
-    const latest = changes[0];
-    const title =
-      changes.length === 1
-        ? `Pedido #${latest.shortCode} atualizado`
-        : `${changes.length} pedidos atualizados`;
-    const body =
-      changes.length === 1
-        ? `${latest.fulfillmentType === "DINE_IN" ? latest.table?.name || `Mesa ${latest.table?.number || ""}` : latest.customerName} • ${STATUS_LABEL[latest.status] || latest.status}`
-        : "Abra a fila para conferir todas as alterações.";
-    setOrderLiveNotice({ title, body, at: new Date() });
-
-    try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (AudioContext) {
-        const context = new AudioContext();
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-        oscillator.frequency.setValueAtTime(740, context.currentTime);
-        oscillator.frequency.exponentialRampToValueAtTime(
-          1040,
-          context.currentTime + 0.22,
-        );
-        gain.gain.setValueAtTime(0.0001, context.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.18, context.currentTime + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.35);
-        oscillator.connect(gain);
-        gain.connect(context.destination);
-        oscillator.start();
-        oscillator.stop(context.currentTime + 0.36);
-        oscillator.onended = () => context.close().catch(() => {});
-      }
-    } catch {}
-
-    if (
-      typeof Notification !== "undefined" &&
-      Notification.permission === "granted"
-    ) {
-      const notification = new Notification(title, {
-        body,
-        icon: mediaUrl(settings?.logoImage) || undefined,
-        tag: "master-pizza-order-updates",
-        renotify: true,
-        requireInteraction: true,
-      });
-      notification.onclick = () => {
-        window.focus();
-        setTab("orders");
-        notification.close();
-      };
-    }
-  }, [
-    orders,
-    loading,
-    orderNotificationsEnabled,
-    settings?.browserNotificationsEnabled,
-  ]);
-
-  async function toggleOrderNotifications() {
-    if (orderNotificationsEnabled) {
-      setOrderNotificationsEnabled(false);
-      setOrderLiveNotice(null);
-      try {
-        localStorage.setItem("master-pizza-order-notifications", "false");
-      } catch {}
-      notify("Notificações de pedidos desativadas neste aparelho.");
-      return;
-    }
-    if (typeof Notification === "undefined") {
-      setOrderNotificationPermission("unsupported");
-      return setError("Este navegador não oferece notificações do sistema.");
-    }
-    const permission =
-      Notification.permission === "default"
-        ? await Notification.requestPermission()
-        : Notification.permission;
-    setOrderNotificationPermission(permission);
-    if (permission !== "granted")
-      return setError(
-        "A permissão de notificações está bloqueada. Libere-a nas configurações do navegador.",
-      );
-    setOrderNotificationsEnabled(true);
-    try {
-      localStorage.setItem("master-pizza-order-notifications", "true");
-    } catch {}
-    notify("Notificações grandes de pedidos ativadas neste aparelho.");
-  }
 
   function notify(text) {
     setMessage(text);
@@ -1101,6 +959,7 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
         image: "",
         originalPrice: products[0]?.price || "",
         promoPrice: "",
+        sizePrices: {},
         sortOrder: promotions.length + 1,
         active: true,
         startAt: "",
@@ -1444,7 +1303,7 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
 
   if (loading && !settings)
     return (
-      <div className="admin-loading">Carregando painel da Master Pizza...</div>
+      <div className="admin-loading">Carregando painel da Master Pizzaria...</div>
     );
   const currentTabLabel =
     availableTabs.find(([id]) => id === tab)?.[2] || "Painel";
@@ -1456,9 +1315,9 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
         <Link className="admin-logo" to="/">
           <img
             src={
-              mediaUrl(settings?.logoImage) || "/images/master-pizza-logo.jpg"
+              mediaUrl(settings?.logoImage) || "/images/master-pizzaria-logo.png"
             }
-            alt="Master Pizza"
+            alt="Master Pizzaria"
           />
         </Link>
         <nav>
@@ -1502,6 +1361,12 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
           <button className="admin-logout" onClick={() => onLogout()}>
             <LogOut size={18} /> Sair do painel
           </button>
+          <button
+            className="admin-logout admin-logout-all"
+            onClick={() => onLogoutAll?.()}
+          >
+            <ShieldCheck size={18} /> Sair de todos
+          </button>
           <Link to="/">
             <ArrowLeft size={16} /> Ver loja
           </Link>
@@ -1531,23 +1396,6 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
             <Check size={16} />
             <b>{message}</b>
           </div>
-        )}
-        {orderLiveNotice && (
-          <aside className="order-live-notice" aria-live="assertive">
-            <span className="order-live-icon"><BellRing /></span>
-            <div>
-              <small>ATUALIZAÇÃO EM TEMPO REAL</small>
-              <b>{orderLiveNotice.title}</b>
-              <p>{orderLiveNotice.body}</p>
-            </div>
-            <button
-              type="button"
-              aria-label="Fechar notificação"
-              onClick={() => setOrderLiveNotice(null)}
-            >
-              <X />
-            </button>
-          </aside>
         )}
 
         {tab === "overview" && can("overview") && (
@@ -1633,19 +1481,6 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
                 </p>
               </div>
               <div className="panel-actions">
-                <button
-                  type="button"
-                  className={`order-notification-toggle ${orderNotificationsEnabled ? "active" : ""}`}
-                  onClick={toggleOrderNotifications}
-                  title={
-                    orderNotificationPermission === "denied"
-                      ? "Notificações bloqueadas pelo navegador"
-                      : "Avisar quando um pedido for criado ou atualizado"
-                  }
-                >
-                  {orderNotificationsEnabled ? <BellRing size={17} /> : <Bell size={17} />}
-                  {orderNotificationsEnabled ? "Notificações ativas" : "Ativar notificações"}
-                </button>
                 <OrderViewTabs
                   value={orderView}
                   onChange={setOrderView}
@@ -3433,6 +3268,7 @@ function StaffAdmin({
   deleteStaff,
   generatePassword,
 }) {
+  const [showStaffPassword, setShowStaffPassword] = useState(false);
   function toggleFormPermission(permission) {
     setForm({
       ...form,
@@ -3661,10 +3497,19 @@ function StaffAdmin({
           <div className="password-generate-field">
             <input
               required
+              type={showStaffPassword ? "text" : "password"}
               minLength="12"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
             />
+            <button
+              type="button"
+              className="password-visibility"
+              onClick={() => setShowStaffPassword((value) => !value)}
+              aria-label={showStaffPassword ? "Ocultar senha" : "Mostrar senha"}
+            >
+              {showStaffPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+            </button>
             <button
               type="button"
               className="ghost-dark-btn"
@@ -3795,6 +3640,8 @@ function PromotionsAdmin({
       ...form,
       productId: id,
       originalPrice: p?.basePrice ?? p?.price ?? form.originalPrice,
+      promoPrice: "",
+      sizePrices: {},
       title: form.title || p?.name || "",
     });
   }
@@ -3883,6 +3730,29 @@ function PromotionsAdmin({
                         <del>{money(r.originalPrice)}</del>
                         <strong>{money(r.promoPrice)}</strong>
                       </span>
+                      {(r.product?.availableSizes || []).length > 0 && (
+                        <div className="promotion-size-prices compact">
+                          {r.product.availableSizes.map((size) => (
+                            <label key={size.id}>
+                              <span>{size.name} <small>base {money(size.price)}</small></span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                defaultValue={r.sizePrices?.[size.sizeId] ?? ""}
+                                placeholder="usar desconto geral"
+                                onBlur={(event) => {
+                                  const raw = event.target.value;
+                                  const current = { ...(r.sizePrices || {}) };
+                                  if (raw === "") delete current[size.sizeId];
+                                  else current[size.sizeId] = Number(raw);
+                                  update(r, { sizePrices: current });
+                                }}
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <div className="promotion-admin-values">
                       <label>
@@ -4058,6 +3928,35 @@ function PromotionsAdmin({
                 />
               </label>
             </div>
+            {(selected?.availableSizes || []).length > 0 && (
+              <div className="promotion-size-prices">
+                <b>Preço promocional por tamanho</b>
+                <small>
+                  Opcional. Quando vazio, o tamanho usa o desconto geral acima.
+                </small>
+                {selected.availableSizes.map((size) => (
+                  <label key={size.id}>
+                    <span>{size.name} <small>base {money(size.price)}</small></span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.sizePrices?.[size.sizeId] ?? ""}
+                      placeholder="Valor promocional"
+                      onChange={(event) =>
+                        setForm({
+                          ...form,
+                          sizePrices: {
+                            ...(form.sizePrices || {}),
+                            [size.sizeId]: event.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
+            )}
             <div className="two-cols">
               <label>
                 Início opcional
@@ -4359,7 +4258,7 @@ function DeliveryAdmin({
           <>
             <div className="settings-grid delivery-policy-grid">
               <label>
-                Km mínimo
+                Km da saída
                 <input
                   type="number"
                   min="0"
@@ -4372,10 +4271,10 @@ function DeliveryAdmin({
                     })
                   }
                 />
-                <small>Até essa distância, cobra somente a taxa mínima.</small>
+                <small>Distância já incluída no valor da saída.</small>
               </label>
               <label>
-                Taxa do km mínimo (R$)
+                Valor da saída (R$)
                 <input
                   type="number"
                   min="0"
@@ -4390,7 +4289,7 @@ function DeliveryAdmin({
                 />
               </label>
               <label>
-                Preço após o km mínimo (R$/km)
+                Km excedente (R$/km)
                 <input
                   type="number"
                   min="0"
@@ -4457,8 +4356,8 @@ function DeliveryAdmin({
               <span>
                 <b>Como fica o cálculo</b>
                 <small>
-                  Até {Number(settings.deliveryMinimumKm || 0).toFixed(1)} km:{" "}
-                  {money(settings.deliveryMinimumFee || 0)}. Depois: taxa mínima
+                  Saída de até {Number(settings.deliveryMinimumKm || 0).toFixed(1)} km:{" "}
+                  {money(settings.deliveryMinimumFee || 0)}. Depois: valor da saída
                   + km excedente × {money(settings.deliveryPricePerKm || 0)}/km.
                 </small>
               </span>
@@ -4703,7 +4602,7 @@ function StoreSettings({
       ...current,
       customPaymentMethods: [
         ...(current.customPaymentMethods || []),
-        { id, label, active: true, siteEnabled: true, tableEnabled: true },
+        { id, label, active: true, siteEnabled: false, tableEnabled: true },
       ],
     }));
     setNewPaymentName("");
@@ -4925,8 +4824,8 @@ function StoreSettings({
             <div>
               <b>Outras formas de pagamento</b>
               <small>
-                Digite o nome que o cliente verá. Dinheiro, pagamento online,
-                Pix e cartões já continuam disponíveis como opções padrão.
+                Disponíveis somente para fechar comandas de mesa. No site,
+                permanecem apenas Dinheiro, Pix e cartão pelo pagamento online.
               </small>
             </div>
             <div className="custom-payment-add">
@@ -4976,18 +4875,6 @@ function StoreSettings({
                     <label>
                       <input
                         type="checkbox"
-                        checked={method.siteEnabled !== false}
-                        onChange={(event) =>
-                          updateCustomPayment(method.id, {
-                            siteEnabled: event.target.checked,
-                          })
-                        }
-                      />
-                      Site
-                    </label>
-                    <label>
-                      <input
-                        type="checkbox"
                         checked={method.tableEnabled !== false}
                         onChange={(event) =>
                           updateCustomPayment(method.id, {
@@ -4995,7 +4882,7 @@ function StoreSettings({
                           })
                         }
                       />
-                      Mesas
+                      Usar nas mesas
                     </label>
                     <button
                       type="button"
@@ -5470,7 +5357,7 @@ function StoreSettings({
           <div className="site-logo-preview">
             <img
               src={
-                mediaUrl(settings.logoImage) || "/images/master-pizza-logo.jpg"
+                mediaUrl(settings.logoImage) || "/images/master-pizzaria-logo.png"
               }
               alt="Logo"
             />

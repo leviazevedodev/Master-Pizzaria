@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
+  Eye,
+  EyeOff,
   LockKeyhole,
   Mail,
   MessageCircle,
@@ -32,10 +34,11 @@ export default function ForgotPasswordPage({ settings }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const supportNumber = String(settings?.whatsappPrimary || "").trim();
   const supportPhone = String(settings?.phone || "").trim();
   const supportText = encodeURIComponent(
-    "Olá! Preciso de ajuda para recuperar o acesso à minha conta da Master Pizza.",
+    "Olá! Preciso de ajuda para recuperar o acesso à minha conta da Master Pizzaria.",
   );
 
   async function requestReset(event) {
@@ -92,7 +95,7 @@ export default function ForgotPasswordPage({ settings }) {
           <Link className="back-link light-link" to="/entrar">
             <ArrowLeft size={15} /> Voltar ao login
           </Link>
-          <img src="/images/master-pizza-logo.jpg" alt="Master Pizza" />
+          <img src="/images/master-pizzaria-logo.png" alt="Master Pizzaria" />
           <span className="eyebrow">Recuperação de acesso</span>
           <h1>Volte para sua conta com segurança.</h1>
           <p>
@@ -127,19 +130,27 @@ export default function ForgotPasswordPage({ settings }) {
               <div className="auth-title">
                 <span className="eyebrow dark">Nova senha</span>
                 <h2>Crie uma nova senha.</h2>
-                <p>Use pelo menos 12 caracteres, uma letra e um número.</p>
+                <p>Use pelo menos 8 caracteres, uma letra e um número.</p>
               </div>
               <label>
                 Nova senha
                 <div className="input-with-icon">
                   <LockKeyhole size={18} />
                   <input
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    minLength="12"
+                    minLength="8"
                   />
+                  <button
+                    type="button"
+                    className="password-visibility"
+                    onClick={() => setShowPassword((value) => !value)}
+                    aria-label={showPassword ? "Ocultar senhas" : "Mostrar senhas"}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
                 </div>
               </label>
               <label>
@@ -147,11 +158,11 @@ export default function ForgotPasswordPage({ settings }) {
                 <div className="input-with-icon">
                   <LockKeyhole size={18} />
                   <input
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     value={confirm}
                     onChange={(e) => setConfirm(e.target.value)}
                     required
-                    minLength="12"
+                    minLength="8"
                   />
                 </div>
               </label>

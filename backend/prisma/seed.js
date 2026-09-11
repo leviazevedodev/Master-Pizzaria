@@ -532,7 +532,7 @@ async function main() {
   }
 
   const defaultSettings = {
-    storeName: "Master Pizza",
+    storeName: "Master Pizzaria",
     phone: "+5579988725557",
     whatsappPrimary: "+5579988725557",
     whatsappSecondary: "+5579988725557",

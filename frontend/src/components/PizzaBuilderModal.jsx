@@ -84,7 +84,10 @@ export default function PizzaBuilderModal({
           baseProduct.price,
       );
   const basePrice = selectedSize
-    ? Math.max(0, baseOriginalPrice - baseDiscount)
+    ? selectedSize.promoPrice != null &&
+      Number.isFinite(Number(selectedSize.promoPrice))
+      ? Number(selectedSize.promoPrice)
+      : Math.max(0, baseOriginalPrice - baseDiscount)
     : Number(baseProduct.price);
   function flavorOriginalPrice(flavor) {
     if (flavor.id === baseProduct.id) return baseOriginalPrice;
@@ -104,6 +107,16 @@ export default function PizzaBuilderModal({
   function flavorPrice(flavor) {
     if (flavor.id === baseProduct.id) return basePrice;
     const original = flavorOriginalPrice(flavor);
+    if (selectedSize) {
+      const same = (flavor.availableSizes || []).find(
+        (size) => size.slug === selectedSize.slug,
+      );
+      if (
+        same?.promoPrice != null &&
+        Number.isFinite(Number(same.promoPrice))
+      )
+        return Number(same.promoPrice);
+    }
     const discount = flavor.compareAtPrice
       ? Math.max(0, Number(flavor.compareAtPrice) - Number(flavor.price))
       : 0;
@@ -305,7 +318,12 @@ export default function PizzaBuilderModal({
                     {size.diameterCm && <small>{size.diameterCm} cm</small>}
                   </span>
                   <strong>
-                    {money(Math.max(0, Number(size.price) - baseDiscount))}
+                    {money(
+                      size.promoPrice != null &&
+                        Number.isFinite(Number(size.promoPrice))
+                        ? Number(size.promoPrice)
+                        : Math.max(0, Number(size.price) - baseDiscount),
+                    )}
                   </strong>
                   {selectedSize?.id === size.id && <Check size={16} />}
                 </button>

@@ -10,6 +10,8 @@ export default function MenuPage({
   subcategories,
   settings,
   onAdd,
+  digitalMode = false,
+  cartCount = 0,
 }) {
   const [params] = useSearchParams();
   const [category, setCategory] = useState(params.get("categoria") || "todos");
@@ -55,10 +57,25 @@ export default function MenuPage({
     <div className="page-shell full-menu-page">
       <main className="container full-menu-wrap">
         <div className="page-top">
-          <Link to="/#cardapio">
+          <Link to={digitalMode ? "/" : "/#cardapio"}>
             <ArrowLeft size={16} /> Voltar ao início
           </Link>
         </div>
+        {digitalMode && (
+          <section className="digital-table-hero">
+            <div>
+              <span className="eyebrow">ATENDIMENTO NO SALÃO</span>
+              <h1>Peça direto da sua mesa.</h1>
+              <p>
+                Escolha os itens agora. Na finalização, informe seu nome e a
+                mesa; o pagamento será feito somente depois de você ser servido.
+              </p>
+            </div>
+            <Link className="primary-btn" to="/gestao/cardapiodigital/finalizar">
+              Finalizar na mesa {cartCount ? `(${cartCount})` : ""}
+            </Link>
+          </section>
+        )}
         <div className="section-heading">
           <div>
             <span className="eyebrow dark">Cardápio completo</span>

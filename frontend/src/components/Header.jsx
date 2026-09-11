@@ -8,6 +8,8 @@ export default function Header({
   settings,
   storeHours = [],
   session,
+  cartPath = "/carrinho",
+  menuPath = "/cardapio",
 }) {
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
@@ -36,13 +38,13 @@ export default function Header({
             className="brand"
             to="/"
             onClick={close}
-            aria-label="Master Pizza - início"
+            aria-label="Master Pizzaria - início"
           >
             <img
               src={
-                mediaUrl(settings?.logoImage) || "/images/master-pizza-logo.jpg"
+                mediaUrl(settings?.logoImage) || "/images/master-pizzaria-logo.png"
               }
-              alt="Master Pizza"
+              alt="Master Pizzaria"
             />
           </Link>
           <div
@@ -67,7 +69,7 @@ export default function Header({
           <Link to="/" onClick={close}>
             Início
           </Link>
-          <Link to="/cardapio" onClick={close}>
+          <Link to={menuPath} onClick={close}>
             Cardápio
           </Link>
           <Link to="/seus-pedidos" onClick={close}>
@@ -105,7 +107,7 @@ export default function Header({
                 : "Entrar"}
             </span>
           </Link>
-          <Link className="cart-button" to="/carrinho">
+          <Link className="cart-button" to={cartPath}>
             <ShoppingBag size={19} />
             <span>Sacola</span>
             {cartCount > 0 && <b>{cartCount}</b>}

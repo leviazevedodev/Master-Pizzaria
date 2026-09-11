@@ -1,5 +1,19 @@
 # Histórico de versões
 
+## 2.25.0 — Cardápio de mesa, sessões seguras e acabamento administrativo
+
+- criada a rota pública `/gestao/cardapiodigital`, com escolha do cliente e da mesa e lançamento direto nas filas presenciais;
+- formas de pagamento personalizadas ficaram exclusivas das mesas e são rejeitadas pelo checkout público;
+- autenticação passou a usar access token de 1 hora em memória e refresh token em cookie `HttpOnly`; clientes duram até 30 dias e equipe até 12 horas;
+- troca de senha, bloqueio/desativação e logout geral invalidam todas as sessões anteriores;
+- adicionados botões para visualizar senhas e mínimo de 8 caracteres para contas de clientes;
+- notificações de atualização foram movidas ao acompanhamento de pedidos do cliente;
+- menu lateral administrativo mantém usuário, tema e saída fixos, com rolagem própria das abas;
+- o painel reduz consultas concorrentes no Neon e deixa itens prontos fora de **Em aberto**;
+- promoções agora aceitam preço específico para cada tamanho de pizza, inclusive no cálculo seguro do pedido;
+- PDF usa a logo da loja, QR Code do cardápio presencial e risco de preço antigo alinhado ao texto;
+- identidade visível padronizada como **Master Pizzaria**.
+
 ## 2.24.0 — Checkout transparente, alertas e cardápio profissional
 
 - Pix passa a ser gerado e exibido dentro do site, com QR Code, copia e cola e atualização automática da aprovação;

@@ -17,6 +17,7 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import { api, authHeaders } from "../lib/api";
 import { etaRange, formatCep, money } from "../lib/format";
+import CustomerOrderNotifications from "../components/CustomerOrderNotifications";
 
 const STATUS_LABEL = {
   SCHEDULED: "Agendado",
@@ -24,6 +25,8 @@ const STATUS_LABEL = {
   PREPARING: "Em preparação",
   OUT_FOR_DELIVERY: "Entregando",
   READY_FOR_PICKUP: "Pronto para retirada",
+  READY_FOR_TABLE: "Pronto para servir",
+  SERVED: "Aguardando fechamento",
   DELIVERED: "Entregue",
   CANCELED: "Cancelado",
 };
@@ -34,11 +37,14 @@ const OPEN_STATUS = new Set([
   "PREPARING",
   "OUT_FOR_DELIVERY",
   "READY_FOR_PICKUP",
+  "READY_FOR_TABLE",
+  "SERVED",
 ]);
 
 export default function AccountPage({
   session,
   onLogout,
+  onLogoutAll,
   onReorder,
   ordersOnly = false,
 }) {
@@ -238,9 +244,14 @@ export default function AccountPage({
                 : "Seus dados e compras ficam organizados em um só lugar."}
             </p>
           </div>
-          <button className="outline-btn" onClick={() => onLogout()}>
-            <LogOut size={16} /> Sair
-          </button>
+          <div className="account-session-actions">
+            {ordersOnly && (
+              <CustomerOrderNotifications orders={orders} ready={!loading} />
+            )}
+            <button className="outline-btn" onClick={() => onLogout()}>
+              <LogOut size={16} /> Sair
+            </button>
+          </div>
         </section>
         {!ordersOnly && (
           <>
@@ -278,6 +289,9 @@ export default function AccountPage({
               </div>
               <button className="text-refresh" onClick={() => loadOrders()}>
                 <RefreshCw size={15} /> Atualizar histórico
+              </button>
+              <button className="text-refresh danger" onClick={() => onLogoutAll?.()}>
+                <LogOut size={15} /> Sair de todos os aparelhos
               </button>
             </section>
             <form className="account-address-card" onSubmit={saveAddress}>

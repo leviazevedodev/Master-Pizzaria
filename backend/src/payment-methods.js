@@ -28,7 +28,9 @@ export function normalizeCustomPaymentMethods(value) {
       id,
       label,
       active: raw?.active !== false,
-      siteEnabled: raw?.siteEnabled !== false,
+      // Métodos personalizados são acordos presenciais da loja. O checkout
+      // público aceita somente os meios padronizados e validados no servidor.
+      siteEnabled: false,
       tableEnabled: raw?.tableEnabled !== false,
     });
   }

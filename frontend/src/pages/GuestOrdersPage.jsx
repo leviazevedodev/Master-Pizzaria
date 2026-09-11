@@ -10,6 +10,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { etaRange, money } from "../lib/format";
 import { readStoredStringArray } from "../lib/storage";
+import CustomerOrderNotifications from "../components/CustomerOrderNotifications";
 
 const STATUS_LABEL = {
   SCHEDULED: "Agendado",
@@ -17,6 +18,8 @@ const STATUS_LABEL = {
   PREPARING: "Em preparação",
   OUT_FOR_DELIVERY: "Entregando",
   READY_FOR_PICKUP: "Pronto para retirada",
+  READY_FOR_TABLE: "Pronto para servir",
+  SERVED: "Aguardando fechamento",
   DELIVERED: "Entregue",
   CANCELED: "Cancelado",
 };
@@ -26,6 +29,8 @@ const OPEN_STATUS = new Set([
   "PREPARING",
   "OUT_FOR_DELIVERY",
   "READY_FOR_PICKUP",
+  "READY_FOR_TABLE",
+  "SERVED",
 ]);
 
 function readCodes() {
@@ -104,6 +109,7 @@ export default function GuestOrdersPage() {
             />
             <button className="primary-btn">Acompanhar</button>
           </form>
+          <CustomerOrderNotifications orders={orders} ready={!loading} />
         </section>
         {error && <div className="form-error">{error}</div>}
         {loading ? (

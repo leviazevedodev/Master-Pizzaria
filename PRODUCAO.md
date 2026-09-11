@@ -57,7 +57,7 @@ Reexecutar o seed preserva senha, catálogo, horários, taxas e configurações.
 - Se hospedar o frontend separado no Netlify, defina `VITE_API_URL` durante o build com a URL HTTPS do backend terminada em `/api` e inclua a origem do Netlify em `CORS_ORIGIN`.
 - Configure firewall, atualizações automáticas do host e logs com alerta.
 - No Mercado Pago, crie uma aplicação de **Checkout Transparente**, copie `MERCADOPAGO_PUBLIC_KEY` e `MERCADOPAGO_ACCESS_TOKEN`, configure a assinatura secreta em `MERCADOPAGO_WEBHOOK_SECRET` e cadastre `https://seu-dominio.com/api/payments/mercadopago/webhook` para eventos de pagamento. O cartão é tokenizado pelo componente oficial no navegador; o backend calcula o valor final e nunca aceita o valor enviado pelo cliente.
-- Para recuperação de senha, valide seu domínio no Resend, crie `RESEND_API_KEY` com permissão de envio e use um remetente do mesmo domínio em `EMAIL_FROM`, por exemplo `Master Pizza <contato@seudominio.com.br>`. O link é de uso único e expira em 30 minutos.
+- Para recuperação de senha, valide seu domínio no Resend, crie `RESEND_API_KEY` com permissão de envio e use um remetente do mesmo domínio em `EMAIL_FROM`, por exemplo `Master Pizzaria <contato@seudominio.com.br>`. O link é de uso único e expira em 30 minutos.
 - Em `/api/admin/health`, confirme `mercadoPago: true` e `passwordEmail: true` antes de liberar esses recursos.
 
 ## 5. Antes de publicar

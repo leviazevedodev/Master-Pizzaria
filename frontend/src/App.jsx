@@ -33,48 +33,15 @@ const AdminPage = lazy(() => import("./pages/AdminPage"));
 const AuthPage = lazy(() => import("./pages/AuthPage"));
 const CartPage = lazy(() => import("./pages/CartPage"));
 const CheckoutPage = lazy(() => import("./pages/CheckoutPage"));
+const DigitalTableCheckoutPage = lazy(
+  () => import("./pages/DigitalTableCheckoutPage"),
+);
 const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
 const GuestOrdersPage = lazy(() => import("./pages/GuestOrdersPage"));
 const HomePage = lazy(() => import("./pages/HomePage"));
 const MenuPage = lazy(() => import("./pages/MenuPage"));
 const PaymentReturnPage = lazy(() => import("./pages/PaymentReturnPage"));
 const TrackOrderPage = lazy(() => import("./pages/TrackOrderPage"));
-
-function readSession() {
-  const validSession = (value) =>
-    Boolean(
-      value &&
-        typeof value === "object" &&
-        typeof value.token === "string" &&
-        value.token &&
-        value.user &&
-        typeof value.user === "object",
-    );
-  try {
-    const session =
-      readStoredJson(
-        sessionStorage,
-        "master-pizza-session",
-        null,
-        validSession,
-      ) ||
-      readExpiringStoredJson(
-        localStorage,
-        "master-pizza-session",
-        null,
-        14 * 24 * 60 * 60 * 1000,
-        validSession,
-      );
-    if (session?.user?.isAdmin === true) {
-      localStorage.removeItem("master-pizza-session");
-      localStorage.removeItem("master-pizza-session:updated-at");
-      writeStoredJson(sessionStorage, "master-pizza-session", session);
-    }
-    return session;
-  } catch {
-    return null;
-  }
-}
 
 const PUBLIC_CACHE_KEY = "master-pizza-public-cache-v25";
 const PUBLIC_REFRESH_SIGNAL = "master-pizza-public-refresh";
@@ -97,7 +64,10 @@ function writePublicCache(snapshot) {
 
 export default function App() {
   const location = useLocation();
-  const hidePublicHeader = location.pathname.startsWith("/gestao");
+  const digitalTableMode = location.pathname.startsWith(
+    "/gestao/cardapiodigital",
+  );
+  const hidePublicHeader = location.pathname === "/gestao";
   const [initialPublic] = useState(readPublicCache);
   const [cart, setCart] = useState(() =>
     readExpiringStoredJson(
@@ -138,14 +108,15 @@ export default function App() {
   );
   const [publicReady, setPublicReady] = useState(Boolean(initialPublic));
   const [publicError, setPublicError] = useState("");
-  const [session, setSessionState] = useState(readSession);
+  const [session, setSessionState] = useState(null);
+  const [sessionReady, setSessionReady] = useState(false);
   const [toast, setToast] = useState("");
   const [builderProduct, setBuilderProduct] = useState(null);
   const toastTimer = useRef(null);
   const publicLoadInProgress = useRef(false);
 
   useEffect(() => {
-    document.title = "Master Pizza";
+    document.title = "Master Pizzaria";
   }, []);
   useEffect(() => {
     if (!publicReady || !("serviceWorker" in navigator)) return undefined;
@@ -280,62 +251,57 @@ export default function App() {
     };
   }, [hidePublicHeader, loadPublicData]);
   useEffect(() => {
-    if (!session?.token) return;
+    // O refresh token permanece somente no cookie HttpOnly. O token curto
+    // vive em memória e é reconstruído com segurança ao abrir o site.
     api
-      .get("/auth/me", authHeaders(session.token))
-      .then(({ data }) =>
-        setSession({ token: session.token, user: data.user }, false),
+      .post(
+        "/auth/refresh",
+        {},
+        {
+          headers: { "X-Session-Refresh": "1" },
+          _skipAuthRefresh: true,
+        },
       )
-      .catch(() => logout(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      .then(({ data }) => setSessionState({ token: data.token, user: data.user }))
+      .catch(() => setSessionState(null))
+      .finally(() => setSessionReady(true));
   }, []);
   useEffect(() => {
-    const expire = () => {
-      localStorage.removeItem("master-pizza-session");
-      localStorage.removeItem("master-pizza-session:updated-at");
-      sessionStorage.removeItem("master-pizza-session");
-      setSessionState(null);
+    const expire = () => setSessionState(null);
+    const refreshed = (event) => {
+      const data = event.detail;
+      if (data?.token && data?.user)
+        setSessionState({ token: data.token, user: data.user });
     };
     window.addEventListener("master-pizza-session-expired", expire);
-    return () =>
+    window.addEventListener("master-pizza-session-refreshed", refreshed);
+    return () => {
       window.removeEventListener("master-pizza-session-expired", expire);
-  }, []);
-  useEffect(() => {
-    if (!session?.token || !session?.user?.isAdmin) return undefined;
-    try {
-      const payload = JSON.parse(
-        atob(session.token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")),
-      );
-      const remaining = Number(payload.exp || 0) * 1000 - Date.now();
-      const expire = () =>
-        window.dispatchEvent(new CustomEvent("master-pizza-session-expired"));
-      if (remaining <= 0) {
-        expire();
-        return undefined;
-      }
-      const timer = window.setTimeout(expire, remaining);
-      return () => window.clearTimeout(timer);
-    } catch {
-      return undefined;
+      window.removeEventListener("master-pizza-session-refreshed", refreshed);
     }
-  }, [session?.token, session?.user?.isAdmin]);
+  }, []);
 
-  function setSession(next, persist = true) {
+  function setSession(next) {
     setSessionState(next);
-    localStorage.removeItem("master-pizza-session");
-    localStorage.removeItem("master-pizza-session:updated-at");
-    sessionStorage.removeItem("master-pizza-session");
-    if (next)
-      next.user?.isAdmin
-        ? writeStoredJson(sessionStorage, "master-pizza-session", next)
-        : writeExpiringStoredJson(localStorage, "master-pizza-session", next);
   }
-  function logout(showToast = true) {
-    localStorage.removeItem("master-pizza-session");
-    localStorage.removeItem("master-pizza-session:updated-at");
-    sessionStorage.removeItem("master-pizza-session");
+  async function logout(showToast = true) {
+    try {
+      await api.post(
+        "/auth/logout",
+        {},
+        { headers: { "X-Session-Refresh": "1" }, _skipAuthRefresh: true },
+      );
+    } catch {}
     setSessionState(null);
     if (showToast) notify("Você saiu da sua conta.");
+  }
+  async function logoutAll() {
+    if (!session?.token) return logout();
+    try {
+      await api.post("/auth/logout-all", {}, authHeaders(session.token));
+    } catch {}
+    setSessionState(null);
+    notify("Todas as sessões da conta foram encerradas.");
   }
   function notify(message) {
     setToast(message);
@@ -430,13 +396,13 @@ export default function App() {
     onAdd: handleAddProduct,
   };
 
-  if (!hidePublicHeader && !publicReady)
+  if (!sessionReady || (!hidePublicHeader && !publicReady))
     return (
       <div className="public-boot">
         <div className="public-boot-card">
-          <img src="/images/master-pizza-logo.jpg" alt="Master Pizza" />
+          <img src="/images/master-pizzaria-logo.png" alt="Master Pizzaria" />
           <span className="public-boot-spinner" />
-          <h1>Carregando a Master Pizza</h1>
+          <h1>Carregando a Master Pizzaria</h1>
           <p>
             {publicError ||
               "Buscando cardápio, horários e informações atualizadas da loja..."}
@@ -458,6 +424,12 @@ export default function App() {
           settings={settings}
           storeHours={storeHours}
           session={session}
+          cartPath={
+            digitalTableMode
+              ? "/gestao/cardapiodigital/finalizar"
+              : "/carrinho"
+          }
+          menuPath={digitalTableMode ? "/gestao/cardapiodigital" : "/cardapio"}
         />
       )}
       <Suspense
@@ -474,7 +446,28 @@ export default function App() {
           <Route path="/" element={<HomePage {...sharedCatalogProps} />} />
           <Route
             path="/cardapio"
-            element={<MenuPage {...sharedCatalogProps} />}
+            element={<MenuPage {...sharedCatalogProps} cartCount={cartCount} />}
+          />
+          <Route
+            path="/gestao/cardapiodigital"
+            element={
+              <MenuPage
+                {...sharedCatalogProps}
+                digitalMode
+                cartCount={cartCount}
+              />
+            }
+          />
+          <Route
+            path="/gestao/cardapiodigital/finalizar"
+            element={
+              <DigitalTableCheckoutPage
+                cart={cart}
+                setCart={setCart}
+                changeQty={changeQty}
+                settings={settings}
+              />
+            }
           />
           <Route path="/entregas" element={<Navigate to="/" replace />} />
           <Route
@@ -536,6 +529,7 @@ export default function App() {
                 <AccountPage
                   session={session}
                   onLogout={logout}
+                  onLogoutAll={logoutAll}
                   onReorder={replaceCart}
                 />
               ) : (
@@ -550,6 +544,7 @@ export default function App() {
                 <AccountPage
                   session={session}
                   onLogout={logout}
+                  onLogoutAll={logoutAll}
                   onReorder={replaceCart}
                   ordersOnly
                 />
@@ -565,6 +560,7 @@ export default function App() {
                 <AdminPage
                   session={session}
                   onLogout={logout}
+                  onLogoutAll={logoutAll}
                   onCatalogChanged={handleCatalogChanged}
                 />
               ) : (
@@ -587,9 +583,18 @@ export default function App() {
       )}
       {!hidePublicHeader &&
         !["/carrinho", "/checkout"].includes(location.pathname) && (
-          <FloatingBagBar count={cartCount} total={cartTotal} />
+          <FloatingBagBar
+            count={cartCount}
+            total={cartTotal}
+            to={
+              digitalTableMode
+                ? "/gestao/cardapiodigital/finalizar"
+                : "/carrinho"
+            }
+            label={digitalTableMode ? "Finalizar na mesa" : "Ver sacola"}
+          />
         )}
-      {!hidePublicHeader && <FloatingOrdersButton />}
+      {!hidePublicHeader && !digitalTableMode && <FloatingOrdersButton />}
       <Toast message={toast} onClose={() => setToast("")} />
     </div>
   );

@@ -13,6 +13,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { etaRange, money } from "../lib/format";
 import MotoIcon from "../components/MotoIcon";
+import CustomerOrderNotifications from "../components/CustomerOrderNotifications";
 
 export default function TrackOrderPage() {
   const { code } = useParams();
@@ -23,7 +24,15 @@ export default function TrackOrderPage() {
   const [loading, setLoading] = useState(false);
   const steps = useMemo(() => {
     const base =
-      order?.fulfillmentType === "PICKUP"
+      order?.fulfillmentType === "DINE_IN"
+        ? [
+            ["RECEIVED", "Recebido", Clock3],
+            ["PREPARING", "Em preparo", ChefHat],
+            ["READY_FOR_TABLE", "Pronto para servir", PackageCheck],
+            ["SERVED", "Servido", Check],
+            ["DELIVERED", "Mesa fechada", Check],
+          ]
+        : order?.fulfillmentType === "PICKUP"
         ? [
             ["RECEIVED", "Recebido", Clock3],
             ["PREPARING", "Em preparo", ChefHat],
@@ -101,6 +110,10 @@ export default function TrackOrderPage() {
             />
             <button className="primary-btn">Buscar</button>
           </form>
+          <CustomerOrderNotifications
+            orders={order ? [order] : []}
+            ready={!loading && Boolean(order)}
+          />
           {error && <div className="form-error">{error}</div>}
         </div>
         {loading && !order && (
@@ -116,7 +129,11 @@ export default function TrackOrderPage() {
               <div>
                 <small>Operação</small>
                 <b>
-                  {order.fulfillmentType === "PICKUP" ? "Retirada" : "Entrega"}
+                  {order.fulfillmentType === "DINE_IN"
+                    ? order.table?.name || `Mesa ${order.table?.number || ""}`
+                    : order.fulfillmentType === "PICKUP"
+                      ? "Retirada"
+                      : "Entrega"}
                 </b>
               </div>
               <div>

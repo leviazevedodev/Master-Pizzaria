@@ -125,9 +125,7 @@ export default function CheckoutPage({
   storeHours = [],
   session,
 }) {
-  const customPaymentMethods = (settings.customPaymentMethods || []).filter(
-    (method) => method.active !== false && method.siteEnabled !== false,
-  );
+  const customPaymentMethods = [];
   const onlineAvailable = Boolean(
     settings.onlinePaymentEnabled && settings.onlinePaymentConfigured,
   );
@@ -1599,7 +1597,7 @@ function EmbeddedPaymentStep({ payment, payerEmail, onApproved, onRetry }) {
                   <b>Crédito e débito sem sair da pizzaria</b>
                   <small>
                     O componente oficial do Mercado Pago criptografa os dados.
-                    A Master Pizza recebe somente um token temporário.
+                    A Master Pizzaria recebe somente um token temporário.
                   </small>
                 </div>
               </div>

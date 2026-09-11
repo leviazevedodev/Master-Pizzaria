@@ -10,21 +10,51 @@ export const API_ORIGIN = API_URL.startsWith("http")
 export const api = axios.create({
   baseURL: API_URL,
   timeout: 30000,
+  withCredentials: true,
   headers: { "Content-Type": "application/json" },
 });
 
+let refreshRequest = null;
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     const status = error?.response?.status;
     const code = error?.response?.data?.code;
-    if (status === 401 && ["INVALID_SESSION", "AUTH_REQUIRED"].includes(code)) {
+    const config = error?.config;
+    const canRefresh =
+      status === 401 &&
+      ["INVALID_SESSION", "AUTH_REQUIRED"].includes(code) &&
+      config &&
+      !config._retriedAfterRefresh &&
+      !config._skipAuthRefresh;
+    if (canRefresh) {
+      config._retriedAfterRefresh = true;
       try {
-        localStorage.removeItem("master-pizza-session");
-        sessionStorage.removeItem("master-pizza-session");
+        refreshRequest ||= api
+          .post(
+            "/auth/refresh",
+            {},
+            {
+              headers: { "X-Session-Refresh": "1" },
+              _skipAuthRefresh: true,
+            },
+          )
+          .finally(() => {
+            refreshRequest = null;
+          });
+        const { data } = await refreshRequest;
+        config.headers = config.headers || {};
+        config.headers.Authorization = `Bearer ${data.token}`;
+        window.dispatchEvent(
+          new CustomEvent("master-pizza-session-refreshed", { detail: data }),
+        );
+        return api(config);
+      } catch {}
+      try {
         sessionStorage.setItem(
           "master-pizza-auth-message",
-          "Sua sessão expirou. Entre novamente para continuar no painel.",
+          "Sua sessão terminou. Entre novamente para continuar.",
         );
       } catch {}
       window.dispatchEvent(new CustomEvent("master-pizza-session-expired"));

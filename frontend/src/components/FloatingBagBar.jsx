@@ -3,11 +3,16 @@ import { ShoppingBag } from "lucide-react";
 import { Link } from "react-router-dom";
 import { money } from "../lib/format";
 
-export default function FloatingBagBar({ count, total }) {
+export default function FloatingBagBar({
+  count,
+  total,
+  to = "/carrinho",
+  label = "Ver sacola",
+}) {
   if (!count) return null;
   return (
     <Link
-      to="/carrinho"
+      to={to}
       className="floating-bag-bar"
       aria-label={`Abrir sacola com ${count} itens`}
     >
@@ -15,7 +20,7 @@ export default function FloatingBagBar({ count, total }) {
         <ShoppingBag />
         <b>{count}</b>
       </span>
-      <strong>Ver sacola</strong>
+      <strong>{label}</strong>
       <span className="floating-bag-total">{money(total)}</span>
     </Link>
   );
