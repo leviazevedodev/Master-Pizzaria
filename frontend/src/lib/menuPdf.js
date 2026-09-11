@@ -1,10 +1,14 @@
 const PAGE_WIDTH = 210;
 const PAGE_HEIGHT = 297;
-const PAGE_MARGIN = 14;
-const CONTENT_BOTTOM = 279;
-const BRAND_RED = [220, 28, 36];
-const INK = [30, 33, 38];
-const MUTED = [99, 105, 116];
+const PAGE_MARGIN = 12;
+const HEADER_BOTTOM = 35;
+const CONTENT_BOTTOM = 272;
+const BRAND_RED = [227, 27, 35];
+const GOLD = [232, 184, 87];
+const NIGHT = [13, 15, 18];
+const NIGHT_SOFT = [24, 27, 32];
+const INK = [247, 244, 237];
+const MUTED = [174, 180, 190];
 const imageCache = new Map();
 
 function numeric(value, fallback = 0) {
@@ -41,6 +45,7 @@ export function normalizeMenuUrl(value) {
     const url = new URL(String(value || "").trim());
     if (!["http:", "https:"].includes(url.protocol)) return "";
     if (url.username || url.password) return "";
+    url.hash = "";
     return url.href;
   } catch {
     return "";
@@ -83,9 +88,7 @@ export function printedPriceRows(
 
   return sourceRows.map((row) => {
     const promotional = includePromotions && promotion && discount > 0;
-    const price = promotional
-      ? Math.max(0, row.base - discount)
-      : row.base;
+    const price = promotional ? Math.max(0, row.base - discount) : row.base;
     return {
       ...row,
       price,
@@ -97,8 +100,7 @@ export function printedPriceRows(
 export function printableMenuProducts(products = []) {
   return products
     .filter(
-      (product) =>
-        product && product.available !== false && !product.deletedAt,
+      (product) => product && product.available !== false && !product.deletedAt,
     )
     .slice()
     .sort(
@@ -118,8 +120,7 @@ export function buildMenuSections(
   const subcategoryMap = new Map(subcategories.map((row) => [row.id, row]));
   const categoryIds = [
     ...new Set(printable.map((product) => product.categoryId || "other")),
-  ];
-  const orderedCategoryIds = categoryIds.sort((left, right) => {
+  ].sort((left, right) => {
     const a = categoryMap.get(left);
     const b = categoryMap.get(right);
     return (
@@ -131,7 +132,7 @@ export function buildMenuSections(
     );
   });
 
-  return orderedCategoryIds.map((categoryId) => {
+  return categoryIds.map((categoryId) => {
     const categoryProducts = printable.filter(
       (product) => (product.categoryId || "other") === categoryId,
     );
@@ -189,7 +190,7 @@ async function imageData(url, width, height) {
       const context = canvas.getContext("2d");
       context.fillStyle = "#ffffff";
       context.fillRect(0, 0, width, height);
-      const scale = Math.max(width / image.width, height / image.height);
+      const scale = Math.min(width / image.width, height / image.height);
       const drawWidth = image.width * scale;
       const drawHeight = image.height * scale;
       context.drawImage(
@@ -199,7 +200,7 @@ async function imageData(url, width, height) {
         drawWidth,
         drawHeight,
       );
-      return canvas.toDataURL("image/jpeg", 0.84);
+      return canvas.toDataURL("image/jpeg", 0.88);
     } finally {
       URL.revokeObjectURL(objectUrl);
     }
@@ -208,76 +209,309 @@ async function imageData(url, width, height) {
   return pending;
 }
 
-async function concurrentMap(rows, limit, worker) {
-  const result = new Array(rows.length);
-  let cursor = 0;
-  async function run() {
-    while (cursor < rows.length) {
-      const index = cursor++;
-      result[index] = await worker(rows[index], index);
-    }
-  }
-  await Promise.all(
-    Array.from({ length: Math.min(limit, rows.length) }, () => run()),
-  );
-  return result;
-}
-
-function addBrandHeader(doc, settings, logoData) {
+function paintPage(doc, settings, logoData, page) {
+  doc.setFillColor(...NIGHT);
+  doc.rect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, "F");
   doc.setFillColor(...BRAND_RED);
-  doc.rect(0, 0, PAGE_WIDTH, 7, "F");
-  if (logoData) doc.addImage(logoData, "JPEG", PAGE_MARGIN, 12, 34, 15);
-  else {
+  doc.rect(0, 0, 5, PAGE_HEIGHT, "F");
+  doc.setFillColor(7, 8, 10);
+  doc.rect(5, 0, PAGE_WIDTH - 5, 31, "F");
+  if (logoData) {
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(PAGE_MARGIN, 7, 32, 17, 2, 2, "F");
+    doc.addImage(logoData, "JPEG", PAGE_MARGIN + 2, 9, 28, 13, undefined, "FAST");
+  } else {
     doc.setFillColor(...BRAND_RED);
-    doc.roundedRect(PAGE_MARGIN, 12, 34, 15, 3, 3, "F");
-    doc.setTextColor(255, 255, 255);
+    doc.roundedRect(PAGE_MARGIN, 7, 32, 17, 2, 2, "F");
+    doc.setTextColor(...INK);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text("MENU", PAGE_MARGIN + 17, 21.5, { align: "center" });
+    doc.setFontSize(10);
+    doc.text("MENU", PAGE_MARGIN + 16, 17.6, { align: "center" });
   }
   doc.setTextColor(...INK);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
-  doc.text(cleanLine(settings.storeName) || "Cardápio", 53, 19);
-  doc.setFont("helvetica", "normal");
+  doc.setFontSize(17);
+  doc.text(cleanLine(settings.storeName) || "Cardápio", 49, 15);
   doc.setTextColor(...MUTED);
-  doc.setFontSize(8.5);
-  doc.text("Cardápio para impressão", 53, 25);
-  doc.setDrawColor(225, 228, 232);
-  doc.line(PAGE_MARGIN, 32, PAGE_WIDTH - PAGE_MARGIN, 32);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  const subtitle = page === 1 ? "SABORES DA CASA" : "CONTINUAÇÃO DO CARDÁPIO";
+  doc.text(subtitle, 49, 21.5);
+  doc.setTextColor(...GOLD);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  doc.text(`PÁGINA ${page} / 2`, PAGE_WIDTH - PAGE_MARGIN, 16, {
+    align: "right",
+  });
+  doc.setDrawColor(57, 61, 68);
+  doc.line(
+    PAGE_MARGIN,
+    HEADER_BOTTOM - 2,
+    PAGE_WIDTH - PAGE_MARGIN,
+    HEADER_BOTTOM - 2,
+  );
 }
 
-function addPageFooters(doc, settings, menuUrl) {
-  const pages = doc.getNumberOfPages();
-  for (let page = 1; page <= pages; page += 1) {
-    doc.setPage(page);
-    doc.setDrawColor(229, 231, 235);
-    doc.line(PAGE_MARGIN, 285, PAGE_WIDTH - PAGE_MARGIN, 285);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7.5);
+function makeRows(doc, sections, includePromotions, columnWidth, descriptions) {
+  const rows = [];
+  const productTextWidth = columnWidth * 0.61;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6.8);
+  for (const section of sections) {
+    rows.push({ type: "category", text: cleanLine(section.name), height: 9 });
+    for (const group of section.groups) {
+      const showGroup =
+        section.groups.length > 1 || group.name.toLowerCase() !== "outros";
+      if (showGroup)
+        rows.push({ type: "group", text: cleanLine(group.name), height: 6 });
+      for (const product of group.products) {
+        const nameLines = doc
+          .splitTextToSize(cleanLine(product.name), productTextWidth)
+          .slice(0, 2);
+        const descriptionLines =
+          descriptions && cleanLine(product.description)
+            ? doc
+                .splitTextToSize(cleanLine(product.description), productTextWidth)
+                .slice(0, 2)
+            : [];
+        const prices = printedPriceRows(product, includePromotions);
+        const textHeight =
+          nameLines.length * 3.5 + descriptionLines.length * 2.8;
+        const priceHeight = Math.max(1, prices.length) * 3.15;
+        rows.push({
+          type: "product",
+          product,
+          nameLines,
+          descriptionLines,
+          prices,
+          category: cleanLine(section.name),
+          group: showGroup ? cleanLine(group.name) : "",
+          height: Math.max(8.2, 3.2 + textHeight, 3.2 + priceHeight),
+        });
+      }
+    }
+  }
+  return rows;
+}
+
+function minimumPartitionCapacity(rows, partitions) {
+  const weights = rows.map((row) => row.height);
+  let low = Math.max(...weights);
+  let high = weights.reduce((sum, value) => sum + value, 0);
+  const needed = (capacity) => {
+    let count = 1;
+    let used = 0;
+    for (const weight of weights) {
+      if (used && used + weight > capacity) {
+        count += 1;
+        used = 0;
+      }
+      used += weight;
+    }
+    return count;
+  };
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    const middle = (low + high) / 2;
+    if (needed(middle) <= partitions) high = middle;
+    else low = middle;
+  }
+  return high;
+}
+
+function partitionRows(rows, partitions, capacity) {
+  const columns = Array.from({ length: partitions }, () => []);
+  let column = 0;
+  let used = 0;
+  rows.forEach((row, index) => {
+    const remainingRows = rows.length - index;
+    const remainingColumns = partitions - column;
+    const mustLeaveOnePerColumn = remainingRows === remainingColumns;
+    if (
+      column < partitions - 1 &&
+      used > 0 &&
+      (used + row.height > capacity || mustLeaveOnePerColumn)
+    ) {
+      column += 1;
+      used = 0;
+    }
+    columns[column].push(row);
+    used += row.height;
+  });
+  return columns;
+}
+
+function drawMenuColumn(doc, rows, x, width, scale) {
+  let y = HEADER_BOTTOM;
+  const pad = 2.4 * scale;
+  const firstProduct = rows.find((row) => row.type === "product");
+  if (rows[0]?.type === "product" && firstProduct) {
     doc.setTextColor(...MUTED);
-    doc.text(cleanLine(settings.storeName) || "Cardápio", PAGE_MARGIN, 290);
-    doc.text(`Página ${page} de ${pages}`, PAGE_WIDTH / 2, 290, {
-      align: "center",
-    });
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(5.6 * scale);
     doc.text(
-      doc.splitTextToSize(menuUrl, 62)[0] || "",
-      PAGE_WIDTH - PAGE_MARGIN,
-      290,
-      { align: "right" },
+      [firstProduct.category, firstProduct.group]
+        .filter(Boolean)
+        .join("  •  ")
+        .toUpperCase(),
+      x,
+      y + 2.5 * scale,
     );
+    y += 4.2 * scale;
+  }
+  for (const row of rows) {
+    const height = row.height * scale;
+    if (row.type === "category") {
+      doc.setFillColor(...BRAND_RED);
+      doc.roundedRect(
+        x,
+        y + 0.8 * scale,
+        width,
+        6.8 * scale,
+        1.5,
+        1.5,
+        "F",
+      );
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.4 * scale);
+      doc.text(row.text.toUpperCase(), x + 2.7 * scale, y + 5.35 * scale);
+    } else if (row.type === "group") {
+      doc.setTextColor(...GOLD);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7 * scale);
+      doc.text(row.text.toUpperCase(), x + 1.2 * scale, y + 3.5 * scale);
+      doc.setDrawColor(71, 66, 51);
+      doc.line(
+        x + 1.2 * scale,
+        y + 4.8 * scale,
+        x + width,
+        y + 4.8 * scale,
+      );
+    } else {
+      const priceWidth = width * 0.35;
+      const textX = x + pad;
+      const priceX = x + width - pad;
+      doc.setFillColor(...NIGHT_SOFT);
+      doc.roundedRect(
+        x,
+        y + 0.35 * scale,
+        width,
+        height - 0.7 * scale,
+        1.5,
+        1.5,
+        "F",
+      );
+      doc.setTextColor(...INK);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6.8 * scale);
+      doc.text(row.nameLines, textX, y + 3.35 * scale);
+      if (row.product.badge) {
+        doc.setTextColor(...BRAND_RED);
+        doc.setFontSize(5.1 * scale);
+        doc.text(
+          cleanLine(row.product.badge).toUpperCase(),
+          textX,
+          y + (3.35 + row.nameLines.length * 3.25) * scale,
+        );
+      }
+      if (row.descriptionLines.length) {
+        doc.setTextColor(...MUTED);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(5.2 * scale);
+        const descriptionY =
+          y +
+          (3.35 +
+            row.nameLines.length * 3.2 +
+            (row.product.badge ? 2.1 : 0)) *
+            scale;
+        doc.text(row.descriptionLines, textX, descriptionY);
+      }
+      row.prices.forEach((price, priceIndex) => {
+        const lineY = y + (3.25 + priceIndex * 3.05) * scale;
+        const label = price.label ? `${cleanLine(price.label)}  ` : "";
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(5.3 * scale);
+        doc.setTextColor(...MUTED);
+        if (label)
+          doc.text(label, priceX - priceWidth + 1, lineY, { align: "left" });
+        if (price.promotional) {
+          doc.setFontSize(4.7 * scale);
+          doc.text(formatPrice(price.base), priceX - 16 * scale, lineY, {
+            align: "right",
+          });
+          doc.setDrawColor(...MUTED);
+          doc.line(
+            priceX - 29 * scale,
+            lineY - 1.1 * scale,
+            priceX - 16 * scale,
+            lineY - 1.1 * scale,
+          );
+          doc.setTextColor(...GOLD);
+        } else doc.setTextColor(...INK);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(5.9 * scale);
+        doc.text(formatPrice(price.price), priceX, lineY, { align: "right" });
+      });
+    }
+    y += height;
   }
 }
 
-function drawProductImageFallback(doc, product, x, y, size) {
-  doc.setFillColor(241, 242, 244);
-  doc.roundedRect(x, y, size, size, 2.5, 2.5, "F");
-  doc.setTextColor(...BRAND_RED);
+function drawFooter(doc, settings, menuUrl, qrData, page) {
+  doc.setFillColor(8, 9, 11);
+  doc.rect(
+    5,
+    CONTENT_BOTTOM + 3,
+    PAGE_WIDTH - 5,
+    PAGE_HEIGHT - CONTENT_BOTTOM - 3,
+    "F",
+  );
+  doc.addImage(
+    qrData,
+    "PNG",
+    PAGE_MARGIN,
+    CONTENT_BOTTOM + 5,
+    16,
+    16,
+    undefined,
+    "FAST",
+  );
+  doc.setTextColor(...INK);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(15);
-  doc.text(cleanLine(product.name).slice(0, 1).toUpperCase() || "M", x + size / 2, y + size / 2 + 2, {
-    align: "center",
+  doc.setFontSize(7.2);
+  doc.text("CARDÁPIO DIGITAL", PAGE_MARGIN + 20, CONTENT_BOTTOM + 10);
+  doc.setTextColor(...MUTED);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(5.6);
+  doc.text(
+    "Aponte a câmera para ver o menu sempre atualizado.",
+    PAGE_MARGIN + 20,
+    CONTENT_BOTTOM + 14,
+  );
+  const contact = [cleanLine(settings.phone), cleanLine(settings.address)]
+    .filter(Boolean)
+    .join("  •  ");
+  if (contact)
+    doc.text(
+      doc.splitTextToSize(contact, 92).slice(0, 2),
+      PAGE_WIDTH - PAGE_MARGIN,
+      CONTENT_BOTTOM + 9,
+      { align: "right" },
+    );
+  doc.setTextColor(...GOLD);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(5.2);
+  doc.text(`PÁGINA ${page} DE 2`, PAGE_WIDTH - PAGE_MARGIN, CONTENT_BOTTOM + 19, {
+    align: "right",
   });
+  doc.setTextColor(120, 126, 136);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(4.8);
+  doc.text(
+    doc.splitTextToSize(menuUrl, 105)[0] || "",
+    PAGE_MARGIN + 20,
+    CONTENT_BOTTOM + 19,
+  );
 }
 
 export async function createMenuPdf({
@@ -290,7 +524,7 @@ export async function createMenuPdf({
   download = true,
 }) {
   const normalizedUrl = normalizeMenuUrl(menuUrl);
-  if (!normalizedUrl) throw new Error("Informe um link HTTP ou HTTPS válido.");
+  if (!normalizedUrl) throw new Error("O endereço público do cardápio é inválido.");
   const printable = printableMenuProducts(products);
   if (!printable.length)
     throw new Error("Não há produtos ativos para incluir no cardápio.");
@@ -299,19 +533,15 @@ export async function createMenuPdf({
     import("qrcode"),
   ]);
   const sections = buildMenuSections(printable, categories, subcategories);
-  const [logoData, qrData, productImages] = await Promise.all([
-    imageData(settings.logoImage, 680, 300),
+  const [logoData, qrData] = await Promise.all([
+    imageData(settings.logoImage, 700, 320),
     QRCode.toDataURL(normalizedUrl, {
       errorCorrectionLevel: "H",
       margin: 1,
       width: 800,
-      color: { dark: "#17191d", light: "#ffffff" },
+      color: { dark: "#0d0f12", light: "#ffffff" },
     }),
-    concurrentMap(printable, 4, (product) => imageData(product.image, 420, 420)),
   ]);
-  const imageById = new Map(
-    printable.map((product, index) => [product.id, productImages[index]]),
-  );
   const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
   doc.setProperties({
     title: `Cardápio - ${cleanLine(settings.storeName) || "Restaurante"}`,
@@ -319,144 +549,39 @@ export async function createMenuPdf({
     author: cleanLine(settings.storeName) || "Restaurante",
     creator: "Master Pizza",
   });
-  addBrandHeader(doc, settings, logoData);
-  let y = 39;
-  const addPage = () => {
-    doc.addPage();
-    addBrandHeader(doc, settings, logoData);
-    y = 39;
-  };
-  const ensureSpace = (height) => {
-    if (y + height > CONTENT_BOTTOM) addPage();
-  };
 
-  for (const section of sections) {
-    ensureSpace(62);
-    doc.setFillColor(...BRAND_RED);
-    doc.roundedRect(PAGE_MARGIN, y, PAGE_WIDTH - PAGE_MARGIN * 2, 11, 2, 2, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
-    doc.text(cleanLine(section.name), PAGE_MARGIN + 5, y + 7.2);
-    y += 15;
+  const columnsPerPage =
+    printable.length > 70 ? 3 : printable.length > 34 ? 2 : 1;
+  const columnGap = columnsPerPage === 3 ? 4 : 6;
+  const columnWidth =
+    (PAGE_WIDTH - PAGE_MARGIN * 2 - columnGap * (columnsPerPage - 1)) /
+    columnsPerPage;
+  const slots = columnsPerPage * 2;
+  let rows = makeRows(doc, sections, includePromotions, columnWidth, true);
+  let capacity = minimumPartitionCapacity(rows, slots);
+  const availableHeight = CONTENT_BOTTOM - HEADER_BOTTOM;
+  if (availableHeight / capacity < 0.78) {
+    rows = makeRows(doc, sections, includePromotions, columnWidth, false);
+    capacity = minimumPartitionCapacity(rows, slots);
+  }
+  const scale = Math.min(1.35, availableHeight / capacity);
+  const columns = partitionRows(rows, slots, capacity);
 
-    for (const group of section.groups) {
-      const showGroup =
-        section.groups.length > 1 || group.name.toLowerCase() !== "outros";
-      if (showGroup) {
-        ensureSpace(46);
-        doc.setTextColor(...INK);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(10);
-        doc.text(cleanLine(group.name), PAGE_MARGIN + 1, y + 5);
-        doc.setDrawColor(221, 224, 228);
-        doc.line(PAGE_MARGIN + 1, y + 7, PAGE_WIDTH - PAGE_MARGIN, y + 7);
-        y += 10;
-      }
-
-      for (const product of group.products) {
-        const nameLines = doc
-          .splitTextToSize(cleanLine(product.name), 100)
-          .slice(0, 2);
-        const nameExtraHeight = Math.max(0, nameLines.length - 1) * 4;
-        const description = cleanLine(product.description);
-        const descriptionLines = description
-          ? doc.splitTextToSize(description, 104).slice(0, 3)
-          : [];
-        const rows = printedPriceRows(product, includePromotions);
-        const priceText = rows.map((row) => {
-          const label = row.label ? `${cleanLine(row.label)}: ` : "";
-          return row.promotional
-            ? `${label}${formatPrice(row.base)}  |  ${formatPrice(row.price)}`
-            : `${label}${formatPrice(row.price)}`;
-        });
-        const priceLines = doc
-          .splitTextToSize(priceText.join("   "), 49)
-          .slice(0, 4);
-        const cardHeight = Math.max(
-          32,
-          14 +
-            nameExtraHeight +
-            descriptionLines.length * 3.8 +
-            Math.max(1, priceLines.length) * 3.8,
-        );
-        ensureSpace(cardHeight + 4);
-        doc.setFillColor(249, 249, 248);
-        doc.setDrawColor(230, 231, 233);
-        doc.roundedRect(
-          PAGE_MARGIN,
-          y,
-          PAGE_WIDTH - PAGE_MARGIN * 2,
-          cardHeight,
-          3,
-          3,
-          "FD",
-        );
-        const image = imageById.get(product.id);
-        if (image)
-          doc.addImage(image, "JPEG", PAGE_MARGIN + 3, y + 3, 26, 26, undefined, "FAST");
-        else drawProductImageFallback(doc, product, PAGE_MARGIN + 3, y + 3, 26);
-        const textX = PAGE_MARGIN + 33;
-        doc.setTextColor(...INK);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(10.5);
-        doc.text(nameLines, textX, y + 7);
-        if (product.badge) {
-          doc.setFontSize(6.8);
-          doc.setTextColor(...BRAND_RED);
-          doc.text(
-            cleanLine(product.badge).toUpperCase(),
-            textX,
-            y + 11.5 + nameExtraHeight,
-          );
-        }
-        doc.setTextColor(...MUTED);
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(7.4);
-        if (descriptionLines.length)
-          doc.text(
-            descriptionLines,
-            textX,
-            y + (product.badge ? 16 : 13) + nameExtraHeight,
-          );
-        const priceX = PAGE_WIDTH - PAGE_MARGIN - 4;
-        doc.setTextColor(...INK);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(8);
-        doc.text(priceLines, priceX, y + 8, { align: "right" });
-        if (priceText.some((line) => line.includes("|"))) {
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(6.5);
-          doc.setTextColor(...BRAND_RED);
-          doc.text("valor base  |  valor promocional", priceX, y + cardHeight - 4, {
-            align: "right",
-          });
-        }
-        y += cardHeight + 4;
-      }
+  doc.addPage("a4", "portrait");
+  for (let page = 1; page <= 2; page += 1) {
+    doc.setPage(page);
+    paintPage(doc, settings, logoData, page);
+    for (let index = 0; index < columnsPerPage; index += 1) {
+      const slot = (page - 1) * columnsPerPage + index;
+      const x = PAGE_MARGIN + index * (columnWidth + columnGap);
+      drawMenuColumn(doc, columns[slot] || [], x, columnWidth, scale);
     }
+    drawFooter(doc, settings, normalizedUrl, qrData, page);
   }
 
-  ensureSpace(48);
-  doc.setFillColor(245, 247, 249);
-  doc.setDrawColor(220, 224, 229);
-  doc.roundedRect(PAGE_MARGIN, y, PAGE_WIDTH - PAGE_MARGIN * 2, 43, 4, 4, "FD");
-  doc.addImage(qrData, "PNG", PAGE_MARGIN + 5, y + 4, 35, 35, undefined, "FAST");
-  doc.setTextColor(...INK);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.text("Veja o cardápio no celular", PAGE_MARGIN + 47, y + 13);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(...MUTED);
-  doc.setFontSize(8.5);
-  doc.text("Aponte a câmera para o QR Code e acesse o menu atualizado.", PAGE_MARGIN + 47, y + 20);
-  doc.setTextColor(...BRAND_RED);
-  doc.setFontSize(7.5);
-  doc.text(doc.splitTextToSize(normalizedUrl, 122), PAGE_MARGIN + 47, y + 27);
-  addPageFooters(doc, settings, normalizedUrl);
   const fileName = `${fileSlug(settings.storeName)}-cardapio.pdf`;
   if (download) doc.save(fileName);
-  return { doc, fileName, pageCount: doc.getNumberOfPages() };
+  return { doc, fileName, pageCount: 2 };
 }
 
 export async function createQrCodePdf({
@@ -465,62 +590,70 @@ export async function createQrCodePdf({
   download = true,
 }) {
   const normalizedUrl = normalizeMenuUrl(menuUrl);
-  if (!normalizedUrl) throw new Error("Informe um link HTTP ou HTTPS válido.");
+  if (!normalizedUrl) throw new Error("O endereço público do cardápio é inválido.");
   const [{ jsPDF }, { default: QRCode }] = await Promise.all([
     import("jspdf"),
     import("qrcode"),
   ]);
   const [logoData, qrData] = await Promise.all([
-    imageData(settings.logoImage, 680, 300),
+    imageData(settings.logoImage, 700, 320),
     QRCode.toDataURL(normalizedUrl, {
       errorCorrectionLevel: "H",
       margin: 1,
       width: 1200,
-      color: { dark: "#17191d", light: "#ffffff" },
+      color: { dark: "#0d0f12", light: "#ffffff" },
     }),
   ]);
   const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
   doc.setProperties({
     title: `QR Code do cardápio - ${cleanLine(settings.storeName) || "Restaurante"}`,
-    subject: "Acesso ao cardápio digital",
+    subject: "Acesso direto ao cardápio digital",
     author: cleanLine(settings.storeName) || "Restaurante",
     creator: "Master Pizza",
   });
+  doc.setFillColor(...NIGHT);
+  doc.rect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, "F");
   doc.setFillColor(...BRAND_RED);
-  doc.rect(0, 0, PAGE_WIDTH, 16, "F");
-  if (logoData) doc.addImage(logoData, "JPEG", 73, 27, 64, 28);
+  doc.rect(0, 0, 7, PAGE_HEIGHT, "F");
+  if (logoData) {
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(69, 23, 72, 31, 4, 4, "F");
+    doc.addImage(logoData, "JPEG", 73, 27, 64, 23, undefined, "FAST");
+  }
   doc.setTextColor(...INK);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(23);
-  doc.text(cleanLine(settings.storeName) || "Nosso cardápio", PAGE_WIDTH / 2, 70, {
-    align: "center",
-  });
-  doc.setTextColor(...MUTED);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(13);
-  doc.text("Aponte a câmera do celular", PAGE_WIDTH / 2, 82, {
+  doc.setFontSize(25);
+  doc.text(
+    cleanLine(settings.storeName) || "Nosso cardápio",
+    PAGE_WIDTH / 2 + 3,
+    74,
+    { align: "center" },
+  );
+  doc.setTextColor(...GOLD);
+  doc.setFontSize(10);
+  doc.text("ESCOLHA. PEÇA. APROVEITE.", PAGE_WIDTH / 2 + 3, 84, {
     align: "center",
   });
   doc.setFillColor(255, 255, 255);
-  doc.setDrawColor(220, 223, 227);
-  doc.roundedRect(48, 92, 114, 114, 6, 6, "FD");
-  doc.addImage(qrData, "PNG", 55, 99, 100, 100, undefined, "FAST");
-  doc.setTextColor(...BRAND_RED);
+  doc.roundedRect(48, 96, 120, 120, 7, 7, "F");
+  doc.addImage(qrData, "PNG", 57, 105, 102, 102, undefined, "FAST");
+  doc.setTextColor(...INK);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
-  doc.text("ACESSE O CARDÁPIO", PAGE_WIDTH / 2, 224, { align: "center" });
-  doc.setFont("helvetica", "normal");
+  doc.text("APONTE A CÂMERA", PAGE_WIDTH / 2 + 3, 236, { align: "center" });
   doc.setTextColor(...MUTED);
-  doc.setFontSize(8.5);
-  doc.text(doc.splitTextToSize(normalizedUrl, 150), PAGE_WIDTH / 2, 237, {
-    align: "center",
-  });
-  doc.setFillColor(...BRAND_RED);
-  doc.roundedRect(52, 258, 106, 13, 3, 3, "F");
-  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text(
+    "Este QR Code abre somente o cardápio digital da loja.",
+    PAGE_WIDTH / 2 + 3,
+    246,
+    { align: "center" },
+  );
+  doc.setTextColor(...BRAND_RED);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9.5);
-  doc.text("Cardápio sempre atualizado no seu celular", PAGE_WIDTH / 2, 266.5, {
+  doc.setFontSize(7);
+  doc.text(doc.splitTextToSize(normalizedUrl, 160), PAGE_WIDTH / 2 + 3, 258, {
     align: "center",
   });
   const fileName = `${fileSlug(settings.storeName)}-qr-code-cardapio.pdf`;

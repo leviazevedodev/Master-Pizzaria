@@ -4,6 +4,8 @@ import {
   ArrowLeft,
   ArrowUp,
   BarChart3,
+  Bell,
+  BellRing,
   Check,
   ChevronRight,
   Clock3,
@@ -110,6 +112,7 @@ const ORDER_VIEW_LABELS = {
   READY_FOR_DELIVERY: "Prontos para entrega",
   READY_FOR_PICKUP: "Prontos p/ retirada",
   READY_FOR_TABLE: "Pronto para servir",
+  SERVED: "Aguardando fechamento",
   SCHEDULED: "Agendamentos",
   OUT_FOR_DELIVERY: "Entregando",
   DELIVERED: "Entregues",
@@ -206,6 +209,26 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
   const messageTimer = useRef(null);
   const loadAllInProgress = useRef(false);
   const liveRefreshInProgress = useRef(false);
+  const previousOrderSnapshot = useRef(new Map());
+  const orderNotificationsPrimed = useRef(false);
+  const [orderNotificationsEnabled, setOrderNotificationsEnabled] = useState(
+      () => {
+        try {
+          return (
+            localStorage.getItem("master-pizza-order-notifications") === "true"
+          );
+        } catch {
+          return false;
+        }
+      },
+    ),
+    [orderNotificationPermission, setOrderNotificationPermission] = useState(
+      () =>
+        typeof Notification === "undefined"
+          ? "unsupported"
+          : Notification.permission,
+    ),
+    [orderLiveNotice, setOrderLiveNotice] = useState(null);
   const [orderSearch, setOrderSearch] = useState(""),
     [orderView, setOrderView] = useState(() =>
       isDeliveryStaff ? "READY_FOR_DELIVERY" : "OPEN",
@@ -409,7 +432,11 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
     [],
   );
   useEffect(() => {
-    if (!["overview", "orders", "analytics"].includes(tab)) return undefined;
+    if (
+      !["overview", "orders", "analytics"].includes(tab) &&
+      !(orderNotificationsEnabled && can("orders"))
+    )
+      return undefined;
     const timer = window.setInterval(
       async () => {
         if (liveRefreshInProgress.current) return;
@@ -439,15 +466,145 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
             );
             setAnalytics(data);
           }
+          if (
+            orderNotificationsEnabled &&
+            can("orders") &&
+            !["overview", "orders"].includes(tab)
+          ) {
+            const { data } = await api.get(
+              "/admin/orders",
+              authHeaders(session.token),
+            );
+            setOrders(data);
+          }
         } catch {
         } finally {
           liveRefreshInProgress.current = false;
         }
       },
-      isDeliveryStaff ? 5000 : 20000,
+      isDeliveryStaff ? 5000 : orderNotificationsEnabled ? 8000 : 20000,
     );
     return () => window.clearInterval(timer);
-  }, [tab, session.token, permissions, isDeliveryStaff]);
+  }, [
+    tab,
+    session.token,
+    permissions,
+    isDeliveryStaff,
+    orderNotificationsEnabled,
+  ]);
+  useEffect(() => {
+    const current = new Map(
+      orders.map((order) => [
+        order.id,
+        `${order.status}|${order.paymentStatus}|${order.updatedAt}`,
+      ]),
+    );
+    if (!orderNotificationsPrimed.current) {
+      if (loading) return;
+      previousOrderSnapshot.current = current;
+      orderNotificationsPrimed.current = true;
+      return;
+    }
+    const changes = orders.filter(
+      (order) =>
+        !previousOrderSnapshot.current.has(order.id) ||
+        previousOrderSnapshot.current.get(order.id) !== current.get(order.id),
+    );
+    previousOrderSnapshot.current = current;
+    if (
+      !changes.length ||
+      !orderNotificationsEnabled ||
+      settings?.browserNotificationsEnabled === false
+    )
+      return;
+
+    const latest = changes[0];
+    const title =
+      changes.length === 1
+        ? `Pedido #${latest.shortCode} atualizado`
+        : `${changes.length} pedidos atualizados`;
+    const body =
+      changes.length === 1
+        ? `${latest.fulfillmentType === "DINE_IN" ? latest.table?.name || `Mesa ${latest.table?.number || ""}` : latest.customerName} • ${STATUS_LABEL[latest.status] || latest.status}`
+        : "Abra a fila para conferir todas as alterações.";
+    setOrderLiveNotice({ title, body, at: new Date() });
+
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (AudioContext) {
+        const context = new AudioContext();
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.frequency.setValueAtTime(740, context.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(
+          1040,
+          context.currentTime + 0.22,
+        );
+        gain.gain.setValueAtTime(0.0001, context.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.18, context.currentTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.35);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start();
+        oscillator.stop(context.currentTime + 0.36);
+        oscillator.onended = () => context.close().catch(() => {});
+      }
+    } catch {}
+
+    if (
+      typeof Notification !== "undefined" &&
+      Notification.permission === "granted"
+    ) {
+      const notification = new Notification(title, {
+        body,
+        icon: mediaUrl(settings?.logoImage) || undefined,
+        tag: "master-pizza-order-updates",
+        renotify: true,
+        requireInteraction: true,
+      });
+      notification.onclick = () => {
+        window.focus();
+        setTab("orders");
+        notification.close();
+      };
+    }
+  }, [
+    orders,
+    loading,
+    orderNotificationsEnabled,
+    settings?.browserNotificationsEnabled,
+  ]);
+
+  async function toggleOrderNotifications() {
+    if (orderNotificationsEnabled) {
+      setOrderNotificationsEnabled(false);
+      setOrderLiveNotice(null);
+      try {
+        localStorage.setItem("master-pizza-order-notifications", "false");
+      } catch {}
+      notify("Notificações de pedidos desativadas neste aparelho.");
+      return;
+    }
+    if (typeof Notification === "undefined") {
+      setOrderNotificationPermission("unsupported");
+      return setError("Este navegador não oferece notificações do sistema.");
+    }
+    const permission =
+      Notification.permission === "default"
+        ? await Notification.requestPermission()
+        : Notification.permission;
+    setOrderNotificationPermission(permission);
+    if (permission !== "granted")
+      return setError(
+        "A permissão de notificações está bloqueada. Libere-a nas configurações do navegador.",
+      );
+    setOrderNotificationsEnabled(true);
+    try {
+      localStorage.setItem("master-pizza-order-notifications", "true");
+    } catch {}
+    notify("Notificações grandes de pedidos ativadas neste aparelho.");
+  }
+
   function notify(text) {
     setMessage(text);
     window.clearTimeout(messageTimer.current);
@@ -1375,6 +1532,23 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
             <b>{message}</b>
           </div>
         )}
+        {orderLiveNotice && (
+          <aside className="order-live-notice" aria-live="assertive">
+            <span className="order-live-icon"><BellRing /></span>
+            <div>
+              <small>ATUALIZAÇÃO EM TEMPO REAL</small>
+              <b>{orderLiveNotice.title}</b>
+              <p>{orderLiveNotice.body}</p>
+            </div>
+            <button
+              type="button"
+              aria-label="Fechar notificação"
+              onClick={() => setOrderLiveNotice(null)}
+            >
+              <X />
+            </button>
+          </aside>
+        )}
 
         {tab === "overview" && can("overview") && (
           <>
@@ -1406,7 +1580,9 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
                         : overviewView === "PREPARING"
                           ? "Pedidos já aceitos e em produção."
                           : overviewView === "READY_FOR_TABLE"
-                            ? "Pedidos do salão concluídos pela cozinha e aguardando o garçom."
+                           ? "Pedidos do salão concluídos pela cozinha e aguardando o garçom."
+                            : overviewView === "SERVED"
+                              ? "Mesas já servidas que aguardam conferência, pagamento e liberação."
                             : "Visualização separada para facilitar o trabalho da equipe."}
                   </p>
                 </div>
@@ -1457,6 +1633,19 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
                 </p>
               </div>
               <div className="panel-actions">
+                <button
+                  type="button"
+                  className={`order-notification-toggle ${orderNotificationsEnabled ? "active" : ""}`}
+                  onClick={toggleOrderNotifications}
+                  title={
+                    orderNotificationPermission === "denied"
+                      ? "Notificações bloqueadas pelo navegador"
+                      : "Avisar quando um pedido for criado ou atualizado"
+                  }
+                >
+                  {orderNotificationsEnabled ? <BellRing size={17} /> : <Bell size={17} />}
+                  {orderNotificationsEnabled ? "Notificações ativas" : "Ativar notificações"}
+                </button>
                 <OrderViewTabs
                   value={orderView}
                   onChange={setOrderView}
@@ -1968,6 +2157,7 @@ function OverviewOrderTabs({ value, onChange, buckets, deliveryOnly = false }) {
         "RECEIVED",
         "PREPARING",
         "READY_FOR_TABLE",
+        "SERVED",
         "READY_FOR_DELIVERY",
         "SCHEDULED",
         "OUT_FOR_DELIVERY",
@@ -1978,6 +2168,7 @@ function OverviewOrderTabs({ value, onChange, buckets, deliveryOnly = false }) {
     RECEIVED: "Recebidos",
     PREPARING: "Em preparação",
     READY_FOR_TABLE: "Pronto para servir",
+    SERVED: "Aguardando fechamento",
     READY_FOR_DELIVERY: "Prontos para entrega",
     SCHEDULED: "Agendamentos",
     OUT_FOR_DELIVERY: "Entregando",
@@ -1988,7 +2179,7 @@ function OverviewOrderTabs({ value, onChange, buckets, deliveryOnly = false }) {
     <div className="order-view-tabs overview-order-tabs">
       {views.map((key) => {
         const count = buckets[key]?.length || 0;
-        const calling = ["RECEIVED", "READY_FOR_TABLE"].includes(key) && count > 0;
+        const calling = ["RECEIVED", "READY_FOR_TABLE", "SERVED"].includes(key) && count > 0;
         return (
           <button
             key={key}
@@ -2010,6 +2201,8 @@ function OrderViewTabs({ value, onChange, buckets, deliveryOnly = false }) {
         "OPEN",
         "RECEIVED",
         "PREPARING",
+        "READY_FOR_TABLE",
+        "SERVED",
         "READY_FOR_DELIVERY",
         "SCHEDULED",
         "OUT_FOR_DELIVERY",

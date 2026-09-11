@@ -9,7 +9,6 @@ import { PrismaClient } from "@prisma/client";
 import {
   detectImageMime,
   escapeHtml,
-  isTrustedMercadoPagoUrl,
   verifyMercadoPagoSignature,
 } from "./security.js";
 import {
@@ -50,8 +49,19 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const PUBLIC_BACKEND_URL = (
   process.env.PUBLIC_BACKEND_URL || `http://localhost:${PORT}`
 ).replace(/\/$/, "");
-const MERCADOPAGO_ACCESS_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN || "";
-const MERCADOPAGO_WEBHOOK_SECRET = process.env.MERCADOPAGO_WEBHOOK_SECRET || "";
+const MERCADOPAGO_ACCESS_TOKEN = (
+  process.env.MERCADOPAGO_ACCESS_TOKEN || ""
+).trim();
+const MERCADOPAGO_PUBLIC_KEY = (
+  process.env.MERCADOPAGO_PUBLIC_KEY || ""
+).trim();
+const MERCADOPAGO_WEBHOOK_SECRET = (
+  process.env.MERCADOPAGO_WEBHOOK_SECRET || ""
+).trim();
+const RESEND_READY = Boolean(
+  String(process.env.RESEND_API_KEY || "").trim() &&
+    String(process.env.EMAIL_FROM || "").trim(),
+);
 const WHATSAPP_WEBHOOK_URL = (process.env.WHATSAPP_WEBHOOK_URL || "").trim();
 const WHATSAPP_WEBHOOK_TOKEN = (
   process.env.WHATSAPP_WEBHOOK_TOKEN || ""
@@ -64,10 +74,23 @@ const OSRM_BASE_URL = (
 ).replace(/\/$/, "");
 const MERCADOPAGO_PUBLIC_READY = Boolean(
   MERCADOPAGO_ACCESS_TOKEN &&
+    MERCADOPAGO_PUBLIC_KEY &&
     MERCADOPAGO_WEBHOOK_SECRET &&
-    /^https:\/\//i.test(PUBLIC_BACKEND_URL) &&
-    /^https:\/\//i.test(FRONTEND_URL),
+    (!isProduction ||
+      (/^https:\/\//i.test(PUBLIC_BACKEND_URL) &&
+        /^https:\/\//i.test(FRONTEND_URL))),
 );
+const MERCADOPAGO_NOTIFICATION_URL = /^https:\/\//i.test(PUBLIC_BACKEND_URL)
+  ? `${PUBLIC_BACKEND_URL}/api/payments/mercadopago/webhook`
+  : "";
+const PUBLIC_MENU_URL = (() => {
+  try {
+    const url = new URL("/cardapio", FRONTEND_URL);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch {
+    return "";
+  }
+})();
 
 if (
   JWT_SECRET.length < 32 ||
@@ -403,6 +426,11 @@ const serializeSettings = (settings) => ({
   storeLatitude: numberOrNull(settings.storeLatitude),
   storeLongitude: numberOrNull(settings.storeLongitude),
   onlinePaymentConfigured: MERCADOPAGO_PUBLIC_READY,
+  mercadoPagoPublicKey: MERCADOPAGO_PUBLIC_READY
+    ? MERCADOPAGO_PUBLIC_KEY
+    : "",
+  passwordEmailConfigured: RESEND_READY,
+  publicMenuUrl: PUBLIC_MENU_URL,
   whatsappWebhookConfigured: Boolean(WHATSAPP_WEBHOOK_URL),
 });
 const serializePublicSettings = (settings) => {
@@ -443,6 +471,9 @@ const serializePublicSettings = (settings) => {
     "cashPaymentEnabled",
     "onlinePaymentEnabled",
     "onlinePaymentConfigured",
+    "mercadoPagoPublicKey",
+    "passwordEmailConfigured",
+    "publicMenuUrl",
     "customPaymentMethods",
     "logoImage",
     "heroEyebrow",
@@ -1125,7 +1156,7 @@ async function findUserByIdentifier(identifier) {
 }
 
 async function sendResetEmail(user, token) {
-  if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) return false;
+  if (!RESEND_READY || !validEmail(user?.email)) return false;
   const resetUrl = `${FRONTEND_URL.replace(/\/$/, "")}/redefinir-senha#token=${encodeURIComponent(token)}`;
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -1133,14 +1164,27 @@ async function sendResetEmail(user, token) {
     headers: {
       Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
       "Content-Type": "application/json",
+      "Idempotency-Key": `password-reset-${crypto
+        .createHash("sha256")
+        .update(token)
+        .digest("hex")}`,
     },
     body: JSON.stringify({
       from: process.env.EMAIL_FROM,
       to: [user.email],
       subject: "Redefinição de senha • Master Pizza",
-      html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2>Redefinição de senha</h2><p>Olá, ${escapeHtml(user.name)}.</p><p>Recebemos uma solicitação para redefinir a senha da sua conta Master Pizza.</p><p><a href="${escapeHtml(resetUrl)}" style="display:inline-block;background:#e31b23;color:#fff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:700">Criar nova senha</a></p><p>Este link expira em 30 minutos. Se você não pediu a alteração, ignore este e-mail.</p></div>`,
+      text: `Olá, ${user.name}. Use este link para criar uma nova senha: ${resetUrl}\n\nO link expira em 30 minutos. Se você não pediu a alteração, ignore este e-mail.`,
+      html: `<div style="background:#111214;padding:32px 16px;font-family:Arial,sans-serif;color:#f7f5f1"><div style="max-width:560px;margin:auto;background:#1d2025;border:1px solid #343941;border-radius:18px;padding:28px"><div style="height:5px;background:#e31b23;border-radius:5px;margin-bottom:24px"></div><h2 style="margin:0 0 14px">Redefinição de senha</h2><p>Olá, ${escapeHtml(user.name)}.</p><p style="color:#c8cbd0;line-height:1.6">Recebemos uma solicitação para redefinir a senha da sua conta Master Pizza.</p><p style="margin:24px 0"><a href="${escapeHtml(resetUrl)}" style="display:inline-block;background:#e31b23;color:#fff;text-decoration:none;padding:13px 19px;border-radius:10px;font-weight:700">Criar nova senha</a></p><p style="color:#9fa4ac;font-size:13px;line-height:1.5">Este link é de uso único e expira em 30 minutos. Se você não pediu a alteração, ignore este e-mail.</p></div></div>`,
     }),
   });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    console.error(
+      "Falha no envio de recuperação de senha:",
+      response.status,
+      detail.slice(0, 300),
+    );
+  }
   return response.ok;
 }
 
@@ -2442,15 +2486,35 @@ async function syncMercadoPagoPayment(paymentId, expectedTrackingCode = null) {
     "refunded",
     "charged_back",
   ].includes(payment.status);
-  return prisma.order.update({
-    where: { id: order.id },
-    data: {
-      paymentExternalId: String(payment.id),
-      paymentStatus: approved ? "APPROVED" : rejected ? "REJECTED" : "PENDING",
-      paidAt: approved ? new Date(payment.date_approved || Date.now()) : null,
-    },
-    include: orderInclude,
+  const previousStatus = order.paymentStatus;
+  const updated = await prisma.$transaction(async (tx) => {
+    if (rejected && previousStatus !== "REJECTED") {
+      await restoreOrderStock(tx, order.id);
+      if (order.couponCode)
+        await tx.coupon.updateMany({
+          where: { code: order.couponCode, uses: { gt: 0 } },
+          data: { uses: { decrement: 1 } },
+        });
+    }
+    return tx.order.update({
+      where: { id: order.id },
+      data: {
+        paymentExternalId: String(payment.id),
+        paymentStatus: approved
+          ? "APPROVED"
+          : rejected
+            ? "REJECTED"
+            : "PENDING",
+        paidAt: approved ? new Date(payment.date_approved || Date.now()) : null,
+      },
+      include: orderInclude,
+    });
   });
+  if (approved && previousStatus !== "APPROVED")
+    queueWhatsApp(serializeOrder(updated), "ORDER_CREATED", "Recebido").catch(
+      () => {},
+    );
+  return updated;
 }
 
 const productInclude = {
@@ -2957,9 +3021,7 @@ app.post("/api/auth/forgot-password", authRateLimit, async (req, res) => {
   if (remainingDelay > 0) await wait(remainingDelay);
   res.json({
     ok: true,
-    emailConfigured: Boolean(
-      process.env.RESEND_API_KEY && process.env.EMAIL_FROM,
-    ),
+    emailConfigured: RESEND_READY,
     message:
       "Se a conta existir, enviaremos as instruções para o e-mail cadastrado.",
   });
@@ -3152,6 +3214,7 @@ app.post(
   async (req, res) => {
   let customerName = cleanText(req.body?.customerName, 80);
   let customerPhone = normalizePhone(req.body?.customerPhone);
+  let customerEmail = cleanText(req.body?.customerEmail, 180).toLowerCase();
   const fulfillmentType =
     cleanText(req.body?.fulfillmentType, 20) || "DELIVERY";
   const isDineIn = fulfillmentType === "DINE_IN";
@@ -3195,8 +3258,11 @@ app.post(
       cleanText(tableSession.customerName, 80) ||
       tableLabel(tableSession.table);
     customerPhone = "";
+    customerEmail = "";
     paymentMethod = "CASH";
   }
+  if (!isDineIn && req.user?.email)
+    customerEmail = String(req.user.email).trim().toLowerCase();
   if (customerName.length < 2)
     return res.status(400).json({ message: "Informe o nome do cliente." });
   if (!isDineIn && !validPhone(customerPhone))
@@ -3207,12 +3273,20 @@ app.post(
     return res.status(400).json({ message: "Tipo de operação inválido." });
   if (
     !isDineIn &&
-    !["CASH", "CARD"].includes(paymentMethod) &&
+    !["CASH", "CARD", "PIX"].includes(paymentMethod) &&
     !paymentMethod.startsWith(CUSTOM_PAYMENT_PREFIX)
   )
     return res.status(400).json({ message: "Forma de pagamento inválida." });
   if (!Array.isArray(items) || !items.length || items.length > 30)
     return res.status(400).json({ message: "Carrinho inválido." });
+  if (
+    !isDineIn &&
+    ["CARD", "PIX"].includes(paymentMethod) &&
+    !validEmail(customerEmail)
+  )
+    return res.status(400).json({
+      message: "Informe um e-mail válido para receber a confirmação do pagamento.",
+    });
   if (!isDineIn && req.user?.id) {
     const account = await prisma.user.findUnique({
       where: { id: req.user.id },
@@ -3286,12 +3360,12 @@ app.post(
       message: "Pagamento em dinheiro não está disponível no momento.",
     });
   if (
-    paymentMethod === "CARD" &&
+    ["CARD", "PIX"].includes(paymentMethod) &&
     (!settings.onlinePaymentEnabled || !MERCADOPAGO_PUBLIC_READY)
   )
     return res.status(409).json({
       message:
-        "Pagamento online ainda não está pronto. Configure o Access Token e URLs HTTPS públicas do site/backend.",
+        "Pagamento online ainda não está pronto. Configure Public Key, Access Token, assinatura do webhook e as URLs HTTPS públicas.",
     });
   let scheduledAt = null;
   let scheduleReservation = null;
@@ -3850,8 +3924,12 @@ app.post(
         referencePoint,
         paymentMethod,
         paymentMethodLabel,
-        paymentStatus: paymentMethod === "CARD" ? "PENDING" : "CASH_PENDING",
-        paymentProvider: paymentMethod === "CARD" ? "MERCADO_PAGO" : null,
+        paymentStatus: ["CARD", "PIX"].includes(paymentMethod)
+          ? "PENDING"
+          : "CASH_PENDING",
+        paymentProvider: ["CARD", "PIX"].includes(paymentMethod)
+          ? "MERCADO_PAGO"
+          : null,
         changeFor,
         subtotal,
         deliveryFee,
@@ -3939,44 +4017,52 @@ app.post(
     }
   }
 
-  if (paymentMethod === "CARD") {
+  let embeddedPayment =
+    paymentMethod === "CARD"
+      ? {
+          type: "CARD",
+          amount: Number(order.total),
+          publicKey: MERCADOPAGO_PUBLIC_KEY,
+        }
+      : null;
+  if (paymentMethod === "PIX") {
     try {
-      const preference = await mercadoPagoRequest("/checkout/preferences", {
+      const pixPayment = await mercadoPagoRequest("/v1/payments", {
         method: "POST",
         body: JSON.stringify({
-          items: [
-            {
-              id: order.id,
-              title: `Pedido ${settings.storeName} #${order.id.slice(-8).toUpperCase()}`,
-              currency_id: "BRL",
-              quantity: 1,
-              unit_price: Number(order.total),
-            },
-          ],
-          external_reference: order.id,
-          payer: { name: customerName },
-          notification_url: `${PUBLIC_BACKEND_URL}/api/payments/mercadopago/webhook`,
-          back_urls: {
-            success: `${FRONTEND_URL}/pagamento?pedido=${encodeURIComponent(order.trackingCode)}&resultado=sucesso`,
-            pending: `${FRONTEND_URL}/pagamento?pedido=${encodeURIComponent(order.trackingCode)}&resultado=pendente`,
-            failure: `${FRONTEND_URL}/pagamento?pedido=${encodeURIComponent(order.trackingCode)}&resultado=falha`,
+          transaction_amount: Number(order.total),
+          description: `Pedido ${settings.storeName} #${order.id.slice(-8).toUpperCase()}`,
+          payment_method_id: "pix",
+          payer: {
+            email: customerEmail,
+            first_name: customerName,
           },
-          auto_return: "approved",
+          external_reference: order.id,
+          ...(MERCADOPAGO_NOTIFICATION_URL
+            ? { notification_url: MERCADOPAGO_NOTIFICATION_URL }
+            : {}),
+          date_of_expiration: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
         }),
-        headers: { "X-Idempotency-Key": order.id },
+        headers: { "X-Idempotency-Key": `pix-${order.id}` },
       });
-      const paymentUrl =
-        preference.init_point || preference.sandbox_init_point || "";
-      if (!isTrustedMercadoPagoUrl(paymentUrl))
-        throw Object.assign(
-          new Error("O provedor retornou uma URL de pagamento inválida."),
-          { code: "INVALID_PAYMENT_URL" },
-        );
-      order = await prisma.order.update({
-        where: { id: order.id },
-        data: { paymentPreferenceId: String(preference.id), paymentUrl },
-        include: orderInclude,
-      });
+      const transaction = pixPayment?.point_of_interaction?.transaction_data || {};
+      if (pixPayment.status !== "approved" && !transaction.qr_code)
+        throw Object.assign(new Error("O provedor não retornou o Pix."), {
+          code: "PIX_NOT_CREATED",
+        });
+      order =
+        (await syncMercadoPagoPayment(
+          String(pixPayment.id),
+          order.trackingCode,
+        )) || order;
+      embeddedPayment = {
+        type: "PIX",
+        paymentId: String(pixPayment.id),
+        status: pixPayment.status,
+        qrCode: transaction.qr_code || "",
+        qrCodeBase64: transaction.qr_code_base64 || "",
+        expiresAt: pixPayment.date_of_expiration || null,
+      };
     } catch (error) {
       await prisma
         .$transaction(async (tx) => {
@@ -3988,25 +4074,130 @@ app.post(
             });
         })
         .catch(() => {});
+      console.error("Falha ao criar pagamento Pix:", error.message);
       return res.status(502).json({
-        message:
-          "Não foi possível iniciar o pagamento online. Tente novamente.",
+        message: "Não foi possível gerar o Pix agora. Tente novamente.",
       });
     }
   }
   const serialized = isDineIn
     ? serializeOrder(order)
     : serializeCustomerOrder(order);
-  if (!isDineIn && paymentMethod !== "CARD")
+  if (!isDineIn && !["CARD", "PIX"].includes(paymentMethod))
     queueWhatsApp(serialized, "ORDER_CREATED", "Recebido").catch(() => {});
   res.status(201).json({
     ...serialized,
-    requiresPayment: !isDineIn && paymentMethod === "CARD",
-    paymentUrl: order.paymentUrl || null,
+    requiresPayment:
+      !isDineIn && ["CARD", "PIX"].includes(paymentMethod),
+    payment: embeddedPayment,
     visibleToStore:
-      isDineIn || paymentMethod !== "CARD" || order.paymentStatus === "APPROVED",
+      isDineIn ||
+      !["CARD", "PIX"].includes(paymentMethod) ||
+      order.paymentStatus === "APPROVED",
   });
 });
+
+app.post(
+  "/api/payments/mercadopago/card",
+  paymentRateLimit,
+  async (req, res) => {
+    const trackingCode = cleanText(req.body?.trackingCode, 100);
+    const token = cleanText(req.body?.token, 320);
+    const paymentMethodId = cleanText(req.body?.payment_method_id, 80).toLowerCase();
+    const issuerId = cleanText(req.body?.issuer_id, 60);
+    const installments = boundedInteger(req.body?.installments, 1, 24);
+    const payerEmail = cleanText(req.body?.payer?.email, 180).toLowerCase();
+    const identificationType = cleanText(
+      req.body?.payer?.identification?.type,
+      12,
+    ).toUpperCase();
+    const identificationNumber = cleanText(
+      req.body?.payer?.identification?.number,
+      40,
+    );
+    const attemptId = cleanText(req.body?.attemptId, 100);
+    if (
+      !trackingCode ||
+      token.length < 16 ||
+      !installments ||
+      !/^[a-z0-9_-]{2,80}$/.test(paymentMethodId) ||
+      !validEmail(payerEmail)
+    )
+      return res.status(400).json({
+        message: "Dados do cartão incompletos. Confira o formulário e tente novamente.",
+      });
+    const order = await prisma.order.findUnique({
+      where: { trackingCode },
+      include: orderInclude,
+    });
+    if (!order)
+      return res.status(404).json({ message: "Pedido não encontrado." });
+    if (order.paymentMethod !== "CARD" || order.paymentProvider !== "MERCADO_PAGO")
+      return res.status(409).json({ message: "Este pedido não aceita pagamento por cartão." });
+    if (order.paymentStatus === "APPROVED")
+      return res.json({
+        ...serializeCustomerOrder(order),
+        paymentId: order.paymentExternalId,
+      });
+    if (["REJECTED", "CANCELED"].includes(order.paymentStatus))
+      return res.status(409).json({
+        message: "Este pedido não está mais disponível para pagamento.",
+      });
+    const idempotencyKey = crypto
+      .createHash("sha256")
+      .update(`${order.id}:${attemptId || "card-attempt"}`)
+      .digest("hex");
+    try {
+      const payment = await mercadoPagoRequest("/v1/payments", {
+        method: "POST",
+        body: JSON.stringify({
+          transaction_amount: Number(order.total),
+          token,
+          description: `Pedido #${order.id.slice(-8).toUpperCase()}`,
+          installments,
+          payment_method_id: paymentMethodId,
+          ...(issuerId ? { issuer_id: issuerId } : {}),
+          payer: {
+            email: payerEmail,
+            ...(identificationType && identificationNumber
+              ? {
+                  identification: {
+                    type: identificationType,
+                    number: identificationNumber,
+                  },
+                }
+              : {}),
+          },
+          external_reference: order.id,
+          ...(MERCADOPAGO_NOTIFICATION_URL
+            ? { notification_url: MERCADOPAGO_NOTIFICATION_URL }
+            : {}),
+        }),
+        headers: { "X-Idempotency-Key": idempotencyKey },
+      });
+      const updated = await syncMercadoPagoPayment(
+        String(payment.id),
+        trackingCode,
+      );
+      if (!updated)
+        return res.status(502).json({
+          message: "O pagamento não pôde ser vinculado ao pedido.",
+        });
+      res.json({
+        ...serializeCustomerOrder(updated),
+        paymentId: String(payment.id),
+        providerStatus: payment.status,
+        providerStatusDetail: payment.status_detail || null,
+      });
+    } catch (error) {
+      console.error("Falha ao processar cartão:", error.message);
+      res.status(502).json({
+        message:
+          "O Mercado Pago não conseguiu processar o cartão. Confira os dados ou tente outro cartão.",
+      });
+    }
+  },
+);
 
 app.post(
   "/api/payments/mercadopago/webhook",
@@ -4059,13 +4250,15 @@ app.get(
   "/api/orders/payment-status/:trackingCode",
   trackingRateLimit,
   async (req, res) => {
-    const order = await prisma.order.findUnique({
+    let order = await prisma.order.findUnique({
       where: { trackingCode: cleanText(req.params.trackingCode, 100) },
       select: {
         trackingCode: true,
         paymentStatus: true,
         paymentMethod: true,
         paymentMethodLabel: true,
+        paymentExternalId: true,
+        paymentProvider: true,
         paymentUrl: true,
         status: true,
         scheduledAt: true,
@@ -4073,7 +4266,27 @@ app.get(
     });
     if (!order)
       return res.status(404).json({ message: "Pedido não encontrado." });
-    res.json(order);
+    if (
+      order.paymentStatus === "PENDING" &&
+      order.paymentProvider === "MERCADO_PAGO" &&
+      order.paymentExternalId
+    ) {
+      try {
+        const synced = await syncMercadoPagoPayment(
+          order.paymentExternalId,
+          order.trackingCode,
+        );
+        if (synced)
+          order = {
+            ...order,
+            paymentStatus: synced.paymentStatus,
+            status: synced.status,
+            scheduledAt: synced.scheduledAt,
+          };
+      } catch {}
+    }
+    const { paymentExternalId, paymentProvider, ...publicStatus } = order;
+    res.json(publicStatus);
   },
 );
 
@@ -8724,6 +8937,7 @@ app.get("/api/admin/health", auth, admin, async (req, res) => {
     api: true,
     database: db,
     mercadoPago: MERCADOPAGO_PUBLIC_READY,
+    passwordEmail: RESEND_READY,
     whatsapp: Boolean(WHATSAPP_WEBHOOK_URL),
     timestamp: new Date(),
     uptimeSeconds: Math.round(process.uptime()),

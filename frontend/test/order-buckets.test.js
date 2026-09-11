@@ -27,15 +27,19 @@ test("Atendimento inclui pedidos presenciais nas filas correspondentes", () => {
   );
   assert.deepEqual(
     buckets.OPEN.map((order) => order.id),
-    ["delivery", "table-new", "table-served"],
+    ["delivery", "table-new"],
+  );
+  assert.deepEqual(
+    buckets.SERVED.map((order) => order.id),
+    ["table-served"],
   );
 });
 
-test("pedidos prontos saem de Em aberto e continuam nas filas específicas", () => {
+test("pedidos prontos e servidos saem de Em aberto e continuam nas filas específicas", () => {
   const buckets = buildOrderBuckets(orders, { includeDineIn: true });
   assert.deepEqual(
     buckets.OPEN.map((order) => order.id),
-    ["delivery", "table-new", "table-served"],
+    ["delivery", "table-new"],
   );
   assert.deepEqual(
     buckets.READY_FOR_DELIVERY.map((order) => order.id),
@@ -48,6 +52,10 @@ test("pedidos prontos saem de Em aberto e continuam nas filas específicas", () 
   assert.deepEqual(
     buckets.READY_FOR_TABLE.map((order) => order.id),
     ["table-ready"],
+  );
+  assert.deepEqual(
+    buckets.SERVED.map((order) => order.id),
+    ["table-served"],
   );
 });
 

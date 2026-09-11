@@ -1,5 +1,18 @@
 # Histórico de versões
 
+## 2.24.0 — Checkout transparente, alertas e cardápio profissional
+
+- Pix passa a ser gerado e exibido dentro do site, com QR Code, copia e cola e atualização automática da aprovação;
+- cartões de crédito e débito usam o Card Payment Brick oficial do Mercado Pago sem redirecionar o cliente;
+- o backend ignora valores enviados pelo navegador, usa o total calculado no pedido, idempotência, webhook assinado e sincronização de status;
+- recuperação de senha por e-mail recebeu HTML profissional, versão em texto, diagnóstico de configuração e documentação do Resend;
+- botão **Ativar notificações** em Pedidos, aviso operacional grande, som e notificação persistente do navegador a cada alteração;
+- nova fila **Aguardando fechamento** para comandas já servidas; esses pedidos deixam **Em aberto**;
+- removido o campo de observação ao ocupar uma mesa;
+- cardápio de impressão redesenhado em fundo preto, sem fotos de produtos, com tamanhos e preços alinhados e exatamente duas páginas;
+- o QR Code impresso aponta exclusivamente para `/cardapio` da própria pizzaria;
+- incluídos PDFs de referência renderizados e revisados visualmente.
+
 ## 2.23.0 — Cardápio em PDF e QR Code
 
 - pedidos prontos para servir, entrega ou retirada deixam a fila **Em aberto** e permanecem nas filas específicas;

@@ -15943,6 +15943,21 @@ html.dark-mode textarea {
   background: #fff;
   color: var(--ink);
 }
+.menu-url-field output {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 13px 12px 11px 39px;
+  overflow: hidden;
+  border: 1px solid #d9dce0;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .menu-url-field small,
 .menu-promotion-option small,
 .menu-print-note {
@@ -16081,6 +16096,11 @@ html.dark-mode textarea {
 .admin-shell.admin-dark .menu-promotion-option {
   color: #f3f5f7;
 }
+.admin-shell.admin-dark .menu-url-field output {
+  border-color: #414a54;
+  background: #191d22;
+  color: #f3f5f7;
+}
 .admin-shell.admin-dark .menu-promotion-option {
   background: #191d22;
   border-color: #414a54;
@@ -16106,5 +16126,254 @@ html.dark-mode textarea {
   }
   .menu-print-actions button {
     width: 100%;
+  }
+}
+
+/* Checkout transparente do Mercado Pago. */
+.embedded-payment-page {
+  min-height: 100vh;
+  padding: 48px 0 72px;
+  background:
+    radial-gradient(circle at 85% 5%, rgba(227, 27, 35, 0.16), transparent 34%),
+    #f4f1ec;
+}
+.embedded-payment-shell {
+  max-width: 900px;
+}
+.embedded-payment-heading {
+  margin-bottom: 22px;
+}
+.embedded-payment-heading h1 {
+  margin: 8px 0;
+  font: 800 clamp(34px, 6vw, 56px) / 1 "Manrope";
+  letter-spacing: -0.055em;
+}
+.embedded-payment-heading p {
+  margin: 0;
+  color: var(--muted);
+}
+.embedded-payment-card {
+  padding: clamp(18px, 4vw, 34px);
+  border: 1px solid #ddd7ce;
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(18, 19, 21, 0.1);
+}
+.pix-payment-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.72fr) minmax(0, 1.28fr);
+  gap: clamp(24px, 5vw, 48px);
+  align-items: center;
+}
+.pix-code-card {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  padding: 16px;
+  border: 1px solid #dcd7cf;
+  border-radius: 22px;
+  background: #fff;
+  color: var(--red);
+  box-shadow: inset 0 0 0 8px #f7f5f1;
+}
+.pix-code-card img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.pix-payment-copy h2 {
+  margin: 12px 0 9px;
+  font: 800 clamp(22px, 4vw, 32px) / 1.1 "Manrope";
+  letter-spacing: -0.04em;
+}
+.pix-payment-copy p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.pix-payment-copy textarea {
+  width: 100%;
+  min-height: 104px;
+  margin: 8px 0 12px;
+  padding: 12px;
+  border: 1px solid #d9d4cc;
+  border-radius: 12px;
+  background: #f8f6f2;
+  color: #44474d;
+  font: 500 10px/1.45 monospace;
+  resize: none;
+}
+.pix-payment-copy > small {
+  display: block;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 9px;
+}
+.payment-secure-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #eaf7f0;
+  color: #16683e;
+  font-size: 9px;
+  font-weight: 800;
+}
+.card-brick-wrap {
+  max-width: 680px;
+  margin: auto;
+}
+.payment-security-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 14px;
+  border: 1px solid #d7e8de;
+  border-radius: 14px;
+  background: #f0f8f3;
+  color: #1a7146;
+}
+.payment-security-copy div {
+  display: grid;
+  gap: 4px;
+}
+.payment-security-copy b {
+  color: #174d34;
+  font-size: 11px;
+}
+.payment-security-copy small {
+  color: #47705b;
+  font-size: 9px;
+  line-height: 1.55;
+}
+.payment-live-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  margin-top: 20px;
+  padding: 13px;
+  border-radius: 13px;
+  background: #fff7dc;
+  color: #76570d;
+  font-size: 10px;
+  font-weight: 800;
+}
+.embedded-payment-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+.embedded-payment-actions .text-button {
+  border: 0;
+  background: transparent;
+  color: #6e7075;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+/* Aviso persistente dos pedidos, inspirado em apps de operação. */
+.order-notification-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid #d8d5cf;
+  border-radius: 10px;
+  background: #fff;
+  color: #43464c;
+  font-size: 10px;
+  font-weight: 800;
+}
+.order-notification-toggle.active {
+  border-color: #b8e2ca;
+  background: #eaf8f0;
+  color: #17683f;
+}
+.order-live-notice {
+  position: fixed;
+  z-index: 180;
+  top: 22px;
+  right: 22px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 14px;
+  width: min(480px, calc(100vw - 32px));
+  padding: 20px;
+  border: 1px solid #ff5960;
+  border-radius: 20px;
+  background: linear-gradient(145deg, #1b1e23, #101215);
+  color: #fff;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.42);
+  animation: orderNoticeIn 0.28s ease-out both;
+}
+.order-live-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background: var(--red);
+  box-shadow: 0 0 0 8px rgba(227, 27, 35, 0.12);
+}
+.order-live-notice > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.order-live-notice small {
+  color: #ff777d;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+.order-live-notice b {
+  font: 800 18px/1.15 "Manrope";
+}
+.order-live-notice p {
+  margin: 0;
+  color: #c6cad0;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.order-live-notice > button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 10px;
+  background: #292e35;
+  color: #fff;
+}
+.admin-shell.admin-dark .order-notification-toggle {
+  border-color: #434b55;
+  background: #22272d;
+  color: #eef1f4;
+}
+.admin-shell.admin-dark .order-notification-toggle.active {
+  border-color: #28694b;
+  background: #163d2b;
+  color: #aaf0ca;
+}
+@keyframes orderNoticeIn {
+  from { opacity: 0; transform: translateY(-18px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (max-width: 700px) {
+  .pix-payment-grid {
+    grid-template-columns: 1fr;
+  }
+  .pix-code-card {
+    width: min(100%, 310px);
+    margin: auto;
+  }
+  .order-live-notice {
+    top: 12px;
+    right: 16px;
   }
 }

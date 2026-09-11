@@ -3,17 +3,22 @@ import {
   ArrowLeft,
   CalendarClock,
   Check,
+  Copy,
   CreditCard,
   Crosshair,
   LoaderCircle,
   MapPin,
+  QrCode,
+  RefreshCw,
   Route,
+  ShieldCheck,
   Store,
   UserRound,
   WalletCards,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { api, authHeaders, trustedPaymentUrl } from "../lib/api";
+import { CardPayment, initMercadoPago } from "@mercadopago/sdk-react";
+import { api, authHeaders } from "../lib/api";
 import { formatCep, formatPhone, money } from "../lib/format";
 import { readStoredStringArray, writeStoredJson } from "../lib/storage";
 import MotoIcon from "../components/MotoIcon";
@@ -130,7 +135,7 @@ export default function CheckoutPage({
   const defaultPayment = cashAvailable
     ? "CASH"
     : onlineAvailable
-      ? "CARD"
+      ? "PIX"
       : customPaymentMethods[0]
         ? `CUSTOM:${customPaymentMethods[0].id}`
         : "";
@@ -138,6 +143,7 @@ export default function CheckoutPage({
   const [form, setForm] = useState({
     customerName: u.name || "",
     customerPhone: u.phone ? formatPhone(u.phone) : "",
+    customerEmail: u.email || "",
     fulfillmentType: "DELIVERY",
     deliveryAreaId: "",
     postalCode: u.postalCode ? formatCep(u.postalCode) : "",
@@ -155,6 +161,7 @@ export default function CheckoutPage({
   });
   const [loading, setLoading] = useState(false),
     [success, setSuccess] = useState(null),
+    [pendingPayment, setPendingPayment] = useState(null),
     [error, setError] = useState(""),
     [cepStatus, setCepStatus] = useState({
       loading: false,
@@ -175,7 +182,7 @@ export default function CheckoutPage({
   useEffect(() => {
     const available = [
       ...(cashAvailable ? ["CASH"] : []),
-      ...(onlineAvailable ? ["CARD"] : []),
+      ...(onlineAvailable ? ["PIX", "CARD"] : []),
       ...customPaymentMethods.map((method) => `CUSTOM:${method.id}`),
     ];
     if (!available.includes(form.paymentMethod))
@@ -190,6 +197,10 @@ export default function CheckoutPage({
     settings.customPaymentMethods,
     form.paymentMethod,
   ]);
+  useEffect(() => {
+    if (onlineAvailable && settings.mercadoPagoPublicKey)
+      initMercadoPago(settings.mercadoPagoPublicKey, { locale: "pt-BR" });
+  }, [onlineAvailable, settings.mercadoPagoPublicKey]);
   const subtotal = cart.reduce(
     (sum, item) => sum + Number(item.price) * item.quantity,
     0,
@@ -207,7 +218,9 @@ export default function CheckoutPage({
     ].every((key) => String(form[key] || "").trim());
   const customerInfoComplete =
     String(form.customerName || "").trim().length >= 2 &&
-    /^\d{10,11}$/.test(String(form.customerPhone || "").replace(/\D/g, ""));
+    /^\d{10,11}$/.test(String(form.customerPhone || "").replace(/\D/g, "")) &&
+    (!["CARD", "PIX"].includes(form.paymentMethod) ||
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(form.customerEmail || "").trim()));
   const maxDelivery = Number(settings.estimatedDeliveryMax || 45);
   const openDates = useMemo(
     () =>
@@ -293,6 +306,7 @@ export default function CheckoutPage({
           ...current,
           customerName: current.customerName || user.name || "",
           customerPhone: current.customerPhone || formatPhone(user.phone || ""),
+          customerEmail: current.customerEmail || user.email || "",
           postalCode:
             current.postalCode ||
             formatCep(user.postalCode || preferred?.postalCode || ""),
@@ -323,6 +337,35 @@ export default function CheckoutPage({
       })
       .catch(() => {});
   }, [session?.token]);
+  useEffect(() => {
+    const trackingCode = pendingPayment?.order?.trackingCode;
+    if (!trackingCode) return undefined;
+    let active = true;
+    const check = async () => {
+      try {
+        const { data } = await api.get(
+          `/orders/payment-status/${encodeURIComponent(trackingCode)}`,
+        );
+        if (!active) return;
+        if (data.paymentStatus === "APPROVED") {
+          setCart([]);
+          setPendingPayment(null);
+          setSuccess({ ...pendingPayment.order, ...data });
+        } else if (["REJECTED", "CANCELED"].includes(data.paymentStatus)) {
+          setPendingPayment(null);
+          setError(
+            "O pagamento não foi aprovado. Revise os dados e gere uma nova tentativa.",
+          );
+        }
+      } catch {}
+    };
+    const timer = window.setInterval(check, 5_000);
+    check();
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [pendingPayment?.order?.trackingCode]);
   useEffect(() => {
     if (form.fulfillmentType !== "DELIVERY") return undefined;
     const cep = form.postalCode.replace(/\D/g, "");
@@ -552,6 +595,15 @@ export default function CheckoutPage({
       return setError(
         "A loja não disponibilizou uma forma de pagamento neste momento.",
       );
+    if (
+      ["CARD", "PIX"].includes(form.paymentMethod) &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+        String(form.customerEmail || "").trim(),
+      )
+    )
+      return setError(
+        "Informe um e-mail válido para confirmar o pagamento online.",
+      );
     if (form.fulfillmentType === "DELIVERY") {
       const required = [
         ["postalCode", "CEP"],
@@ -611,13 +663,16 @@ export default function CheckoutPage({
         authHeaders(session?.token),
       );
       saveGuestOrder(data.trackingCode);
-      setCart([]);
-      if (data.requiresPayment && data.paymentUrl) {
-        const paymentUrl = trustedPaymentUrl(data.paymentUrl);
-        if (!paymentUrl) throw new Error("INVALID_PAYMENT_URL");
-        window.location.assign(paymentUrl);
+      if (data.requiresPayment && data.payment) {
+        if (data.paymentStatus === "APPROVED") {
+          setCart([]);
+          setSuccess(data);
+          return;
+        }
+        setPendingPayment({ ...data.payment, order: data });
         return;
       }
+      setCart([]);
       setSuccess(data);
     } catch (err) {
       setError(
@@ -628,6 +683,20 @@ export default function CheckoutPage({
       setLoading(false);
     }
   }
+
+  if (pendingPayment)
+    return (
+      <EmbeddedPaymentStep
+        payment={pendingPayment}
+        payerEmail={form.customerEmail}
+        onApproved={(data) => {
+          setCart([]);
+          setPendingPayment(null);
+          setSuccess({ ...pendingPayment.order, ...data });
+        }}
+        onRetry={() => setPendingPayment(null)}
+      />
+    );
 
   if (success)
     return (
@@ -895,6 +964,20 @@ export default function CheckoutPage({
                   placeholder="(79) 99999-9999"
                 />
               </label>
+              {["CARD", "PIX"].includes(form.paymentMethod) && (
+                <label className="span-2">
+                  E-mail para confirmação do pagamento <em>*</em>
+                  <input
+                    required
+                    type="email"
+                    maxLength="180"
+                    value={form.customerEmail}
+                    onChange={(e) => set("customerEmail", e.target.value)}
+                    placeholder="voce@exemplo.com"
+                    autoComplete="email"
+                  />
+                </label>
+              )}
             </div>
             {form.fulfillmentType === "DELIVERY" ? (
               <>
@@ -1216,18 +1299,32 @@ export default function CheckoutPage({
                 </button>
               )}
               {onlineAvailable && (
-                <button
-                  type="button"
-                  className={`payment-option ${form.paymentMethod === "CARD" ? "active" : ""}`}
-                  onClick={() => set("paymentMethod", "CARD")}
-                >
-                  <CreditCard size={19} />
-                  <span>
-                    <b>Pagar online</b>
-                    <small>Pix ou cartão no Mercado Pago</small>
-                  </span>
-                  <i>{form.paymentMethod === "CARD" ? "✓" : ""}</i>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className={`payment-option ${form.paymentMethod === "PIX" ? "active" : ""}`}
+                    onClick={() => set("paymentMethod", "PIX")}
+                  >
+                    <QrCode size={19} />
+                    <span>
+                      <b>Pix online</b>
+                      <small>QR Code e copia e cola nesta página</small>
+                    </span>
+                    <i>{form.paymentMethod === "PIX" ? "✓" : ""}</i>
+                  </button>
+                  <button
+                    type="button"
+                    className={`payment-option ${form.paymentMethod === "CARD" ? "active" : ""}`}
+                    onClick={() => set("paymentMethod", "CARD")}
+                  >
+                    <CreditCard size={19} />
+                    <span>
+                      <b>Crédito ou débito</b>
+                      <small>Formulário protegido dentro da pizzaria</small>
+                    </span>
+                    <i>{form.paymentMethod === "CARD" ? "✓" : ""}</i>
+                  </button>
+                </>
               )}
               {customPaymentMethods.map((method) => {
                 const value = `CUSTOM:${method.id}`;
@@ -1254,8 +1351,8 @@ export default function CheckoutPage({
             {settings.onlinePaymentEnabled &&
               !settings.onlinePaymentConfigured && (
                 <div className="cep-feedback warning">
-                  Pagamento online está habilitado, mas ainda faltam credenciais
-                  e/ou URLs HTTPS públicas do Mercado Pago.
+                  Pagamento online está habilitado, mas faltam Public Key,
+                  Access Token, assinatura do webhook e/ou URLs HTTPS públicas.
                 </div>
               )}
             {form.paymentMethod === "CASH" && (
@@ -1268,14 +1365,15 @@ export default function CheckoutPage({
                 />
               </label>
             )}
-            {form.paymentMethod === "CARD" && (
+            {["CARD", "PIX"].includes(form.paymentMethod) && (
               <div className="online-payment-note">
-                <CreditCard />
+                <ShieldCheck />
                 <span>
-                  <b>Pagamento antes de liberar o pedido</b>
+                  <b>Pagamento transparente e protegido</b>
                   <small>
-                    Você será direcionado ao Mercado Pago. O pedido só aparece
-                    para a operação da loja depois da confirmação.
+                    Tudo acontece nesta página. Os dados sensíveis do cartão são
+                    tokenizados pelo Mercado Pago e não passam pelo servidor da
+                    pizzaria. O pedido só entra na operação após a aprovação.
                   </small>
                 </span>
               </div>
@@ -1360,11 +1458,11 @@ export default function CheckoutPage({
                 : !settings.isOpen && settings.schedulingEnabled === false
                   ? "Loja fechada"
                   : !settings.isOpen || scheduleWanted
-                    ? form.paymentMethod === "CARD"
-                      ? "Agendar e ir para pagamento"
+                    ? ["CARD", "PIX"].includes(form.paymentMethod)
+                      ? "Agendar e pagar aqui"
                       : "Agendar pedido"
-                    : form.paymentMethod === "CARD"
-                      ? "Ir para pagamento"
+                    : ["CARD", "PIX"].includes(form.paymentMethod)
+                      ? "Continuar para pagamento"
                       : "Confirmar pedido"}{" "}
               <Check size={17} />
             </button>
@@ -1381,4 +1479,166 @@ export default function CheckoutPage({
 
 function Clock3Fallback() {
   return <CalendarClock size={14} />;
+}
+
+function EmbeddedPaymentStep({ payment, payerEmail, onApproved, onRetry }) {
+  const [paymentError, setPaymentError] = useState("");
+  const [paymentMessage, setPaymentMessage] = useState("");
+  const [copied, setCopied] = useState(false);
+  const order = payment.order;
+  const isPix = payment.type === "PIX";
+  const qrImage = payment.qrCodeBase64
+    ? `data:image/png;base64,${String(payment.qrCodeBase64).replace(/\s/g, "")}`
+    : "";
+
+  async function copyPix() {
+    try {
+      await navigator.clipboard.writeText(payment.qrCode);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2500);
+    } catch {
+      setPaymentError(
+        "Não foi possível copiar automaticamente. Selecione o código abaixo e copie.",
+      );
+    }
+  }
+
+  async function submitCard(formData) {
+    setPaymentError("");
+    setPaymentMessage("Processando o cartão com segurança...");
+    try {
+      const attemptId = globalThis.crypto?.randomUUID?.() || `${Date.now()}`;
+      const { data } = await api.post("/payments/mercadopago/card", {
+        ...formData,
+        trackingCode: order.trackingCode,
+        attemptId,
+        payer: {
+          ...(formData.payer || {}),
+          email: formData.payer?.email || payerEmail,
+        },
+      });
+      if (data.paymentStatus === "APPROVED") {
+        onApproved(data);
+        return;
+      }
+      if (data.paymentStatus === "REJECTED")
+        throw new Error(
+          "Pagamento recusado. Confira os dados ou tente outro cartão.",
+        );
+      setPaymentMessage(
+        "Pagamento em análise. Esta tela será atualizada automaticamente.",
+      );
+    } catch (error) {
+      const message =
+        error.response?.data?.message ||
+        error.message ||
+        "Não foi possível processar o cartão.";
+      setPaymentMessage("");
+      setPaymentError(message);
+      throw error;
+    }
+  }
+
+  return (
+    <div className="page-shell embedded-payment-page">
+      <main className="container embedded-payment-shell">
+        <div className="embedded-payment-heading">
+          <span className="eyebrow dark">Pagamento seguro</span>
+          <h1>{isPix ? "Pague com Pix" : "Pague com cartão"}</h1>
+          <p>
+            Pedido <b>#{order.shortCode}</b> • Total <b>{money(order.total)}</b>
+          </p>
+        </div>
+
+        <section className="embedded-payment-card">
+          {isPix ? (
+            <div className="pix-payment-grid">
+              <div className="pix-code-card">
+                {qrImage ? (
+                  <img src={qrImage} alt="QR Code Pix do pedido" />
+                ) : (
+                  <QrCode size={92} />
+                )}
+              </div>
+              <div className="pix-payment-copy">
+                <span className="payment-secure-badge">
+                  <ShieldCheck size={16} /> Gerado pelo Mercado Pago
+                </span>
+                <h2>Escaneie ou use o Pix copia e cola</h2>
+                <p>
+                  Abra o aplicativo do seu banco, escolha Pix e escaneie o QR
+                  Code. A confirmação aparece aqui automaticamente.
+                </p>
+                <textarea
+                  readOnly
+                  value={payment.qrCode || "QR Code em processamento"}
+                  aria-label="Código Pix copia e cola"
+                  onFocus={(event) => event.currentTarget.select()}
+                />
+                <button
+                  type="button"
+                  className="primary-btn"
+                  disabled={!payment.qrCode}
+                  onClick={copyPix}
+                >
+                  {copied ? <Check size={17} /> : <Copy size={17} />}
+                  {copied ? "Código copiado" : "Copiar código Pix"}
+                </button>
+                {payment.expiresAt && (
+                  <small>
+                    Válido até {new Date(payment.expiresAt).toLocaleString("pt-BR")}.
+                  </small>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="card-brick-wrap">
+              <div className="payment-security-copy">
+                <ShieldCheck />
+                <div>
+                  <b>Crédito e débito sem sair da pizzaria</b>
+                  <small>
+                    O componente oficial do Mercado Pago criptografa os dados.
+                    A Master Pizza recebe somente um token temporário.
+                  </small>
+                </div>
+              </div>
+              <CardPayment
+                initialization={{ amount: Number(payment.amount) }}
+                onSubmit={submitCard}
+                onReady={() => setPaymentMessage("")}
+                onError={() =>
+                  setPaymentError((current) =>
+                    current || "Não foi possível carregar o formulário do cartão.",
+                  )
+                }
+              />
+            </div>
+          )}
+
+          {(paymentMessage || isPix) && (
+            <div className="payment-live-status" aria-live="polite">
+              <RefreshCw className="spin" size={17} />
+              {paymentMessage || "Aguardando a confirmação do pagamento..."}
+            </div>
+          )}
+          {paymentError && <div className="form-error">{paymentError}</div>}
+        </section>
+
+        <div className="embedded-payment-actions">
+          <Link
+            className="ghost-dark-btn"
+            to={`/pedido/${order.trackingCode}`}
+          >
+            Acompanhar pedido
+          </Link>
+          {!isPix && paymentError && (
+            <button type="button" className="text-button" onClick={onRetry}>
+              Voltar e gerar uma nova tentativa
+            </button>
+          )}
+        </div>
+      </main>
+    </div>
+  );
 }

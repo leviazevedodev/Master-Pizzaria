@@ -13,20 +13,8 @@ import {
   buildMenuSections,
   createMenuPdf,
   createQrCodePdf,
-  normalizeMenuUrl,
   printableMenuProducts,
 } from "../lib/menuPdf";
-
-function initialUrl() {
-  try {
-    return (
-      localStorage.getItem("master-pizza-print-menu-url") ||
-      window.location.origin
-    );
-  } catch {
-    return window.location.origin;
-  }
-}
 
 export default function MenuPrintStudio({
   products = [],
@@ -35,7 +23,6 @@ export default function MenuPrintStudio({
   settings = {},
   notify = () => {},
 }) {
-  const [menuUrl, setMenuUrl] = useState(initialUrl);
   const [includePromotions, setIncludePromotions] = useState(true);
   const [generating, setGenerating] = useState("");
   const [error, setError] = useState("");
@@ -48,43 +35,33 @@ export default function MenuPrintStudio({
     () => ({ ...settings, logoImage: mediaUrl(settings.logoImage) }),
     [settings],
   );
-  const preparedProducts = useMemo(
-    () => printable.map((product) => ({ ...product, image: mediaUrl(product.image) })),
-    [printable],
+  const menuUrl = useMemo(
+    () =>
+      settings.publicMenuUrl ||
+      new URL("/cardapio", window.location.origin).href,
+    [settings.publicMenuUrl],
   );
-  const validUrl = normalizeMenuUrl(menuUrl);
-
-  function rememberUrl() {
-    try {
-      localStorage.setItem("master-pizza-print-menu-url", validUrl);
-    } catch {}
-  }
 
   async function generate(kind) {
     setError("");
-    if (!validUrl) {
-      setError("Informe um link completo começando com http:// ou https://.");
-      return;
-    }
-    if (kind === "menu" && !preparedProducts.length) {
+    if (kind === "menu" && !printable.length) {
       setError("Cadastre e ative pelo menos um produto antes de gerar o PDF.");
       return;
     }
     setGenerating(kind);
     try {
-      rememberUrl();
       if (kind === "menu") {
         const result = await createMenuPdf({
-          products: preparedProducts,
+          products: printable,
           categories,
           subcategories,
           settings: preparedSettings,
-          menuUrl: validUrl,
+          menuUrl,
           includePromotions,
         });
         notify(`Cardápio criado em ${result.pageCount} página(s).`);
       } else {
-        await createQrCodePdf({ settings: preparedSettings, menuUrl: validUrl });
+        await createQrCodePdf({ settings: preparedSettings, menuUrl });
         notify("PDF com o QR Code criado.");
       }
     } catch (generationError) {
@@ -104,7 +81,8 @@ export default function MenuPrintStudio({
           <h2>Cardápio em PDF e QR Code</h2>
           <p>
             Gere um cardápio organizado por categoria e subcategoria usando os
-            produtos, imagens e preços atuais.
+            produtos e preços atuais, em um layout escuro compacto de duas
+            páginas.
           </p>
         </div>
         <Printer />
@@ -112,24 +90,17 @@ export default function MenuPrintStudio({
 
       <div className="menu-print-grid">
         <div className="menu-print-form">
-          <label className="menu-url-field">
-            Link que será aberto pelo QR Code
+          <div className="menu-url-field">
+            Endereço oficial do cardápio digital
             <span>
               <ExternalLink size={17} />
-              <input
-                type="url"
-                maxLength={500}
-                value={menuUrl}
-                onChange={(event) => setMenuUrl(event.target.value)}
-                placeholder="https://seusite.com/cardapio"
-                autoComplete="url"
-              />
+              <output>{menuUrl}</output>
             </span>
             <small>
-              O link apenas será convertido em QR Code; nenhum site externo é
-              carregado pelo painel.
+              O QR Code é protegido contra link digitado incorretamente: ele
+              sempre abre somente a rota pública /cardapio desta pizzaria.
             </small>
-          </label>
+          </div>
 
           <label className="menu-promotion-option">
             <input
@@ -151,7 +122,7 @@ export default function MenuPrintStudio({
             <button
               type="button"
               className="primary-btn"
-              disabled={Boolean(generating) || !preparedProducts.length}
+              disabled={Boolean(generating) || !printable.length}
               onClick={() => generate("menu")}
             >
               {generating === "menu" ? (
@@ -193,7 +164,7 @@ export default function MenuPrintStudio({
           </div>
           <div className="menu-print-kpis">
             <span>
-              <b>{preparedProducts.length}</b>
+              <b>{printable.length}</b>
               <small>produtos</small>
             </span>
             <span>
@@ -206,14 +177,13 @@ export default function MenuPrintStudio({
             </span>
           </div>
           <div className="menu-preview-features">
-            <span><Image size={15} /> Foto ao lado de cada produto</span>
+            <span><Image size={15} /> Layout compacto, sem fotos de produtos</span>
             <span><Tags size={15} /> Separação por categoria e subcategoria</span>
-            <span><QrCode size={15} /> QR Code validado antes da impressão</span>
+            <span><QrCode size={15} /> QR Code exclusivo do cardápio digital</span>
           </div>
           <small className="menu-print-note">
-            Produtos pausados ou arquivados não entram no arquivo. Se alguma
-            imagem externa bloquear a leitura, o PDF usa uma identificação
-            visual no lugar dela e continua sendo gerado.
+            Produtos pausados ou arquivados não entram no arquivo. Os tamanhos
+            e respectivos valores são alinhados ao lado de cada produto.
           </small>
         </aside>
       </div>

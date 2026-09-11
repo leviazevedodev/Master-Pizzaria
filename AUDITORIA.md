@@ -18,6 +18,8 @@
 
 > Versão v2.23.0 (11 de setembro de 2026): criada a impressão local de cardápio e QR Code em PDF, com URL validada, imagens tolerantes a falhas, preços base ou promocionais e separação por categoria/subcategoria. As três situações prontas deixaram a fila Em aberto sem desaparecer de suas filas operacionais.
 
+> Versão v2.24.0 (11 de setembro de 2026): substituído o redirecionamento do Checkout Pro pelo checkout transparente com Pix e Card Payment Brick, validação de total exclusivamente no backend, idempotência e sincronização de pagamento. O cardápio impresso foi redesenhado em duas páginas escuras e sem fotos de produtos; o QR Code ficou restrito ao cardápio público. Foram adicionados a fila Aguardando fechamento, notificações operacionais persistentes, diagnóstico do e-mail de recuperação e a remoção da observação ao abrir mesa.
+
 Data da revisão final: 4 de setembro de 2026.
 
 Arquivo de origem analisado: `master-pizza-profissional-v2.19.16-darkmode-adicionais-preco-dinamico.zip`.

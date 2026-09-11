@@ -46,7 +46,7 @@ const EMPTY_TABLE = {
   location: "",
   sortOrder: 0,
 };
-const EMPTY_OPEN = { customerName: "", guestCount: 1, notes: "" };
+const EMPTY_OPEN = { customerName: "", guestCount: 1 };
 
 function elapsedLabel(date) {
   const minutes = Math.max(
@@ -265,7 +265,6 @@ export default function TablesAdmin({
         {
           customerName: openForm.customerName,
           guestCount: Number(openForm.guestCount),
-          notes: openForm.notes,
         },
         headers,
       );
@@ -700,7 +699,6 @@ export default function TablesAdmin({
             <div className="modal-head"><div><span className="eyebrow dark">Iniciar atendimento</span><h2>Abrir {openTarget.label}</h2></div><button type="button" className="icon-close" onClick={() => setOpenTarget(null)}><X /></button></div>
             <label>Nome ou identificação (opcional)<input value={openForm.customerName} maxLength="80" onChange={(event) => setOpenForm((form) => ({ ...form, customerName: event.target.value }))} placeholder="Ex.: Família Silva" /></label>
             <label>Quantidade de pessoas<input type="number" min="1" max="50" required value={openForm.guestCount} onChange={(event) => setOpenForm((form) => ({ ...form, guestCount: event.target.value }))} /></label>
-            <label>Observações<textarea value={openForm.notes} maxLength="300" onChange={(event) => setOpenForm((form) => ({ ...form, notes: event.target.value }))} placeholder="Aniversário, cadeira infantil, restrições..." /></label>
             <button className="primary-btn" disabled={saving}><Armchair size={16} /> {saving ? "Abrindo..." : "Abrir comanda"}</button>
           </form>
         </div>

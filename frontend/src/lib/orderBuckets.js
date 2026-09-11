@@ -2,7 +2,6 @@ const OPEN_STATUSES = new Set([
   "RECEIVED",
   "PREPARING",
   "OUT_FOR_DELIVERY",
-  "SERVED",
 ]);
 
 export function buildOrderBuckets(

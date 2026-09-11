@@ -1,15 +1,17 @@
 {
   "name": "master-pizza-web",
-  "version": "2.23.0",
+  "version": "2.24.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
+    "pdf:samples": "node scripts/generate-menu-samples.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "test": "node --test"
   },
   "dependencies": {
+    "@mercadopago/sdk-react": "^1.0.1",
     "axios": "^1.11.0",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.468.0",
