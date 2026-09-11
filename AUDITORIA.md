@@ -16,6 +16,8 @@
 
 > Versão v2.22.0 (11 de setembro de 2026): as comandas presenciais foram integradas à tela Atendimento com identificação de mesa nas filas operacionais e uma fila exclusiva Pronto para servir. O avanço usa as rotas protegidas do módulo de mesas, continua invisível para entregadores e ganhou navegação móvel direta até Adicionar itens.
 
+> Versão v2.23.0 (11 de setembro de 2026): criada a impressão local de cardápio e QR Code em PDF, com URL validada, imagens tolerantes a falhas, preços base ou promocionais e separação por categoria/subcategoria. As três situações prontas deixaram a fila Em aberto sem desaparecer de suas filas operacionais.
+
 Data da revisão final: 4 de setembro de 2026.
 
 Arquivo de origem analisado: `master-pizza-profissional-v2.19.16-darkmode-adicionais-preco-dinamico.zip`.
@@ -63,8 +65,8 @@ Nenhum sistema publicado na internet pode ser considerado perfeito para sempre. 
 
 - `prisma format`, geração do Prisma Client e validação do schema: aprovados.
 - Verificação sintática de todos os arquivos JavaScript do backend: aprovada.
-- Trinta e sete testes automatizados: 25 do backend e 12 do frontend, todos aprovados e sem falhas.
-- Build de produção do frontend com Vite: aprovado, 1.676 módulos transformados.
+- Quarenta e um testes automatizados: 25 do backend e 16 do frontend, todos aprovados e sem falhas.
+- Build de produção do frontend com Vite: aprovado, 1.974 módulos transformados.
 - Inicialização da API e comportamento de CORS foram aprovados na primeira etapa desta mesma auditoria.
 - Inicialização final sem banco: aprovada; `/health` respondeu 503 corretamente para banco indisponível, com `X-Request-Id` e cabeçalhos de proteção.
 - Origem CORS permitida recebeu o cabeçalho esperado; origem não autorizada foi bloqueada com HTTP 403.

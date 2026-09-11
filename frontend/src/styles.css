@@ -15887,3 +15887,224 @@ html.dark-mode textarea {
 .admin-shell.admin-dark .admin-order.status-card-ready_for_table {
   border-color: #7d6228 !important;
 }
+
+/* Estúdio de impressão do cardápio. */
+.menu-print-studio {
+  overflow: hidden;
+}
+.menu-print-heading > svg {
+  width: 34px;
+  height: 34px;
+  color: var(--red);
+}
+.menu-print-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(310px, 0.85fr);
+  gap: 18px;
+  align-items: stretch;
+}
+.menu-print-form,
+.menu-print-preview {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #faf9f7;
+}
+.menu-print-form {
+  display: grid;
+  align-content: start;
+  gap: 15px;
+}
+.menu-url-field {
+  display: grid;
+  gap: 7px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+.menu-url-field > span {
+  position: relative;
+  display: block;
+}
+.menu-url-field svg {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  color: var(--muted);
+}
+.menu-url-field input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px 10px 39px;
+  border: 1px solid #d9dce0;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+}
+.menu-url-field small,
+.menu-promotion-option small,
+.menu-print-note {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.55;
+}
+.menu-promotion-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid #e2ddd5;
+  border-radius: 13px;
+  background: #fff;
+  cursor: pointer;
+}
+.menu-promotion-option input {
+  width: 17px;
+  height: 17px;
+  margin-top: 1px;
+  accent-color: var(--red);
+}
+.menu-promotion-option span {
+  display: grid;
+  gap: 3px;
+}
+.menu-print-error {
+  padding: 10px 12px;
+  border: 1px solid #efb9bc;
+  border-radius: 11px;
+  background: #fff1f2;
+  color: #9d1820;
+  font-size: 11px;
+  font-weight: 800;
+}
+.menu-print-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.menu-print-actions button {
+  min-height: 42px;
+}
+.menu-qr-only-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+.menu-print-preview {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  background: linear-gradient(145deg, #20242a, #15181c);
+  color: #f5f6f7;
+}
+.menu-preview-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.menu-preview-brand > span {
+  width: 76px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #fff;
+}
+.menu-preview-brand img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.menu-preview-brand svg {
+  color: #7c838c;
+}
+.menu-preview-brand div {
+  min-width: 0;
+  display: grid;
+}
+.menu-preview-brand small,
+.menu-preview-features span,
+.menu-print-preview .menu-print-note {
+  color: #b8bec6;
+}
+.menu-preview-brand b {
+  overflow: hidden;
+  color: #fff;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.menu-print-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+.menu-print-kpis span {
+  display: grid;
+  padding: 10px;
+  border: 1px solid #383e46;
+  border-radius: 11px;
+  background: #272c32;
+}
+.menu-print-kpis b {
+  color: #fff;
+  font-size: 18px;
+}
+.menu-print-kpis small {
+  color: #aeb4bc;
+  font-size: 9px;
+}
+.menu-preview-features {
+  display: grid;
+  gap: 8px;
+}
+.menu-preview-features span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.menu-preview-features svg {
+  color: #ff6269;
+}
+.admin-shell.admin-dark .menu-print-form {
+  background: #20252b;
+  border-color: #3b444e;
+}
+.admin-shell.admin-dark .menu-url-field,
+.admin-shell.admin-dark .menu-promotion-option {
+  color: #f3f5f7;
+}
+.admin-shell.admin-dark .menu-promotion-option {
+  background: #191d22;
+  border-color: #414a54;
+}
+.admin-shell.admin-dark .menu-print-error {
+  background: #351d20;
+  color: #ffb5ba;
+  border-color: #5c3036;
+}
+@media (max-width: 900px) {
+  .menu-print-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 560px) {
+  .menu-print-form,
+  .menu-print-preview {
+    padding: 14px;
+    border-radius: 14px;
+  }
+  .menu-print-actions {
+    display: grid;
+  }
+  .menu-print-actions button {
+    width: 100%;
+  }
+}

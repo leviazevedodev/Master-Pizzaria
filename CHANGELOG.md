@@ -1,5 +1,17 @@
 # Histórico de versões
 
+## 2.23.0 — Cardápio em PDF e QR Code
+
+- pedidos prontos para servir, entrega ou retirada deixam a fila **Em aberto** e permanecem nas filas específicas;
+- criada a seção **Cardápio → Impressão** no painel administrativo;
+- geração local de PDF A4 com logo, fotos, descrições, categorias, subcategorias e preços por tamanho;
+- opção para incluir somente valores base ou também promoções ativas;
+- QR Code com o endereço informado aparece ao final do cardápio;
+- geração separada de folha A4 contendo apenas o QR Code do cardápio;
+- links são validados como HTTP/HTTPS sem credenciais e não são acessados pelo painel;
+- falha isolada ao carregar uma imagem não interrompe a criação do documento;
+- novos testes cobrem segurança do link, organização do conteúdo, promoções e separação das filas prontas.
+
 ## 2.22.0 — Atendimento presencial integrado
 
 - pedidos presenciais agora aparecem na aba **Atendimento**, sem entrar na fila de entregadores;

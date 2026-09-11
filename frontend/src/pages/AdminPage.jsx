@@ -51,6 +51,7 @@ import {
   Sun,
   Moon,
   Armchair,
+  Printer,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, authHeaders, mediaUrl } from "../lib/api";
@@ -68,6 +69,7 @@ import {
   ManagementHub,
 } from "../components/AdvancedAdminSections";
 import TablesAdmin from "../components/TablesAdmin";
+import MenuPrintStudio from "../components/MenuPrintStudio";
 
 const STATUS_LABEL = {
   SCHEDULED: "Agendado",
@@ -303,7 +305,7 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
       "alterations",
       "categories",
     ].filter(can);
-    if (can("products")) allowed.push("sizes");
+    if (can("products")) allowed.push("sizes", "print");
     if (tab === "catalog" && !allowed.includes(catalogSection))
       setCatalogSection(allowed[0] || "products");
   }, [tab, permissions, catalogSection]);
@@ -1534,6 +1536,15 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
                   <Layers3 size={16} /> Tamanhos
                 </button>
               )}
+              {can("products") && (
+                <button
+                  type="button"
+                  className={catalogSection === "print" ? "active" : ""}
+                  onClick={() => setCatalogSection("print")}
+                >
+                  <Printer size={16} /> Impressão
+                </button>
+              )}
               {can("promotions") && (
                 <button
                   type="button"
@@ -1672,6 +1683,15 @@ export default function AdminPage({ session, onLogout, onCatalogChanged }) {
                 update={updateSize}
                 remove={removeSize}
                 reorder={(row, d) => reorderRows("sizes", sizes, row, d)}
+              />
+            )}{" "}
+            {catalogSection === "print" && can("products") && (
+              <MenuPrintStudio
+                products={products}
+                categories={categories}
+                subcategories={subcategories}
+                settings={settings}
+                notify={notify}
               />
             )}{" "}
             {catalogSection === "promotions" && can("promotions") && (

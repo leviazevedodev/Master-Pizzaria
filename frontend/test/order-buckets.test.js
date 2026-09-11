@@ -4,6 +4,12 @@ import { buildOrderBuckets } from "../src/lib/orderBuckets.js";
 
 const orders = [
   { id: "delivery", fulfillmentType: "DELIVERY", status: "RECEIVED" },
+  {
+    id: "delivery-ready",
+    fulfillmentType: "DELIVERY",
+    status: "READY_FOR_DELIVERY",
+  },
+  { id: "pickup-ready", fulfillmentType: "PICKUP", status: "READY_FOR_PICKUP" },
   { id: "table-new", fulfillmentType: "DINE_IN", status: "RECEIVED" },
   { id: "table-ready", fulfillmentType: "DINE_IN", status: "READY_FOR_TABLE" },
   { id: "table-served", fulfillmentType: "DINE_IN", status: "SERVED" },
@@ -21,7 +27,27 @@ test("Atendimento inclui pedidos presenciais nas filas correspondentes", () => {
   );
   assert.deepEqual(
     buckets.OPEN.map((order) => order.id),
-    ["delivery", "table-new", "table-ready", "table-served"],
+    ["delivery", "table-new", "table-served"],
+  );
+});
+
+test("pedidos prontos saem de Em aberto e continuam nas filas específicas", () => {
+  const buckets = buildOrderBuckets(orders, { includeDineIn: true });
+  assert.deepEqual(
+    buckets.OPEN.map((order) => order.id),
+    ["delivery", "table-new", "table-served"],
+  );
+  assert.deepEqual(
+    buckets.READY_FOR_DELIVERY.map((order) => order.id),
+    ["delivery-ready"],
+  );
+  assert.deepEqual(
+    buckets.READY_FOR_PICKUP.map((order) => order.id),
+    ["pickup-ready"],
+  );
+  assert.deepEqual(
+    buckets.READY_FOR_TABLE.map((order) => order.id),
+    ["table-ready"],
   );
 });
 
