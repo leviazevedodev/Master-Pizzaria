@@ -176,8 +176,10 @@ export default function AdminPage({
   const permissions = session.user.adminPermissions;
   const isOwner = permissions == null;
   const isDeliveryStaff = session.user.staffRole === "DELIVERY";
+  const isWaiter = session.user.staffRole === "WAITER";
   const can = (key) => {
     if (isOwner) return true;
+    if (isWaiter && ["tables", "orders"].includes(key)) return true;
     const list = Array.isArray(permissions) ? permissions : [];
     const catalogKeys = ["products", "promotions", "alterations", "categories"];
     if (key === "catalog")
@@ -357,7 +359,7 @@ export default function AdminPage({
         jobs.promotions = () => api.get("/admin/promotions", headers);
       if (can("customers"))
         jobs.customers = () => api.get("/admin/customers", headers);
-      if (can("settings"))
+      if (can("settings") || can("operations"))
         jobs.hours = () => api.get("/admin/store-hours", headers);
       if (isOwner) jobs.staff = () => api.get("/admin/staff", headers);
       const entries = Object.entries(jobs);
@@ -473,8 +475,12 @@ export default function AdminPage({
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   const orderBuckets = useMemo(
-    () => buildOrderBuckets(orders, { deliveryOnly: isDeliveryStaff }),
-    [orders, isDeliveryStaff],
+    () =>
+      buildOrderBuckets(orders, {
+        includeDineIn: isWaiter,
+        deliveryOnly: isDeliveryStaff,
+      }),
+    [orders, isDeliveryStaff, isWaiter],
   );
   const overviewBuckets = useMemo(
     () =>
@@ -532,7 +538,13 @@ export default function AdminPage({
       const order = orders.find((item) => item.id === id);
       let data;
       if (order?.fulfillmentType === "DINE_IN") {
-        if (status === "SERVED") {
+        if (["PREPARING", "READY_FOR_TABLE"].includes(status)) {
+          ({ data } = await api.patch(
+            `/admin/kitchen/orders/${id}/advance`,
+            {},
+            headers,
+          ));
+        } else if (status === "SERVED") {
           ({ data } = await api.post(
             `/admin/table-orders/${id}/served`,
             {},
@@ -545,7 +557,7 @@ export default function AdminPage({
             headers,
           ));
         } else {
-          throw new Error("A cozinha é responsável por esta etapa da comanda.");
+          throw new Error("Etapa inválida para este pedido presencial.");
         }
       } else {
         ({ data } = await api.patch(
@@ -1537,6 +1549,9 @@ export default function AdminPage({
             settings={settings}
             saveOperations={saveOperations}
             statusSaving={statusSaving}
+            hours={hours}
+            setHours={setHours}
+            saveHour={saveHour}
           />
         )}
         {tab === "catalog" && can("catalog") && (
@@ -1716,6 +1731,15 @@ export default function AdminPage({
                 subcategories={subcategories}
                 settings={settings}
                 notify={notify}
+                onDigitalMenuChange={async (enabled) => {
+                  const { data } = await api.patch(
+                    "/admin/settings",
+                    { digitalMenuEnabled: enabled },
+                    headers,
+                  );
+                  setSettings((current) => ({ ...current, ...data }));
+                  await onCatalogChanged?.();
+                }}
               />
             )}{" "}
             {catalogSection === "promotions" && can("promotions") && (
@@ -1896,10 +1920,7 @@ export default function AdminPage({
           <StoreSettings
             settings={settings}
             setSettings={setSettings}
-            hours={hours}
-            setHours={setHours}
             saveSettings={saveStoreSettings}
-            saveHour={saveHour}
             lookupStoreCep={lookupStoreCep}
             goProducts={() => {
               setTab("catalog");
@@ -2099,8 +2120,12 @@ function deadlineState(order, minutes = 30) {
 }
 
 function nextStatusForOrder(order) {
-  if (order.fulfillmentType === "DINE_IN")
-    return order.status === "READY_FOR_TABLE" ? "SERVED" : null;
+  if (order.fulfillmentType === "DINE_IN") {
+    if (order.status === "RECEIVED") return "PREPARING";
+    if (order.status === "PREPARING") return "READY_FOR_TABLE";
+    if (order.status === "READY_FOR_TABLE") return "SERVED";
+    return null;
+  }
   if (order.status === "SCHEDULED") return "RECEIVED";
   if (order.status === "RECEIVED") return "PREPARING";
   if (order.status === "PREPARING")
@@ -2117,8 +2142,11 @@ function nextStatusForOrder(order) {
 }
 function nextStatusLabel(order) {
   const next = nextStatusForOrder(order);
-  if (order.fulfillmentType === "DINE_IN" && next === "SERVED")
-    return "Marcar como servido";
+  if (order.fulfillmentType === "DINE_IN") {
+    if (next === "PREPARING") return "Iniciar preparo";
+    if (next === "READY_FOR_TABLE") return "Marcar pronto para servir";
+    if (next === "SERVED") return "Marcar como servido";
+  }
   if (order.status === "RECEIVED" && next === "PREPARING")
     return "Aceitar pedido e iniciar preparo";
   return next ? `Avançar para ${STATUS_LABEL[next]}` : "Pedido concluído";
@@ -2576,7 +2604,14 @@ const STAFF_PERMISSION_OPTIONS = TABS.filter(
   ([, , , permission]) => permission !== "__OWNER__",
 ).map(([id, Icon, label, permission]) => ({ id, Icon, label, permission }));
 
-function OperationsAdmin({ settings, saveOperations, statusSaving }) {
+function OperationsAdmin({
+  settings,
+  saveOperations,
+  statusSaving,
+  hours,
+  setHours,
+  saveHour,
+}) {
   const controls = [
     [
       "isOpen",
@@ -2604,46 +2639,135 @@ function OperationsAdmin({ settings, saveOperations, statusSaving }) {
     ],
   ];
   return (
-    <section className="admin-panel operations-admin">
+    <>
+      <section className="admin-panel operations-admin">
+        <div className="panel-title">
+          <div>
+            <span>Controle rápido</span>
+            <h2>Operação da loja</h2>
+            <p>
+              Esses comandos foram separados das configurações gerais para a
+              equipe alterar o funcionamento do dia com segurança.
+            </p>
+          </div>
+          <Power />
+        </div>
+        <div className="operation-control-grid">
+          {controls.map(([key, title, description, value]) => (
+            <article key={key} className={value ? "enabled" : "disabled"}>
+              <span className={`operation-light ${value ? "on" : "off"}`} />
+              <div>
+                <b>{title}</b>
+                <small>{description}</small>
+              </div>
+              <button
+                disabled={statusSaving}
+                className={
+                  value ? "operation-toggle active" : "operation-toggle"
+                }
+                onClick={() => saveOperations({ [key]: !value })}
+              >
+                {statusSaving
+                  ? "Salvando..."
+                  : value
+                    ? "Ativo"
+                    : "Desativado"}
+              </button>
+            </article>
+          ))}
+        </div>
+        <div className="operation-tip">
+          <ShieldCheck />
+          <span>
+            <b>Alteração imediata</b>
+            <small>
+              O estado salvo aqui é persistido no banco e refletido no site
+              público.
+            </small>
+          </span>
+        </div>
+      </section>
+      <StoreHoursEditor
+        hours={hours}
+        setHours={setHours}
+        saveHour={saveHour}
+      />
+    </>
+  );
+}
+
+function StoreHoursEditor({ hours = [], setHours, saveHour }) {
+  return (
+    <section className="admin-panel hours-panel operations-hours-panel">
       <div className="panel-title">
         <div>
-          <span>Controle rápido</span>
-          <h2>Operação da loja</h2>
+          <span>Horário público</span>
+          <h2>Funcionamento por dia</h2>
           <p>
-            Esses comandos foram separados das configurações gerais para a
-            equipe alterar o funcionamento do dia com segurança.
+            Estes horários informam o cliente e validam os agendamentos quando
+            a loja estiver fechada.
           </p>
         </div>
-        <Power />
+        <Clock3 />
       </div>
-      <div className="operation-control-grid">
-        {controls.map(([key, title, description, value]) => (
-          <article key={key} className={value ? "enabled" : "disabled"}>
-            <span className={`operation-light ${value ? "on" : "off"}`} />
-            <div>
-              <b>{title}</b>
-              <small>{description}</small>
-            </div>
+      <div className="hours-admin-list">
+        {hours.map((hour) => (
+          <article key={hour.id}>
+            <b>{hour.label}</b>
+            <label>
+              <span>Abre</span>
+              <input
+                type="time"
+                value={hour.openTime}
+                disabled={hour.closed}
+                onChange={(event) =>
+                  setHours((rows) =>
+                    rows.map((row) =>
+                      row.id === hour.id
+                        ? { ...row, openTime: event.target.value }
+                        : row,
+                    ),
+                  )
+                }
+                onBlur={(event) =>
+                  saveHour(hour, { openTime: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              <span>Fecha</span>
+              <input
+                type="time"
+                value={hour.closeTime}
+                disabled={hour.closed}
+                onChange={(event) =>
+                  setHours((rows) =>
+                    rows.map((row) =>
+                      row.id === hour.id
+                        ? { ...row, closeTime: event.target.value }
+                        : row,
+                    ),
+                  )
+                }
+                onBlur={(event) =>
+                  saveHour(hour, { closeTime: event.target.value })
+                }
+              />
+            </label>
             <button
-              disabled={statusSaving}
-              className={value ? "operation-toggle active" : "operation-toggle"}
-              onClick={() => saveOperations({ [key]: !value })}
+              type="button"
+              className={hour.closed ? "area-toggle" : "area-toggle active"}
+              onClick={() => saveHour(hour, { closed: !hour.closed })}
             >
-              {statusSaving ? "Salvando..." : value ? "Ativo" : "Desativado"}
+              {hour.closed ? "Fechado" : "Aberto"}
             </button>
           </article>
         ))}
       </div>
-      <div className="operation-tip">
-        <ShieldCheck />
-        <span>
-          <b>Alteração imediata</b>
-          <small>
-            O estado salvo aqui é persistido no banco e refletido no site
-            público.
-          </small>
-        </span>
-      </div>
+      <p className="field-note">
+        Altere o horário e clique fora do campo para salvar. O botão define se
+        aquele dia aceita agendamento.
+      </p>
     </section>
   );
 }
@@ -3343,7 +3467,7 @@ function StaffAdmin({
                             e.target.value === "DELIVERY"
                               ? ["orders"]
                               : e.target.value === "WAITER"
-                                ? ["tables"]
+                                ? ["tables", "orders"]
                               : row.adminPermissions || [],
                         })
                       }
@@ -3482,7 +3606,7 @@ function StaffAdmin({
                   e.target.value === "DELIVERY"
                     ? ["orders"]
                     : e.target.value === "WAITER"
-                      ? ["tables"]
+                      ? ["tables", "orders"]
                       : form.permissions,
               })
             }
@@ -3704,91 +3828,124 @@ function PromotionsAdmin({
             <div className="promotion-admin-list promotion-product-rows">
               {orderedRows.length ? (
                 orderedRows.map((r) => (
-                  <article key={r.id} className={!r.active ? "paused" : ""}>
-                    <img
-                      src={mediaUrl(r.image) || mediaUrl(r.product?.image)}
-                      alt=""
-                    />
-                    <div className="promotion-admin-main">
-                      <input
-                        defaultValue={r.title}
-                        onBlur={(e) =>
-                          e.target.value !== r.title &&
-                          update(r, { title: e.target.value })
-                        }
+                  <article
+                    key={r.id}
+                    className={`promotion-product-editor ${!r.active ? "paused" : ""}`}
+                  >
+                    <div className="promotion-product-identity">
+                      <img
+                        src={mediaUrl(r.image) || mediaUrl(r.product?.image)}
+                        alt={`Imagem de ${r.product?.name || r.title}`}
                       />
-                      <textarea
-                        defaultValue={r.subtitle || ""}
-                        placeholder="Descrição curta"
-                        onBlur={(e) =>
-                          e.target.value !== (r.subtitle || "") &&
-                          update(r, { subtitle: e.target.value })
-                        }
-                      />
-                      <small>{r.product?.name}</small>
-                      <span>
-                        <del>{money(r.originalPrice)}</del>
-                        <strong>{money(r.promoPrice)}</strong>
-                      </span>
+                      <div className="promotion-admin-main">
+                        <small>Produto: {r.product?.name}</small>
+                        <input
+                          aria-label={`Título da promoção de ${r.product?.name || r.title}`}
+                          defaultValue={r.title}
+                          onBlur={(e) =>
+                            e.target.value !== r.title &&
+                            update(r, { title: e.target.value })
+                          }
+                        />
+                        <textarea
+                          aria-label={`Descrição da promoção de ${r.product?.name || r.title}`}
+                          defaultValue={r.subtitle || ""}
+                          placeholder="Descrição curta"
+                          onBlur={(e) =>
+                            e.target.value !== (r.subtitle || "") &&
+                            update(r, { subtitle: e.target.value })
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="promotion-pricing-panel">
+                      <div className="promotion-section-heading">
+                        <span>Preços da oferta</span>
+                        <small>
+                          Use um valor específico por tamanho ou deixe vazio
+                          para aplicar o desconto geral.
+                        </small>
+                      </div>
+                      <div className="promotion-admin-values">
+                        <label>
+                          <span>Preço base</span>
+                          <div className="promo-money-input">
+                            <i>R$</i>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              defaultValue={r.originalPrice}
+                              onBlur={(e) =>
+                                Number(e.target.value) !==
+                                  Number(r.originalPrice) &&
+                                update(r, {
+                                  originalPrice: Number(e.target.value),
+                                })
+                              }
+                            />
+                          </div>
+                        </label>
+                        <label>
+                          <span>Preço promocional</span>
+                          <div className="promo-money-input featured">
+                            <i>R$</i>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              defaultValue={r.promoPrice}
+                              onBlur={(e) =>
+                                Number(e.target.value) !==
+                                  Number(r.promoPrice) &&
+                                update(r, {
+                                  promoPrice: Number(e.target.value),
+                                })
+                              }
+                            />
+                          </div>
+                        </label>
+                      </div>
                       {(r.product?.availableSizes || []).length > 0 && (
                         <div className="promotion-size-prices compact">
                           {r.product.availableSizes.map((size) => (
                             <label key={size.id}>
-                              <span>{size.name} <small>base {money(size.price)}</small></span>
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                defaultValue={r.sizePrices?.[size.sizeId] ?? ""}
-                                placeholder="usar desconto geral"
-                                onBlur={(event) => {
-                                  const raw = event.target.value;
-                                  const current = { ...(r.sizePrices || {}) };
-                                  if (raw === "") delete current[size.sizeId];
-                                  else current[size.sizeId] = Number(raw);
-                                  update(r, { sizePrices: current });
-                                }}
-                              />
+                              <span>
+                                {size.name}
+                                <small>Preço normal: {money(size.price)}</small>
+                              </span>
+                              <div className="promo-money-input">
+                                <i>R$</i>
+                                <input
+                                  aria-label={`Preço promocional do tamanho ${size.name}`}
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  defaultValue={
+                                    r.sizePrices?.[size.sizeId] ?? ""
+                                  }
+                                  placeholder="Desconto geral"
+                                  onBlur={(event) => {
+                                    const raw = event.target.value;
+                                    const current = { ...(r.sizePrices || {}) };
+                                    if (raw === "") delete current[size.sizeId];
+                                    else current[size.sizeId] = Number(raw);
+                                    update(r, { sizePrices: current });
+                                  }}
+                                />
+                              </div>
                             </label>
                           ))}
                         </div>
                       )}
                     </div>
-                    <div className="promotion-admin-values">
-                      <label>
-                        Preço base
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          defaultValue={r.originalPrice}
-                          onBlur={(e) =>
-                            Number(e.target.value) !==
-                              Number(r.originalPrice) &&
-                            update(r, { originalPrice: Number(e.target.value) })
-                          }
-                        />
-                      </label>
-                      <label>
-                        Promoção
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          defaultValue={r.promoPrice}
-                          onBlur={(e) =>
-                            Number(e.target.value) !== Number(r.promoPrice) &&
-                            update(r, { promoPrice: Number(e.target.value) })
-                          }
-                        />
-                      </label>
-                      <PriorityArrows
-                        value={r.sortOrder}
-                        onUp={() => reorder(r, -1)}
-                        onDown={() => reorder(r, 1)}
-                      />
-                    </div>
+
                     <div className="promotion-schedule-fields">
+                      <div className="promotion-section-heading">
+                        <span>Período da oferta</span>
+                        <small>Deixe vazio para manter sem prazo.</small>
+                      </div>
                       <label>
                         Início
                         <input
@@ -3812,7 +3969,13 @@ function PromotionsAdmin({
                         />
                       </label>
                     </div>
+
                     <div className="promotion-admin-actions">
+                      <PriorityArrows
+                        value={r.sortOrder}
+                        onUp={() => reorder(r, -1)}
+                        onDown={() => reorder(r, 1)}
+                      />
                       <label
                         className="upload-icon-button media-upload-standard media-upload-mini"
                         title="Trocar imagem"
@@ -3844,7 +4007,7 @@ function PromotionsAdmin({
                         onClick={() => remove(r)}
                         title="Remover promoção"
                       >
-                        <Trash2 size={16} />
+                        <Trash2 size={16} /> Remover
                       </button>
                     </div>
                   </article>
@@ -4568,16 +4731,22 @@ function DeliveryAdmin({
 function StoreSettings({
   settings,
   setSettings,
-  hours,
-  setHours,
   saveSettings,
-  saveHour,
   lookupStoreCep,
   goProducts,
   uploadMedia,
   imageUploading,
 }) {
   const [newPaymentName, setNewPaymentName] = useState("");
+  const standardTablePayments = [
+    ["CASH", "Dinheiro"],
+    ["PIX", "Pix"],
+    ["CREDIT", "Cartão de crédito"],
+    ["DEBIT", "Cartão de débito"],
+  ];
+  const tablePaymentMethods = Array.isArray(settings.tablePaymentMethods)
+    ? settings.tablePaymentMethods
+    : standardTablePayments.map(([value]) => value);
   const customPaymentMethods = Array.isArray(settings.customPaymentMethods)
     ? settings.customPaymentMethods
     : [];
@@ -4614,6 +4783,18 @@ function StoreSettings({
         (method) => method.id !== id,
       ),
     }));
+  const toggleTablePayment = (value) =>
+    setSettings((current) => {
+      const methods = Array.isArray(current.tablePaymentMethods)
+        ? current.tablePaymentMethods
+        : standardTablePayments.map(([method]) => method);
+      return {
+        ...current,
+        tablePaymentMethods: methods.includes(value)
+          ? methods.filter((method) => method !== value)
+          : [...methods, value],
+      };
+    });
   const uploadSetting = (key, file) => {
     const config = {
       logoImage: ["Logo do site", 16 / 7],
@@ -4644,6 +4825,37 @@ function StoreSettings({
         ),
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
     );
+  }
+  function useGoogleMapsLink() {
+    const raw = String(settings.storeGoogleMapsUrl || "").trim();
+    let match = raw.match(/@(-?\d{1,2}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)/);
+    if (!match)
+      match = raw.match(/!3d(-?\d{1,2}(?:\.\d+)?).*?!4d(-?\d{1,3}(?:\.\d+)?)/);
+    if (!match) {
+      try {
+        const url = new URL(raw);
+        const query = url.searchParams.get("q") ||
+          url.searchParams.get("query") || url.searchParams.get("ll") || "";
+        match = query.match(/^(-?\d{1,2}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)$/);
+      } catch {}
+    }
+    const latitude = Number(match?.[1]);
+    const longitude = Number(match?.[2]);
+    if (
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      latitude < -90 || latitude > 90 ||
+      longitude < -180 || longitude > 180
+    )
+      return window.alert(
+        "O link foi salvo, mas não contém coordenadas visíveis. Abra o local no Google Maps, copie o link completo da barra de endereço e tente novamente.",
+      );
+    setSettings((current) => ({
+      ...current,
+      storeLatitude: Number(latitude.toFixed(7)),
+      storeLongitude: Number(longitude.toFixed(7)),
+      storeGeoSource: "google-maps",
+    }));
   }
   return (
     <>
@@ -4729,6 +4941,24 @@ function StoreSettings({
               />
             </label>
           </div>
+          <label className="store-maps-link">
+            Link do Google Maps
+            <input
+              type="url"
+              placeholder="https://www.google.com/maps/..."
+              value={settings.storeGoogleMapsUrl || ""}
+              onChange={(event) =>
+                setSettings({
+                  ...settings,
+                  storeGoogleMapsUrl: event.target.value,
+                })
+              }
+            />
+            <small>
+              Cole o link completo do ponto da unidade para salvar e, quando o
+              link trouxer latitude/longitude, aplicar as coordenadas.
+            </small>
+          </label>
           <div className="store-location-actions">
             <button
               type="button"
@@ -4744,6 +4974,24 @@ function StoreSettings({
             >
               <Route size={16} /> Usar localização deste aparelho
             </button>
+            <button
+              type="button"
+              className="ghost-dark-btn"
+              disabled={!settings.storeGoogleMapsUrl}
+              onClick={useGoogleMapsLink}
+            >
+              <MapPin size={16} /> Aplicar link do Maps
+            </button>
+            {String(settings.storeGoogleMapsUrl || "").startsWith("https://") && (
+              <a
+                className="ghost-dark-btn"
+                href={settings.storeGoogleMapsUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Route size={16} /> Conferir no mapa
+              </a>
+            )}
             <span>
               <b>
                 {settings.storeLatitude != null &&
@@ -4821,6 +5069,25 @@ function StoreSettings({
             </label>
           </div>
           <div className="custom-payment-manager">
+            <div>
+              <b>Formas padrão para mesas</b>
+              <small>
+                As quatro opções começam ativas. Desmarque qualquer uma para
+                removê-la do fechamento das comandas.
+              </small>
+            </div>
+            <div className="table-standard-payment-grid">
+              {standardTablePayments.map(([value, label]) => (
+                <label key={value}>
+                  <input
+                    type="checkbox"
+                    checked={tablePaymentMethods.includes(value)}
+                    onChange={() => toggleTablePayment(value)}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
             <div>
               <b>Outras formas de pagamento</b>
               <small>
@@ -4992,15 +5259,6 @@ function StoreSettings({
               value={settings.instagramUrl || ""}
               onChange={(e) =>
                 setSettings({ ...settings, instagramUrl: e.target.value })
-              }
-            />
-          </label>
-          <label>
-            Título do cardápio
-            <input
-              value={settings.menuTitle || ""}
-              onChange={(e) =>
-                setSettings({ ...settings, menuTitle: e.target.value })
               }
             />
           </label>
@@ -5387,6 +5645,15 @@ function StoreSettings({
         <div className="visual-editor-grid">
           <div className="visual-editor-fields">
             <label>
+              Título do cardápio
+              <input
+                value={settings.menuTitle || ""}
+                onChange={(e) =>
+                  setSettings({ ...settings, menuTitle: e.target.value })
+                }
+              />
+            </label>
+            <label>
               Texto pequeno do destaque
               <input
                 value={settings.heroEyebrow || ""}
@@ -5570,73 +5837,6 @@ function StoreSettings({
           <Save size={16} /> Salvar aparência
         </button>
       </form>
-
-      <section className="admin-panel hours-panel">
-        <div className="panel-title">
-          <div>
-            <span>Horário público</span>
-            <h2>Funcionamento por dia</h2>
-            <p>
-              Os horários servem para informar o cliente e validar agendamentos
-              quando a loja estiver fechada.
-            </p>
-          </div>
-          <Clock3 />
-        </div>
-        <div className="hours-admin-list">
-          {hours.map((h) => (
-            <article key={h.id}>
-              <b>{h.label}</b>
-              <label>
-                <span>Abre</span>
-                <input
-                  type="time"
-                  value={h.openTime}
-                  disabled={h.closed}
-                  onChange={(e) =>
-                    setHours((list) =>
-                      list.map((row) =>
-                        row.id === h.id
-                          ? { ...row, openTime: e.target.value }
-                          : row,
-                      ),
-                    )
-                  }
-                  onBlur={(e) => saveHour(h, { openTime: e.target.value })}
-                />
-              </label>
-              <label>
-                <span>Fecha</span>
-                <input
-                  type="time"
-                  value={h.closeTime}
-                  disabled={h.closed}
-                  onChange={(e) =>
-                    setHours((list) =>
-                      list.map((row) =>
-                        row.id === h.id
-                          ? { ...row, closeTime: e.target.value }
-                          : row,
-                      ),
-                    )
-                  }
-                  onBlur={(e) => saveHour(h, { closeTime: e.target.value })}
-                />
-              </label>
-              <button
-                className={h.closed ? "area-toggle" : "area-toggle active"}
-                onClick={() => saveHour(h, { closed: !h.closed })}
-              >
-                {h.closed ? "Fechado" : "Aberto"}
-              </button>
-            </article>
-          ))}
-        </div>
-        <p className="field-note">
-          Altere o horário e clique fora do campo para salvar. O botão define se
-          aquele dia aceita agendamento.
-        </p>
-      </section>
 
       <form className="admin-panel settings-form" onSubmit={saveSettings}>
         <div className="panel-title">

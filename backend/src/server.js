@@ -9,12 +9,14 @@ import { PrismaClient } from "@prisma/client";
 import {
   detectImageMime,
   escapeHtml,
+  normalizeTrustedGoogleMapsUrl,
   verifyMercadoPagoSignature,
 } from "./security.js";
 import {
   isProductAvailableAt,
   parseClock,
   startOfZonedDay,
+  startOfZonedDateKey,
   zonedDateKey,
 } from "./catalog.js";
 import { missingDeliveryAddressFields } from "./order-validation.js";
@@ -30,8 +32,16 @@ import { retentionCutoffs } from "./data-retention.js";
 import {
   CUSTOM_PAYMENT_PREFIX,
   normalizeCustomPaymentMethods,
+  normalizeTablePaymentMethods,
   resolveCustomPaymentMethod,
+  TABLE_PAYMENT_METHOD_LABELS,
 } from "./payment-methods.js";
+import {
+  CONFIRMED_PAYMENT_STATUSES,
+  customerCanCancel,
+  customerVisibleStatus,
+} from "./customer-order.js";
+import { buildFinancialSummaryFromTotals } from "./financial-report.js";
 
 dotenv.config({ quiet: true });
 
@@ -86,7 +96,7 @@ const MERCADOPAGO_NOTIFICATION_URL = /^https:\/\//i.test(PUBLIC_BACKEND_URL)
   : "";
 const PUBLIC_MENU_URL = (() => {
   try {
-    const url = new URL("/gestao/cardapiodigital", FRONTEND_URL);
+    const url = new URL("/cardapio-digital", FRONTEND_URL);
     return ["http:", "https:"].includes(url.protocol) ? url.href : "";
   } catch {
     return "";
@@ -419,6 +429,12 @@ const serializeSettings = (settings) => ({
   customPaymentMethods: normalizeCustomPaymentMethods(
     settings.customPaymentMethods,
   ),
+  tablePaymentMethods: normalizeTablePaymentMethods(
+    settings.tablePaymentMethods,
+  ),
+  storeGoogleMapsUrl: normalizeTrustedGoogleMapsUrl(
+    settings.storeGoogleMapsUrl,
+  ),
   instagramUrl: safeExternalUrl(settings.instagramUrl, 600),
   logoImage: safeMediaUrl(settings.logoImage),
   heroImage: safeMediaUrl(settings.heroImage),
@@ -482,6 +498,7 @@ const serializePublicSettings = (settings) => {
     "mercadoPagoPublicKey",
     "passwordEmailConfigured",
     "publicMenuUrl",
+    "digitalMenuEnabled",
     "logoImage",
     "heroEyebrow",
     "heroImage",
@@ -960,6 +977,16 @@ const serializeOrder = (order) => {
 
 const serializeCustomerOrder = (order) => {
   const serialized = serializeOrder(order);
+  const customerStatus = customerVisibleStatus(serialized.status);
+  const customerHistory = (serialized.history || [])
+    .map((entry) => ({
+      ...entry,
+      status: customerVisibleStatus(entry.status),
+    }))
+    .filter(
+      (entry, index, rows) =>
+        rows.findIndex((candidate) => candidate.status === entry.status) === index,
+    );
   return {
     id: serialized.id,
     shortCode: serialized.shortCode,
@@ -993,7 +1020,8 @@ const serializeCustomerOrder = (order) => {
     paymentUrl: serialized.paymentUrl,
     scheduledAt: serialized.scheduledAt,
     acceptedAt: serialized.acceptedAt,
-    status: serialized.status,
+    status: customerStatus,
+    canCancel: customerCanCancel(serialized.status),
     cancelReason: serialized.cancelReason,
     estimatedDeliveryMin: serialized.estimatedDeliveryMin,
     estimatedDeliveryMax: serialized.estimatedDeliveryMax,
@@ -1030,7 +1058,7 @@ const serializeCustomerOrder = (order) => {
         unitPrice: option.unitPrice,
       })),
     })),
-    history: (serialized.history || []).map((entry) => ({
+    history: customerHistory.map((entry) => ({
       id: entry.id,
       status: entry.status,
       createdAt: entry.createdAt,
@@ -1238,12 +1266,14 @@ function normalizeStaffRole(value) {
 }
 function permissionsForStaffRole(role, requested = []) {
   if (role === "DELIVERY") return ["orders"];
-  if (role === "WAITER") return ["tables"];
+  if (role === "WAITER") return ["tables", "orders"];
   return requested;
 }
 function hasAdminPermission(req, key) {
   if (!req.adminUser?.isAdmin) return false;
   if (req.adminPermissions == null) return true;
+  if (req.adminUser.staffRole === "WAITER" && ["tables", "orders"].includes(key))
+    return true;
   const catalogKeys = new Set([
     "products",
     "promotions",
@@ -1265,6 +1295,14 @@ function hasTableAccess(req) {
     req.adminUser.staffActive !== false &&
     req.adminUser.staffRole !== "DELIVERY" &&
     hasAdminPermission(req, "tables")
+  );
+}
+function hasKitchenAccess(req) {
+  return (
+    req.adminUser?.isAdmin &&
+    req.adminUser.staffActive !== false &&
+    req.adminUser.staffRole !== "DELIVERY" &&
+    hasAdminPermission(req, "kitchen")
   );
 }
 function hasAuthenticatedTableAccess(req) {
@@ -2623,17 +2661,16 @@ async function syncMercadoPagoPayment(paymentId, expectedTrackingCode = null) {
   )
     return null;
   const approved = payment.status === "approved";
-  const rejected = [
-    "rejected",
-    "cancelled",
-    "refunded",
-    "charged_back",
-  ].includes(payment.status);
+  const rejected = ["rejected", "cancelled"].includes(payment.status);
+  const refunded = ["refunded", "charged_back"].includes(payment.status);
   const previousStatus = order.paymentStatus;
   const updated = await prisma.$transaction(async (tx) => {
-    if (rejected && previousStatus !== "REJECTED") {
+    if (
+      (rejected || refunded) &&
+      !["REJECTED", "REFUNDED"].includes(previousStatus)
+    ) {
       await restoreOrderStock(tx, order.id);
-      if (order.couponCode)
+      if (order.couponCode && order.status !== "CANCELED")
         await tx.coupon.updateMany({
           where: { code: order.couponCode, uses: { gt: 0 } },
           data: { uses: { decrement: 1 } },
@@ -2645,19 +2682,65 @@ async function syncMercadoPagoPayment(paymentId, expectedTrackingCode = null) {
         paymentExternalId: String(payment.id),
         paymentStatus: approved
           ? "APPROVED"
-          : rejected
-            ? "REJECTED"
-            : "PENDING",
+          : refunded
+            ? "REFUNDED"
+            : rejected
+              ? "REJECTED"
+              : "PENDING",
         paidAt: approved ? new Date(payment.date_approved || Date.now()) : null,
       },
       include: orderInclude,
     });
   });
-  if (approved && previousStatus !== "APPROVED")
-    queueWhatsApp(serializeOrder(updated), "ORDER_CREATED", "Recebido").catch(
+  let finalOrder = updated;
+  if (approved && updated.status === "CANCELED") {
+    try {
+      await refundMercadoPagoOrder(updated);
+      finalOrder = await prisma.order.update({
+        where: { id: updated.id },
+        data: { paymentStatus: "REFUNDED" },
+        include: orderInclude,
+      });
+    } catch (error) {
+      console.error(
+        "Falha ao reembolsar aprovação tardia de pedido cancelado:",
+        error.message,
+      );
+    }
+  }
+  if (
+    approved &&
+    finalOrder.status !== "CANCELED" &&
+    previousStatus !== "APPROVED"
+  )
+    queueWhatsApp(serializeOrder(finalOrder), "ORDER_CREATED", "Recebido").catch(
       () => {},
     );
-  return updated;
+  return finalOrder;
+}
+
+async function refundMercadoPagoOrder(order) {
+  if (order?.paymentStatus !== "APPROVED") return null;
+  if (
+    order?.paymentProvider !== "MERCADO_PAGO" ||
+    !/^\d{1,32}$/.test(String(order?.paymentExternalId || ""))
+  )
+    throw Object.assign(
+      new Error(
+        "O pagamento aprovado não possui uma referência válida para reembolso.",
+      ),
+      { code: "REFUND_REFERENCE_MISSING" },
+    );
+  return mercadoPagoRequest(
+    `/v1/payments/${encodeURIComponent(order.paymentExternalId)}/refunds`,
+    {
+      method: "POST",
+      body: "{}",
+      headers: {
+        "X-Idempotency-Key": `order-refund-${order.id}`,
+      },
+    },
+  );
 }
 
 const productInclude = {
@@ -3407,8 +3490,17 @@ app.get("/api/me/orders/:id/reorder", auth, async (req, res) => {
 });
 
 app.get("/api/digital-tables", trackingRateLimit, async (req, res) => {
+  const settings = await getSettings();
+  if (!settings.digitalMenuEnabled)
+    return res.status(404).json({
+      code: "DIGITAL_MENU_DISABLED",
+      message: "O cardápio digital das mesas está desativado.",
+    });
   const tables = await prisma.restaurantTable.findMany({
-    where: { active: true },
+    where: {
+      active: true,
+      sessions: { none: { status: "OPEN", openKey: { not: null } } },
+    },
     select: { number: true, name: true, seats: true },
     orderBy: [{ sortOrder: "asc" }, { number: "asc" }],
   });
@@ -3462,7 +3554,11 @@ app.post(
       const tableNumber = boundedInteger(req.body?.tableNumber, 1, 10_000);
       digitalTable = tableNumber
         ? await prisma.restaurantTable.findFirst({
-            where: { number: tableNumber, active: true },
+            where: {
+              number: tableNumber,
+              active: true,
+              sessions: { none: { status: "OPEN", openKey: { not: null } } },
+            },
           })
         : null;
       if (!digitalTable)
@@ -3544,6 +3640,11 @@ app.post(
 
   let settings = await getSettings();
   settings = await autoCloseStoreIfNeeded(settings);
+  if (isDigitalTableOrder && !settings.digitalMenuEnabled)
+    return res.status(404).json({
+      code: "DIGITAL_MENU_DISABLED",
+      message: "O cardápio digital das mesas está desativado.",
+    });
   if (isDigitalTableOrder && !settings.isOpen)
     return res.status(409).json({
       code: "STORE_CLOSED",
@@ -3563,7 +3664,7 @@ app.post(
         where: {
           createdAt: { gte: new Date(Date.now() - 36 * 60 * 60 * 1000) },
           status: { not: "CANCELED" },
-          paymentStatus: { not: "REJECTED" },
+          paymentStatus: { in: CONFIRMED_PAYMENT_STATUSES },
           OR: identityFilters,
         },
         select: { id: true, createdAt: true },
@@ -3994,6 +4095,12 @@ app.post(
   const total = roundMoney(
     Math.max(0, subtotal + deliveryFee - discountAmount),
   );
+  if (!isDineIn && ["CARD", "PIX"].includes(paymentMethod) && total < 0.5)
+    return res.status(422).json({
+      code: "ONLINE_PAYMENT_MINIMUM",
+      message:
+        "O Mercado Pago aceita pagamentos online a partir de R$ 0,50. Aumente o valor do pedido ou escolha dinheiro.",
+    });
   let changeFor = null;
   if (paymentMethod === "CASH" && req.body?.changeFor) {
     const parsed = Number(
@@ -4021,24 +4128,29 @@ app.post(
           throw Object.assign(new Error("Esta mesa não está disponível."), {
             code: "DIGITAL_TABLE_INVALID",
           });
-        sessionForOrder = await tx.tableSession.findFirst({
+        const occupiedSession = await tx.tableSession.findFirst({
           where: {
             tableId: activeTable.id,
             status: "OPEN",
             openKey: activeTable.id,
           },
+          select: { id: true },
         });
-        if (!sessionForOrder)
-          sessionForOrder = await tx.tableSession.create({
-            data: {
-              tableId: activeTable.id,
-              openKey: activeTable.id,
-              status: "OPEN",
-              customerName,
-              guestCount: 1,
-              openedByName: "Cardápio digital",
-            },
-          });
+        if (occupiedSession)
+          throw Object.assign(
+            new Error("Esta mesa acabou de ser ocupada. Escolha outra mesa livre."),
+            { code: "DIGITAL_TABLE_OCCUPIED" },
+          );
+        sessionForOrder = await tx.tableSession.create({
+          data: {
+            tableId: activeTable.id,
+            openKey: activeTable.id,
+            status: "OPEN",
+            customerName,
+            guestCount: 1,
+            openedByName: "Cardápio digital",
+          },
+        });
       } else {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('master-pizza-table-session'), hashtext(${tableSession.id}))`;
         const stillOpen = await tx.tableSession.findFirst({
@@ -4085,7 +4197,7 @@ app.post(
         where: {
           createdAt: { gte: new Date(Date.now() - 36 * 60 * 60 * 1000) },
           status: { not: "CANCELED" },
-          paymentStatus: { not: "REJECTED" },
+          paymentStatus: { in: CONFIRMED_PAYMENT_STATUSES },
           OR: identityFilters,
         },
         select: { createdAt: true },
@@ -4388,7 +4500,10 @@ app.post(
         ...serializeCustomerOrder(order),
         paymentId: order.paymentExternalId,
       });
-    if (["REJECTED", "CANCELED"].includes(order.paymentStatus))
+    if (
+      order.status === "CANCELED" ||
+      ["REJECTED", "CANCELED", "REFUNDED"].includes(order.paymentStatus)
+    )
       return res.status(409).json({
         message: "Este pedido não está mais disponível para pagamento.",
       });
@@ -4440,9 +4555,15 @@ app.post(
       });
     } catch (error) {
       console.error("Falha ao processar cartão:", error.message);
-      res.status(502).json({
-        message:
-          "O Mercado Pago não conseguiu processar o cartão. Confira os dados ou tente outro cartão.",
+      const providerDetail = cleanText(
+        error?.details?.cause?.[0]?.description || error?.details?.message,
+        180,
+      );
+      res.status(error?.code === "PAYMENT_PROVIDER_ERROR" ? 422 : 502).json({
+        code: "CARD_PAYMENT_FAILED",
+        message: providerDetail
+          ? `O Mercado Pago recusou o pagamento: ${providerDetail}`
+          : "O Mercado Pago não conseguiu processar o cartão. Confira os dados ou tente outro cartão.",
       });
     }
   },
@@ -4539,6 +4660,138 @@ app.get(
   },
 );
 
+app.post(
+  "/api/orders/:trackingCode/cancel",
+  optionalAuth,
+  trackingRateLimit,
+  async (req, res) => {
+    const trackingCode = cleanText(req.params.trackingCode, 100);
+    const reason =
+      cleanText(req.body?.reason, 280) || "Cancelado pelo cliente.";
+    const current = await prisma.order.findUnique({
+      where: { trackingCode },
+      include: orderInclude,
+    });
+    if (!current)
+      return res.status(404).json({ message: "Pedido não encontrado." });
+    if (current.userId && current.userId !== req.user?.id)
+      return res.status(403).json({
+        code: "ORDER_OWNER_REQUIRED",
+        message: "Entre na conta que realizou o pedido para cancelá-lo.",
+      });
+    if (!["SCHEDULED", "RECEIVED"].includes(current.status))
+      return res.status(409).json({
+        code: "ORDER_CANCELLATION_UNAVAILABLE",
+        message:
+          "O preparo já começou. Para solicitar ajuda, fale diretamente com a pizzaria.",
+      });
+
+    const cancellation = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${current.id}))`;
+      const changed = await tx.order.updateMany({
+        where: {
+          id: current.id,
+          status: current.status,
+          paymentStatus: current.paymentStatus,
+        },
+        data: {
+          status: "CANCELED",
+          cancelReason: reason,
+          ...((current.paymentStatus === "APPROVED")
+            ? {}
+            : { paymentStatus: "CANCELED" }),
+        },
+      });
+      if (!changed.count) return null;
+      const history = await tx.orderStatusHistory.create({
+        data: {
+          orderId: current.id,
+          status: "CANCELED",
+          changedByUserId: req.user?.id || null,
+          changedByName: current.customerName,
+          changedByRole: "CLIENTE",
+        },
+      });
+      return { historyId: history.id };
+    });
+    if (!cancellation)
+      return res.status(409).json({
+        code: "ORDER_STATE_CHANGED",
+        message: "O pedido acabou de mudar de etapa. Atualize o acompanhamento.",
+      });
+
+    let refund = null;
+    try {
+      refund = await refundMercadoPagoOrder(current);
+    } catch (error) {
+      await prisma
+        .$transaction(async (tx) => {
+          await tx.order.updateMany({
+            where: { id: current.id, status: "CANCELED" },
+            data: {
+              status: current.status,
+              cancelReason: current.cancelReason,
+              paymentStatus: current.paymentStatus,
+            },
+          });
+          await tx.orderStatusHistory.deleteMany({
+            where: { id: cancellation.historyId },
+          });
+        })
+        .catch(() => {});
+      console.error("Falha ao reembolsar cancelamento do cliente:", error.message);
+      return res.status(502).json({
+        code: "REFUND_FAILED",
+        message:
+          "Não foi possível confirmar o reembolso agora. O pedido permaneceu ativo; tente novamente ou fale com a pizzaria.",
+      });
+    }
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${current.id}))`;
+        const locked = await tx.order.findUnique({
+          where: { id: current.id },
+          select: { status: true },
+        });
+        if (locked?.status !== "CANCELED")
+          throw new Error("O cancelamento mudou de estado antes da conclusão.");
+        await restoreOrderStock(tx, current.id);
+        if (current.couponCode)
+          await tx.coupon.updateMany({
+            where: { code: current.couponCode, uses: { gt: 0 } },
+            data: { uses: { decrement: 1 } },
+          });
+        if (refund)
+          await tx.order.update({
+            where: { id: current.id },
+            data: { paymentStatus: "REFUNDED" },
+          });
+      });
+    } catch (error) {
+      console.error("Falha ao concluir cancelamento do cliente:", error.message);
+      return res.status(500).json({
+        code: "CANCELLATION_FINALIZATION_FAILED",
+        message:
+          "O pedido foi cancelado, mas a atualização final ainda está sendo sincronizada. Atualize o acompanhamento em instantes.",
+      });
+    }
+
+    const canceled = await prisma.order.findUnique({
+      where: { id: current.id },
+      include: orderInclude,
+    });
+    const serialized = serializeCustomerOrder(canceled);
+    queueWhatsApp(serializeOrder(canceled), "STATUS_CHANGED", "Cancelado pelo cliente").catch(
+      () => {},
+    );
+    res.json({
+      ...serialized,
+      refundIssued: serialized.paymentStatus === "REFUNDED",
+    });
+  },
+);
+
 app.get(
   "/api/orders/track/:trackingCode",
   trackingRateLimit,
@@ -4571,6 +4824,7 @@ app.get(
       neighborhood: o.neighborhood,
       city: o.city,
       cancelReason: o.cancelReason || null,
+      canCancel: o.canCancel,
       items: o.items,
       history: o.history,
     });
@@ -4606,7 +4860,7 @@ function permissionNeededForAdminRequest(req) {
     path.startsWith("/advanced/settings")
   )
     return "settings";
-  if (path.startsWith("/store-hours")) return "settings";
+  if (path.startsWith("/store-hours")) return "operations";
   if (path.startsWith("/operations")) return "operations";
   if (path.startsWith("/media")) return "__CONTENT__";
   if (path.startsWith("/products") || path.startsWith("/sizes"))
@@ -5087,9 +5341,10 @@ app.post("/api/admin/table-sessions/:id/close", auth, admin, async (req, res) =>
     ? requestedPaymentMethod
     : requestedPaymentMethod.toUpperCase();
   let paymentMethodLabel = null;
+  const paymentSettings = await getSettings();
   if (paymentMethod.startsWith(CUSTOM_PAYMENT_PREFIX)) {
     const customPayment = resolveCustomPaymentMethod(
-      await getSettings(),
+      paymentSettings,
       paymentMethod,
       "TABLE",
     );
@@ -5100,6 +5355,16 @@ app.post("/api/admin/table-sessions/:id/close", auth, admin, async (req, res) =>
       });
     paymentMethod = "CUSTOM";
     paymentMethodLabel = customPayment.label;
+  } else {
+    const enabledMethods = normalizeTablePaymentMethods(
+      paymentSettings.tablePaymentMethods,
+    );
+    if (!enabledMethods.includes(paymentMethod))
+      return res.status(409).json({
+        code: "TABLE_PAYMENT_INVALID",
+        message: "Esta forma de pagamento não está habilitada para as mesas.",
+      });
+    paymentMethodLabel = TABLE_PAYMENT_METHOD_LABELS[paymentMethod] || null;
   }
   const rawAmountPaid =
     typeof req.body?.amountPaid === "string"
@@ -5695,6 +5960,8 @@ app.get("/api/admin/orders", auth, admin, async (req, res) => {
         ],
       },
     ];
+  } else if (req.adminUser?.staffRole === "WAITER") {
+    where.fulfillmentType = "DINE_IN";
   } else if (!hasAdminPermission(req, "tables")) {
     where.fulfillmentType = { not: "DINE_IN" };
   }
@@ -5731,6 +5998,8 @@ app.get("/api/admin/orders/:id", auth, admin, async (req, res) => {
         ],
       },
     ];
+  else if (req.adminUser?.staffRole === "WAITER")
+    where.fulfillmentType = "DINE_IN";
   else if (!hasAdminPermission(req, "tables"))
     where.fulfillmentType = { not: "DINE_IN" };
   const order = await prisma.order.findFirst({ where, include: orderInclude });
@@ -8186,6 +8455,10 @@ app.delete(
 );
 
 app.get("/api/admin/kitchen/orders", auth, admin, async (req, res) => {
+  if (!hasKitchenAccess(req))
+    return res
+      .status(403)
+      .json({ message: "Acesso à cozinha não autorizado." });
   await activateDueScheduledOrders();
   const rows = await prisma.order.findMany({
     where: {
@@ -8205,6 +8478,28 @@ app.patch(
   auth,
   admin,
   async (req, res) => {
+    const kitchenAccess = hasKitchenAccess(req);
+    const waiterTableAccess =
+      req.adminUser?.staffRole === "WAITER" && hasTableAccess(req);
+    if (!kitchenAccess && !waiterTableAccess)
+      return res
+        .status(403)
+        .json({ message: "Acesso ao preparo não autorizado." });
+    if (!kitchenAccess) {
+      const tableOrder = await prisma.order.findFirst({
+        where: {
+          id: req.params.id,
+          fulfillmentType: "DINE_IN",
+          paymentStatus: { in: ["APPROVED", "CASH_PENDING"] },
+          status: { in: ["RECEIVED", "PREPARING"] },
+        },
+        select: { id: true },
+      });
+      if (!tableOrder)
+        return res
+          .status(403)
+          .json({ message: "O garçom só pode avançar pedidos presenciais." });
+    }
     const row = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${req.params.id}))`;
       const current = await tx.order.findFirst({
@@ -8244,7 +8539,8 @@ app.patch(
           status,
           changedByUserId: req.adminUser.id,
           changedByName: req.adminUser.name,
-          changedByRole: "COZINHA",
+          changedByRole:
+            req.adminUser.staffRole === "WAITER" ? "GARÇOM" : "COZINHA",
         },
       });
       return tx.order.findUnique({ where: { id: current.id }, include: orderInclude });
@@ -8257,6 +8553,10 @@ app.patch(
   auth,
   admin,
   async (req, res) => {
+    if (!hasKitchenAccess(req))
+      return res
+        .status(403)
+        .json({ message: "Acesso à cozinha não autorizado." });
     const existing = await prisma.order.findFirst({
       where: {
         id: req.params.id,
@@ -8284,6 +8584,10 @@ app.patch(
   auth,
   admin,
   async (req, res) => {
+    if (!hasKitchenAccess(req))
+      return res
+        .status(403)
+        .json({ message: "Acesso à cozinha não autorizado." });
     const existing = await prisma.order.findFirst({
       where: {
         id: req.params.id,
@@ -8385,32 +8689,68 @@ app.get("/api/admin/business-insights", auth, admin, async (req, res) => {
     weekKey = startOfWeekKey(todayKey),
     monthKey = todayKey.slice(0, 7),
     yearKey = todayKey.slice(0, 4);
-  const allDelivered = await prisma.order.findMany({
-    where: {
-      status: "DELIVERED",
-      paymentStatus: { in: ["APPROVED", "CASH_PENDING"] },
-    },
-    include: { items: true },
-    orderBy: { createdAt: "desc" },
-    take: 5000,
-  });
-  const delivered = allDelivered.filter((o) => {
-    const key = zonedDateKey(o.createdAt, timezone);
-    if (period === "DAY") return key === todayKey;
-    if (period === "WEEK") return key >= weekKey;
-    if (period === "MONTH") return key.startsWith(monthKey);
-    if (period === "YEAR") return key.startsWith(yearKey);
-    return true;
+  const startKey =
+    period === "DAY"
+      ? todayKey
+      : period === "WEEK"
+        ? weekKey
+        : period === "MONTH"
+          ? `${monthKey}-01`
+          : period === "YEAR"
+            ? `${yearKey}-01-01`
+            : null;
+  const reportStart = startKey
+    ? startOfZonedDateKey(startKey, timezone)
+    : null;
+  const periodWhere = reportStart ? { createdAt: { gte: reportStart } } : {};
+  const completedWhere = {
+    ...periodWhere,
+    status: "DELIVERED",
+    paymentStatus: { in: ["APPROVED", "CASH_PENDING"] },
+  };
+  const [delivered, completedTotals, canceledTotals, refundedTotals, products] =
+    await prisma.$transaction([
+      prisma.order.findMany({
+        where: completedWhere,
+        include: { items: true },
+        orderBy: { createdAt: "desc" },
+        take: 5000,
+      }),
+      prisma.order.aggregate({
+        where: completedWhere,
+        _sum: { total: true },
+        _count: { _all: true },
+      }),
+      prisma.order.aggregate({
+        where: { ...periodWhere, status: "CANCELED" },
+        _sum: { total: true },
+        _count: { _all: true },
+      }),
+      prisma.order.aggregate({
+        where: { ...periodWhere, paymentStatus: "REFUNDED" },
+        _sum: { total: true },
+        _count: { _all: true },
+      }),
+      prisma.product.findMany({
+        where: { deletedAt: null },
+        select: { id: true, name: true, available: true },
+      }),
+    ]);
+  const financialSummary = buildFinancialSummaryFromTotals({
+    completedOrders: completedTotals._count._all,
+    completedValue: completedTotals._sum.total,
+    canceledOrders: canceledTotals._count._all,
+    canceledValue: canceledTotals._sum.total,
+    refundedOrders: refundedTotals._count._all,
+    refundedValue: refundedTotals._sum.total,
   });
   const sales = new Map();
-  let revenue = 0;
   const hours = Array.from({ length: 24 }, (_, hour) => ({
     hour,
     orders: 0,
     revenue: 0,
   }));
   for (const o of delivered) {
-    revenue += Number(o.total || 0);
     const parts = new Intl.DateTimeFormat("en-US", {
       timeZone: timezone,
       hour: "2-digit",
@@ -8432,10 +8772,6 @@ app.get("/api/admin/business-insights", auth, admin, async (req, res) => {
       sales.set(item.productId, row);
     }
   }
-  const products = await prisma.product.findMany({
-    where: { deletedAt: null },
-    select: { id: true, name: true, available: true },
-  });
   const ranked = products
     .map(
       (p) =>
@@ -8470,13 +8806,7 @@ app.get("/api/admin/business-insights", auth, admin, async (req, res) => {
     });
   res.json({
     period,
-    summary: {
-      orders: delivered.length,
-      revenue: roundMoney(revenue),
-      averageTicket: roundMoney(
-        delivered.length ? revenue / delivered.length : 0,
-      ),
-    },
+    summary: financialSummary,
     bestSellers: ranked.slice(0, 10),
     leastSellers: [...ranked]
       .sort((a, b) => a.quantity - b.quantity || a.revenue - b.revenue)
@@ -8645,6 +8975,14 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
         .json({ message: "A URL do Instagram deve usar HTTPS." });
     data.instagramUrl = value;
   }
+  if (req.body?.storeGoogleMapsUrl !== undefined) {
+    const value = normalizeTrustedGoogleMapsUrl(req.body.storeGoogleMapsUrl);
+    if (req.body.storeGoogleMapsUrl && !value)
+      return res.status(400).json({
+        message: "Informe um link HTTPS válido do Google Maps.",
+      });
+    data.storeGoogleMapsUrl = value || null;
+  }
   for (const f of ["logoImage", "heroImage", "aboutImage"]) {
     if (req.body?.[f] !== undefined) {
       const value = safeMediaUrl(req.body[f]);
@@ -8771,6 +9109,19 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
       });
     data.customPaymentMethods = normalized;
   }
+  if (req.body?.tablePaymentMethods !== undefined) {
+    if (!Array.isArray(req.body.tablePaymentMethods))
+      return res.status(400).json({
+        message: "A lista de pagamentos das mesas é inválida.",
+      });
+    const requested = req.body.tablePaymentMethods;
+    const normalized = normalizeTablePaymentMethods(requested);
+    if (normalized.length !== new Set(requested).size)
+      return res.status(400).json({
+        message: "Há uma forma de pagamento padrão inválida para as mesas.",
+      });
+    data.tablePaymentMethods = normalized;
+  }
   for (const f of [
     "deliveryEnabled",
     "pickupEnabled",
@@ -8786,6 +9137,7 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
     "smartCourierQueueEnabled",
     "cartRecommendationsEnabled",
     "whatsappSecondaryVisible",
+    "digitalMenuEnabled",
   ])
     if (req.body?.[f] !== undefined) data[f] = booleanValue(req.body[f]);
   for (const f of ["whatsappOrderCreatedTemplate", "whatsappStatusTemplate"])

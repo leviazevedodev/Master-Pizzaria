@@ -1,6 +1,13 @@
 import crypto from "node:crypto";
 
 export const CUSTOM_PAYMENT_PREFIX = "CUSTOM:";
+export const DEFAULT_TABLE_PAYMENT_METHODS = ["CASH", "PIX", "CREDIT", "DEBIT"];
+export const TABLE_PAYMENT_METHOD_LABELS = {
+  CASH: "Dinheiro",
+  PIX: "Pix",
+  CREDIT: "Cartão de crédito",
+  DEBIT: "Cartão de débito",
+};
 
 const text = (value, max) =>
   typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -35,6 +42,14 @@ export function normalizeCustomPaymentMethods(value) {
     });
   }
   return result;
+}
+
+export function normalizeTablePaymentMethods(value) {
+  if (!Array.isArray(value)) return [...DEFAULT_TABLE_PAYMENT_METHODS];
+  const allowed = new Set(Object.keys(TABLE_PAYMENT_METHOD_LABELS));
+  return [...new Set(value.map((item) => text(item, 20).toUpperCase()))].filter(
+    (item) => allowed.has(item),
+  );
 }
 
 export function resolveCustomPaymentMethod(settings, rawValue, channel) {

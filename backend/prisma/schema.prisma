@@ -37,6 +37,7 @@ enum PaymentStatus {
   CASH_PENDING
   REJECTED
   CANCELED
+  REFUNDED
 }
 
 enum FulfillmentType {
@@ -683,6 +684,7 @@ model BusinessSettings {
   storePostalCode              String?
   storeLatitude                Decimal?            @db.Decimal(10, 7)
   storeLongitude               Decimal?            @db.Decimal(10, 7)
+  storeGoogleMapsUrl           String?
   estimatedDeliveryMin         Int                 @default(30)
   estimatedDeliveryMax         Int                 @default(45)
   lateWarningMinutes           Int                 @default(30)
@@ -705,6 +707,8 @@ model BusinessSettings {
   cashPaymentEnabled           Boolean             @default(true)
   onlinePaymentEnabled         Boolean             @default(false)
   customPaymentMethods         Json                @default("[]")
+  tablePaymentMethods          Json                @default("[\"CASH\",\"PIX\",\"CREDIT\",\"DEBIT\"]")
+  digitalMenuEnabled           Boolean             @default(true)
   browserNotificationsEnabled  Boolean             @default(true)
   newOrderSoundEnabled         Boolean             @default(true)
   autoPrintEnabled             Boolean             @default(false)

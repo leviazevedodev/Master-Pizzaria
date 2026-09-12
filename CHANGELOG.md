@@ -1,8 +1,35 @@
 # Histórico de versões
 
+## 2.27.0 — Operação em tela cheia e relatórios financeiros claros
+
+- editor de promoções reorganizado em blocos de produto, preços, tamanhos, período e ações, com campos monetários alinhados e responsivos;
+- cada tamanho mostra seu preço normal e aceita um valor promocional próprio, mantendo o desconto geral como alternativa;
+- a Cozinha ganhou modos de tela cheia para produção e salão, com alternância rápida e atualização automática;
+- a tela do salão exibe somente pedidos presenciais e omite dados pessoais, valores e meios de pagamento;
+- pedidos presenciais agora podem iniciar preparo, ficar prontos para servir e ser confirmados como servidos diretamente em Atendimento;
+- rotas da cozinha passaram a exigir permissão própria; garçons podem avançar somente pedidos presenciais e entregadores não acessam essas filas;
+- Relatórios separa total vendido, cancelamentos, valores devolvidos, receita após estornos, pedidos finalizados e média por pedido;
+- totais financeiros passaram a usar agregações completas do PostgreSQL, sem depender do limite aplicado ao ranking de produtos;
+- adicionados testes de regressão do fluxo presencial, das telas operacionais, do editor de promoções e dos cálculos financeiros.
+
+## 2.26.0 — Pagamentos, cardápio público e acabamento do tema escuro
+
+- pagamento transparente por cartão agora bloqueia valores abaixo do mínimo aceito pelo Mercado Pago e exibe a recusa real do provedor;
+- cancelamento do cliente foi limitado a pedidos agendados/recebidos, com reembolso automático idempotente ao meio de pagamento aprovado;
+- tentativas online pendentes deixaram de consumir o limite diário de pedidos;
+- estados prontos para entrega ou mesa permanecem como **Em preparação** para o cliente até aceite do entregador ou confirmação de serviço;
+- notificações usam o Service Worker quando disponível e possuem fallback direto do navegador;
+- rota do cardápio presencial foi isolada em `/cardapio-digital`, lista somente mesas livres e pode ser desligada na impressão;
+- garçons passaram a acessar também **Pedidos**, sempre limitados ao atendimento presencial;
+- horário público foi movido para **Operação**, título do cardápio para o editor da fachada e localização ganhou link do Google Maps;
+- pagamentos de mesa começam com Dinheiro, Pix, Crédito e Débito, podendo ser removidos ou combinados com métodos personalizados;
+- contraste do modo escuro foi corrigido em cancelamentos, prazos, detalhes e capacidade dos entregadores;
+- campos móveis usam tamanho seguro para impedir zoom automático, e o botão duplicado nativo de senha foi ocultado;
+- PDF e QR Code usam a logo configurada ou a logo oficial de fallback, mantendo o cardápio escuro em duas páginas.
+
 ## 2.25.0 — Cardápio de mesa, sessões seguras e acabamento administrativo
 
-- criada a rota pública `/gestao/cardapiodigital`, com escolha do cliente e da mesa e lançamento direto nas filas presenciais;
+- criada a primeira versão do cardápio de mesa, posteriormente isolada na rota pública `/cardapio-digital`, com escolha do cliente e lançamento direto nas filas presenciais;
 - formas de pagamento personalizadas ficaram exclusivas das mesas e são rejeitadas pelo checkout público;
 - autenticação passou a usar access token de 1 hora em memória e refresh token em cookie `HttpOnly`; clientes duram até 30 dias e equipe até 12 horas;
 - troca de senha, bloqueio/desativação e logout geral invalidam todas as sessões anteriores;

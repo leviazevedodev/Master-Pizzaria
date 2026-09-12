@@ -43,7 +43,7 @@ const MenuPage = lazy(() => import("./pages/MenuPage"));
 const PaymentReturnPage = lazy(() => import("./pages/PaymentReturnPage"));
 const TrackOrderPage = lazy(() => import("./pages/TrackOrderPage"));
 
-const PUBLIC_CACHE_KEY = "master-pizza-public-cache-v25";
+const PUBLIC_CACHE_KEY = "master-pizza-public-cache-v26";
 const PUBLIC_REFRESH_SIGNAL = "master-pizza-public-refresh";
 
 function readPublicCache() {
@@ -65,7 +65,7 @@ function writePublicCache(snapshot) {
 export default function App() {
   const location = useLocation();
   const digitalTableMode = location.pathname.startsWith(
-    "/gestao/cardapiodigital",
+    "/cardapio-digital",
   );
   const hidePublicHeader = location.pathname === "/gestao";
   const [initialPublic] = useState(readPublicCache);
@@ -426,10 +426,10 @@ export default function App() {
           session={session}
           cartPath={
             digitalTableMode
-              ? "/gestao/cardapiodigital/finalizar"
+              ? "/cardapio-digital/finalizar"
               : "/carrinho"
           }
-          menuPath={digitalTableMode ? "/gestao/cardapiodigital" : "/cardapio"}
+          menuPath={digitalTableMode ? "/cardapio-digital" : "/cardapio"}
         />
       )}
       <Suspense
@@ -449,24 +449,32 @@ export default function App() {
             element={<MenuPage {...sharedCatalogProps} cartCount={cartCount} />}
           />
           <Route
-            path="/gestao/cardapiodigital"
+            path="/cardapio-digital"
             element={
-              <MenuPage
-                {...sharedCatalogProps}
-                digitalMode
-                cartCount={cartCount}
-              />
+              settings.digitalMenuEnabled !== false ? (
+                <MenuPage
+                  {...sharedCatalogProps}
+                  digitalMode
+                  cartCount={cartCount}
+                />
+              ) : (
+                <Navigate to="/cardapio" replace />
+              )
             }
           />
           <Route
-            path="/gestao/cardapiodigital/finalizar"
+            path="/cardapio-digital/finalizar"
             element={
-              <DigitalTableCheckoutPage
-                cart={cart}
-                setCart={setCart}
-                changeQty={changeQty}
-                settings={settings}
-              />
+              settings.digitalMenuEnabled !== false ? (
+                <DigitalTableCheckoutPage
+                  cart={cart}
+                  setCart={setCart}
+                  changeQty={changeQty}
+                  settings={settings}
+                />
+              ) : (
+                <Navigate to="/cardapio" replace />
+              )
             }
           />
           <Route path="/entregas" element={<Navigate to="/" replace />} />
@@ -498,7 +506,10 @@ export default function App() {
             path="/acompanhar"
             element={<Navigate to="/seus-pedidos" replace />}
           />
-          <Route path="/pedido/:code" element={<TrackOrderPage />} />
+          <Route
+            path="/pedido/:code"
+            element={<TrackOrderPage session={session} />}
+          />
           <Route path="/pagamento" element={<PaymentReturnPage />} />
           <Route
             path="/entrar"
@@ -588,7 +599,7 @@ export default function App() {
             total={cartTotal}
             to={
               digitalTableMode
-                ? "/gestao/cardapiodigital/finalizar"
+                ? "/cardapio-digital/finalizar"
                 : "/carrinho"
             }
             label={digitalTableMode ? "Finalizar na mesa" : "Ver sacola"}

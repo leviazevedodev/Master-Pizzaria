@@ -576,8 +576,9 @@ export async function createMenuPdf({
     import("qrcode"),
   ]);
   const sections = buildMenuSections(printable, categories, subcategories);
-  const [logoData, qrData] = await Promise.all([
+  const [configuredLogo, fallbackLogo, qrData] = await Promise.all([
     imageData(settings.logoImage, 700, 320),
+    imageData("/images/master-pizzaria-logo.png", 700, 320),
     QRCode.toDataURL(normalizedUrl, {
       errorCorrectionLevel: "H",
       margin: 1,
@@ -585,6 +586,7 @@ export async function createMenuPdf({
       color: { dark: "#0d0f12", light: "#ffffff" },
     }),
   ]);
+  const logoData = configuredLogo || fallbackLogo;
   const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
   doc.setProperties({
     title: `Cardápio - ${cleanLine(settings.storeName) || "Restaurante"}`,
@@ -638,8 +640,9 @@ export async function createQrCodePdf({
     import("jspdf"),
     import("qrcode"),
   ]);
-  const [logoData, qrData] = await Promise.all([
+  const [configuredLogo, fallbackLogo, qrData] = await Promise.all([
     imageData(settings.logoImage, 700, 320),
+    imageData("/images/master-pizzaria-logo.png", 700, 320),
     QRCode.toDataURL(normalizedUrl, {
       errorCorrectionLevel: "H",
       margin: 1,
@@ -647,6 +650,7 @@ export async function createQrCodePdf({
       color: { dark: "#0d0f12", light: "#ffffff" },
     }),
   ]);
+  const logoData = configuredLogo || fallbackLogo;
   const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
   doc.setProperties({
     title: `QR Code do cardápio - ${cleanLine(settings.storeName) || "Restaurante"}`,

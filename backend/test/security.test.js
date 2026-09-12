@@ -5,6 +5,7 @@ import {
   detectImageMime,
   escapeHtml,
   isTrustedMercadoPagoUrl,
+  normalizeTrustedGoogleMapsUrl,
   verifyMercadoPagoSignature,
 } from "../src/security.js";
 
@@ -77,4 +78,20 @@ test("Mercado Pago webhook signature is verified in constant-time compatible for
     }),
     false,
   );
+});
+
+test("link de localização aceita somente hosts oficiais do Google Maps", () => {
+  assert.equal(
+    normalizeTrustedGoogleMapsUrl("https://maps.app.goo.gl/abc123"),
+    "https://maps.app.goo.gl/abc123",
+  );
+  assert.equal(
+    normalizeTrustedGoogleMapsUrl("https://www.google.com/maps/@-10.9,-37.1,15z"),
+    "https://www.google.com/maps/@-10.9,-37.1,15z",
+  );
+  assert.equal(
+    normalizeTrustedGoogleMapsUrl("https://google.com.evil.example/maps"),
+    "",
+  );
+  assert.equal(normalizeTrustedGoogleMapsUrl("http://maps.google.com/maps"), "");
 });

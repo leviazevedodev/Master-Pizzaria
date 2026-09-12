@@ -23,6 +23,29 @@ function initialEnabled() {
   }
 }
 
+async function showBrowserNotification(title, options) {
+  if ("serviceWorker" in navigator) {
+    try {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration) {
+        await registration.showNotification(title, options);
+        return true;
+      }
+    } catch {}
+  }
+  try {
+    const notification = new Notification(title, options);
+    notification.onclick = () => {
+      window.focus();
+      if (options?.data?.url) window.location.assign(options.data.url);
+      notification.close();
+    };
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export default function CustomerOrderNotifications({ orders = [], ready = true }) {
   const [enabled, setEnabled] = useState(initialEnabled);
   const [permission, setPermission] = useState(() =>
@@ -56,25 +79,19 @@ export default function CustomerOrderNotifications({ orders = [], ready = true }
     const title = `Pedido #${order.shortCode || ""} atualizado`;
     const body = STATUS_LABEL[order.status] || "O status do seu pedido mudou.";
     setNotice({ title, body });
-    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-      try {
-        const notification = new Notification(title, {
-          body,
-          tag: `master-pizzaria-customer-${order.trackingCode || order.id}`,
-          renotify: true,
-          requireInteraction: true,
-        });
-        notification.onclick = () => {
-          window.focus();
-          if (order.trackingCode)
-            window.location.assign(`/pedido/${order.trackingCode}`);
-          notification.close();
-        };
-      } catch {
-        // O aviso grande dentro do site continua disponível em navegadores
-        // que concedem a permissão, mas não implementam todas as opções.
-      }
-    }
+    if (typeof Notification !== "undefined" && Notification.permission === "granted")
+      void showBrowserNotification(title, {
+        body,
+        icon: "/images/master-pizzaria-logo.png",
+        badge: "/images/master-pizzaria-logo.png",
+        tag: `master-pizzaria-customer-${order.trackingCode || order.id}`,
+        renotify: true,
+        requireInteraction: true,
+        vibrate: [250, 100, 250, 100, 400],
+        data: {
+          url: order.trackingCode ? `/pedido/${order.trackingCode}` : "/seus-pedidos",
+        },
+      });
   }, [orders, ready, enabled]);
 
   async function toggle() {
@@ -100,6 +117,22 @@ export default function CustomerOrderNotifications({ orders = [], ready = true }
     try {
       localStorage.setItem(STORAGE_KEY, "true");
     } catch {}
+    const delivered = await showBrowserNotification(
+      "Notificações da Master Pizzaria ativadas",
+      {
+        body: "Você receberá um aviso quando o status do pedido mudar.",
+        icon: "/images/master-pizzaria-logo.png",
+        badge: "/images/master-pizzaria-logo.png",
+        tag: "master-pizzaria-customer-test",
+        requireInteraction: false,
+        data: { url: "/seus-pedidos" },
+      },
+    );
+    if (!delivered)
+      setNotice({
+        title: "Permissão concedida",
+        body: "O navegador não conseguiu exibir a notificação do sistema, mas os avisos dentro do site continuam ativos.",
+      });
   }
 
   return (

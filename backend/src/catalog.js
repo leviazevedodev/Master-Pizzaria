@@ -25,8 +25,23 @@ export function startOfZonedDay(
   timeZone = "America/Maceio",
 ) {
   const dateKey = zonedDateKey(date, timeZone);
+  return startOfZonedDateKey(dateKey, timeZone);
+}
+
+export function startOfZonedDateKey(
+  dateKey,
+  timeZone = "America/Maceio",
+) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))) return null;
   if (!dateKey) return null;
   const [year, month, day] = dateKey.split("-").map(Number);
+  const verified = new Date(Date.UTC(year, month - 1, day));
+  if (
+    verified.getUTCFullYear() !== year ||
+    verified.getUTCMonth() !== month - 1 ||
+    verified.getUTCDate() !== day
+  )
+    return null;
   const targetWallTime = Date.UTC(year, month - 1, day);
   let candidate = targetWallTime;
 

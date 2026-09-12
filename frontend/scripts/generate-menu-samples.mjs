@@ -100,7 +100,7 @@ const settings = {
     await readFile(resolve(here, "../public/images/master-pizzaria-logo.png"))
   ).toString("base64")}`,
 };
-const menuUrl = "https://masterpizzaria.netlify.app/gestao/cardapiodigital";
+const menuUrl = "https://masterpizzaria.netlify.app/cardapio-digital";
 
 await mkdir(outputDir, { recursive: true });
 const menu = await createMenuPdf({

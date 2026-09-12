@@ -22,6 +22,10 @@ test("modo escuro cobre o personalizador e os logs administrativos", async () =>
   assert.match(css, /admin-shell\.admin-dark \.table-close-btn:disabled \{/);
   assert.match(css, /admin-shell\.admin-dark \.kitchen-table-badge \{/);
   assert.match(css, /kitchen-ticket-head > span \{/);
+  assert.match(css, /admin-shell\.admin-dark \.cancel-order-modal/);
+  assert.match(css, /admin-shell\.admin-dark \.admin-order-eta/);
+  assert.match(css, /admin-shell\.admin-dark \.order-detail-eta/);
+  assert.match(css, /admin-shell\.admin-dark \.courier-capacity-list strong/);
 });
 
 function luminance(hex) {

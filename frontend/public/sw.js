@@ -1,4 +1,4 @@
-const CACHE = "master-pizza-static-v6";
+const CACHE = "master-pizza-static-v7";
 const APP_SHELL = ["/", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -56,5 +56,20 @@ self.addEventListener("fetch", (event) => {
           return response;
         }),
     ),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = event.notification?.data?.url || "/seus-pedidos";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((client) => "focus" in client);
+      if (existing) {
+        existing.navigate(target);
+        return existing.focus();
+      }
+      return self.clients.openWindow(target);
+    }),
   );
 });

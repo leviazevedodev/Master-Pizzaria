@@ -349,7 +349,9 @@ export default function CheckoutPage({
           setCart([]);
           setPendingPayment(null);
           setSuccess({ ...pendingPayment.order, ...data });
-        } else if (["REJECTED", "CANCELED"].includes(data.paymentStatus)) {
+        } else if (
+          ["REJECTED", "CANCELED", "REFUNDED"].includes(data.paymentStatus)
+        ) {
           setPendingPayment(null);
           setError(
             "O pagamento não foi aprovado. Revise os dados e gere uma nova tentativa.",
@@ -602,6 +604,19 @@ export default function CheckoutPage({
       return setError(
         "Informe um e-mail válido para confirmar o pagamento online.",
       );
+    const estimatedDelivery =
+      form.fulfillmentType === "PICKUP" ? 0 : Number(quote?.ok ? quote.fee : 0);
+    const estimatedTotal = Math.max(
+      0,
+      subtotal + estimatedDelivery - discount,
+    );
+    if (
+      ["CARD", "PIX"].includes(form.paymentMethod) &&
+      estimatedTotal < 0.5
+    )
+      return setError(
+        "O Mercado Pago aceita pagamentos online a partir de R$ 0,50. Acrescente itens ou escolha dinheiro.",
+      );
     if (form.fulfillmentType === "DELIVERY") {
       const required = [
         ["postalCode", "CEP"],
@@ -752,6 +767,9 @@ export default function CheckoutPage({
 
   const delivery =
     form.fulfillmentType === "PICKUP" ? 0 : Number(quote?.ok ? quote.fee : 0);
+  const checkoutTotal = Math.max(0, subtotal + delivery - discount);
+  const onlineBelowMinimum =
+    ["CARD", "PIX"].includes(form.paymentMethod) && checkoutTotal < 0.5;
   return (
     <div className="page-shell">
       <div className="container page-top">
@@ -1353,6 +1371,11 @@ export default function CheckoutPage({
                   Access Token, assinatura do webhook e/ou URLs HTTPS públicas.
                 </div>
               )}
+            {onlineBelowMinimum && (
+              <div className="cep-feedback warning">
+                O Mercado Pago aceita Pix e cartão a partir de R$ 0,50.
+              </div>
+            )}
             {form.paymentMethod === "CASH" && (
               <label className="cash-field">
                 Troco para
@@ -1445,6 +1468,7 @@ export default function CheckoutPage({
                 !cart.length ||
                 !customerInfoComplete ||
                 !form.paymentMethod ||
+                onlineBelowMinimum ||
                 (!settings.isOpen && settings.schedulingEnabled === false) ||
                 (form.fulfillmentType === "DELIVERY" &&
                   (!quote?.ok || !deliveryAddressComplete))
@@ -1519,7 +1543,7 @@ function EmbeddedPaymentStep({ payment, payerEmail, onApproved, onRetry }) {
         onApproved(data);
         return;
       }
-      if (data.paymentStatus === "REJECTED")
+      if (["REJECTED", "CANCELED", "REFUNDED"].includes(data.paymentStatus))
         throw new Error(
           "Pagamento recusado. Confira os dados ou tente outro cartão.",
         );
@@ -1602,14 +1626,27 @@ function EmbeddedPaymentStep({ payment, payerEmail, onApproved, onRetry }) {
                 </div>
               </div>
               <CardPayment
-                initialization={{ amount: Number(payment.amount) }}
+                key={`${order.trackingCode}-${payment.amount}`}
+                initialization={{
+                  amount: Number(payment.amount),
+                  payer: { email: payerEmail },
+                }}
+                customization={{
+                  paymentMethods: {
+                    maxInstallments: 12,
+                    types: { included: ["credit_card", "debit_card"] },
+                  },
+                }}
                 onSubmit={submitCard}
                 onReady={() => setPaymentMessage("")}
-                onError={() =>
-                  setPaymentError((current) =>
-                    current || "Não foi possível carregar o formulário do cartão.",
-                  )
-                }
+                onError={(brickError) => {
+                  const detail = brickError?.message || brickError?.cause;
+                  setPaymentError(
+                    detail
+                      ? `Não foi possível carregar o cartão: ${String(detail)}`
+                      : "Não foi possível carregar o formulário do cartão.",
+                  );
+                }}
               />
             </div>
           )}

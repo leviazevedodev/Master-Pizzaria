@@ -114,7 +114,7 @@ export default function DigitalTableCheckoutPage({
   return (
     <div className="page-shell digital-table-checkout-page">
       <div className="container page-top">
-        <Link to="/gestao/cardapiodigital">
+        <Link to="/cardapio-digital">
           <ArrowLeft size={16} /> Voltar ao cardápio da mesa
         </Link>
       </div>
@@ -133,7 +133,7 @@ export default function DigitalTableCheckoutPage({
             <ShoppingBag />
             <h2>Seu pedido está vazio</h2>
             <p>Volte ao cardápio e escolha os itens da sua mesa.</p>
-            <Link className="primary-btn" to="/gestao/cardapiodigital">
+            <Link className="primary-btn" to="/cardapio-digital">
               Abrir cardápio
             </Link>
           </section>

@@ -6,6 +6,7 @@ import {
   ChefHat,
   Clock3,
   CreditCard,
+  Banknote,
   PackageCheck,
   Search,
 } from "lucide-react";
@@ -14,8 +15,9 @@ import { api } from "../lib/api";
 import { etaRange, money } from "../lib/format";
 import MotoIcon from "../components/MotoIcon";
 import CustomerOrderNotifications from "../components/CustomerOrderNotifications";
+import CustomerCancelOrderButton from "../components/CustomerCancelOrderButton";
 
-export default function TrackOrderPage() {
+export default function TrackOrderPage({ session }) {
   const { code } = useParams();
   const navigate = useNavigate();
   const [input, setInput] = useState(code || "");
@@ -28,9 +30,8 @@ export default function TrackOrderPage() {
         ? [
             ["RECEIVED", "Recebido", Clock3],
             ["PREPARING", "Em preparo", ChefHat],
-            ["READY_FOR_TABLE", "Pronto para servir", PackageCheck],
             ["SERVED", "Servido", Check],
-            ["DELIVERED", "Mesa fechada", Check],
+            ["DELIVERED", "Pagamento", Banknote],
           ]
         : order?.fulfillmentType === "PICKUP"
         ? [
@@ -142,7 +143,7 @@ export default function TrackOrderPage() {
               </div>
             </div>
             {order.paymentMethod === "CARD" &&
-              order.paymentStatus !== "APPROVED" && (
+              order.paymentStatus === "PENDING" && (
                 <div className="payment-pending-banner">
                   <CreditCard />
                   <div>
@@ -233,6 +234,11 @@ export default function TrackOrderPage() {
                 ))}
               </div>
             )}
+            <CustomerCancelOrderButton
+              order={order}
+              token={session?.token || ""}
+              onCanceled={setOrder}
+            />
             <div className="tracking-items">
               <h3>Itens</h3>
               {order.items.map((item) => (

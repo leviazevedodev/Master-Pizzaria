@@ -18,6 +18,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, authHeaders } from "../lib/api";
 import { etaRange, formatCep, money } from "../lib/format";
 import CustomerOrderNotifications from "../components/CustomerOrderNotifications";
+import CustomerCancelOrderButton from "../components/CustomerCancelOrderButton";
 
 const STATUS_LABEL = {
   SCHEDULED: "Agendado",
@@ -494,6 +495,14 @@ export default function AccountPage({
                       order={o}
                       reorder={reorder}
                       reordering={reordering}
+                      token={session.token}
+                      onCanceled={(updated) =>
+                        setOrders((rows) =>
+                          rows.map((row) =>
+                            row.id === updated.id ? updated : row,
+                          ),
+                        )
+                      }
                     />
                   ))}
                 </div>
@@ -528,6 +537,12 @@ export default function AccountPage({
                     order={o}
                     reorder={reorder}
                     reordering={reordering}
+                    token={session.token}
+                    onCanceled={(updated) =>
+                      setOrders((rows) =>
+                        rows.map((row) => (row.id === updated.id ? updated : row)),
+                      )
+                    }
                   />
                 ))}
               </div>
@@ -539,7 +554,7 @@ export default function AccountPage({
   );
 }
 
-function OrderCard({ order, reorder, reordering }) {
+function OrderCard({ order, reorder, reordering, token, onCanceled }) {
   return (
     <article
       className={`history-card status-${order.status.toLowerCase()} ${OPEN_STATUS.has(order.status) ? "priority-order" : ""}`}
@@ -644,6 +659,11 @@ function OrderCard({ order, reorder, reordering }) {
           </button>
         </div>
       </div>
+      <CustomerCancelOrderButton
+        order={order}
+        token={token}
+        onCanceled={onCanceled}
+      />
     </article>
   );
 }

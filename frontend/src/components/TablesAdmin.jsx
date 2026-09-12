@@ -33,10 +33,8 @@ const STATUS = {
 const PAYMENT = {
   CASH: "Dinheiro",
   PIX: "Pix",
-  MACHINE_PIX: "Pix na maquineta",
-  DEBIT: "Cartão de débito",
   CREDIT: "Cartão de crédito",
-  BANESE_DEBIT: "Banese débito",
+  DEBIT: "Cartão de débito",
 };
 const EMPTY_TABLE = {
   id: null,
@@ -93,7 +91,11 @@ export default function TablesAdmin({
   const orderPanelRef = useRef(null);
   const paymentOptions = useMemo(
     () => [
-      ...Object.entries(PAYMENT).map(([value, label]) => ({ value, label })),
+      ...Object.entries(PAYMENT)
+        .filter(([value]) =>
+          (settings.tablePaymentMethods || Object.keys(PAYMENT)).includes(value),
+        )
+        .map(([value, label]) => ({ value, label })),
       ...(settings.customPaymentMethods || [])
         .filter(
           (method) => method.active !== false && method.tableEnabled !== false,
@@ -103,8 +105,19 @@ export default function TablesAdmin({
           label: method.label,
         })),
     ],
-    [settings.customPaymentMethods],
+    [settings.customPaymentMethods, settings.tablePaymentMethods],
   );
+  useEffect(() => {
+    if (
+      paymentOptions.length &&
+      !paymentOptions.some((option) => option.value === closeForm.paymentMethod)
+    )
+      setCloseForm((form) => ({
+        ...form,
+        paymentMethod: paymentOptions[0].value,
+        amountPaid: "",
+      }));
+  }, [paymentOptions, closeForm.paymentMethod]);
 
   async function load({ quiet = false } = {}) {
     if (!quiet) setLoading(true);
@@ -655,12 +668,13 @@ export default function TablesAdmin({
               <CreditCard />
             </div>
             <strong className="table-payment-total">{money(selected.currentSession.summary.subtotal)}</strong>
-            <label>Forma de pagamento<select value={closeForm.paymentMethod} onChange={(event) => setCloseForm((form) => ({ ...form, paymentMethod: event.target.value }))}>{paymentOptions.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select></label>
+            <label>Forma de pagamento<select value={paymentOptions.length ? closeForm.paymentMethod : ""} disabled={!paymentOptions.length} onChange={(event) => setCloseForm((form) => ({ ...form, paymentMethod: event.target.value }))}>{paymentOptions.length ? paymentOptions.map(({ value, label }) => <option key={value} value={value}>{label}</option>) : <option value="">Nenhuma forma habilitada</option>}</select></label>
             {closeForm.paymentMethod === "CASH" && (
               <label>Valor recebido<input type="number" min={selected.currentSession.summary.subtotal} step="0.01" required value={closeForm.amountPaid} onChange={(event) => setCloseForm((form) => ({ ...form, amountPaid: event.target.value }))} placeholder={selected.currentSession.summary.subtotal.toFixed(2)} /></label>
             )}
             {hasKitchenPending && <p className="table-payment-warning"><Clock3 size={15} /> Aguarde a cozinha concluir todas as rodadas.</p>}
-            <button className="table-close-btn" disabled={saving || !activeOrders.length || hasKitchenPending}>{saving ? "Processando..." : "Confirmar pagamento e liberar mesa"}</button>
+            {!paymentOptions.length && <p className="table-payment-warning"><CreditCard size={15} /> Habilite uma forma de pagamento em Loja antes de fechar a mesa.</p>}
+            <button className="table-close-btn" disabled={saving || !activeOrders.length || hasKitchenPending || !paymentOptions.length}>{saving ? "Processando..." : "Confirmar pagamento e liberar mesa"}</button>
             <button type="button" className="table-abandon-btn" disabled={saving} onClick={cancelSession}>Cancelar comanda</button>
           </form>
         </section>

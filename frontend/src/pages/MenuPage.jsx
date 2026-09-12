@@ -71,7 +71,7 @@ export default function MenuPage({
                 mesa; o pagamento será feito somente depois de você ser servido.
               </p>
             </div>
-            <Link className="primary-btn" to="/gestao/cardapiodigital/finalizar">
+            <Link className="primary-btn" to="/cardapio-digital/finalizar">
               Finalizar na mesa {cartCount ? `(${cartCount})` : ""}
             </Link>
           </section>

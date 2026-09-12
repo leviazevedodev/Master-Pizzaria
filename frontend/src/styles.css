@@ -2046,7 +2046,7 @@ textarea {
   }
 }
 
-/* ===== Master Pizza v2.2 - contas, operação e gestão ===== */
+/* ===== Master Pizzaria v2.2 - contas, operação e gestão ===== */
 .account-button {
   display: flex;
   align-items: center;
@@ -4460,7 +4460,7 @@ textarea {
   }
 }
 
-/* ===== Master Pizza v2.4: sabores, status, subcategorias e entregas ===== */
+/* ===== Master Pizzaria v2.4: sabores, status, subcategorias e entregas ===== */
 .brand-status-wrap {
   display: flex;
   align-items: center;
@@ -10847,6 +10847,698 @@ textarea {
   }
 }
 
+/* Evita o zoom automático dos navegadores móveis ao focar campos pequenos. */
+@media (max-width: 820px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* ===== v2.27 — promoções organizadas, painéis operacionais e relatório financeiro ===== */
+.promotion-product-rows > article.promotion-product-editor {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 14px !important;
+  padding: 16px !important;
+  border-radius: 18px !important;
+  overflow: hidden;
+}
+.promotion-product-identity {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+.promotion-product-identity > img {
+  width: 104px;
+  height: 100%;
+  min-height: 108px;
+  max-height: 138px;
+  border-radius: 14px;
+  object-fit: cover;
+  background: #efede9;
+}
+.promotion-product-editor .promotion-admin-main {
+  align-content: start;
+  gap: 7px;
+}
+.promotion-product-editor .promotion-admin-main > small {
+  width: max-content;
+  max-width: 100%;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #f1efeb;
+  color: #65686d;
+  font: 800 8px "Manrope";
+}
+.promotion-product-editor .promotion-admin-main > input,
+.promotion-product-editor .promotion-admin-main > textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 11px;
+  font-size: 11px;
+}
+.promotion-product-editor .promotion-admin-main > input {
+  min-height: 42px;
+  font: 800 12px "Manrope";
+}
+.promotion-product-editor .promotion-admin-main > textarea {
+  min-height: 58px;
+  line-height: 1.45;
+}
+.promotion-pricing-panel,
+.promotion-product-editor .promotion-schedule-fields {
+  padding: 14px;
+  border: 1px solid #e3ded7;
+  border-radius: 15px;
+  background: #faf9f6;
+}
+.promotion-section-heading {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.promotion-section-heading > span {
+  color: #25282d;
+  font: 850 11px "Manrope";
+}
+.promotion-section-heading > small {
+  color: #767a80;
+  font-size: 9px;
+  line-height: 1.4;
+}
+.promotion-product-editor .promotion-admin-values {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 11px;
+}
+.promotion-product-editor .promotion-admin-values label {
+  gap: 6px;
+  color: #5d6167;
+  font-size: 9px;
+}
+.promo-money-input {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  min-height: 42px;
+  overflow: hidden;
+  border: 1px solid #d9d4cd;
+  border-radius: 11px;
+  background: #fff;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+.promo-money-input:focus-within {
+  border-color: #df8d91;
+  box-shadow: 0 0 0 4px rgba(227, 27, 35, 0.07);
+}
+.promo-money-input.featured {
+  border-color: #efb5b8;
+  background: #fff8f8;
+}
+.promo-money-input > i {
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  min-width: 36px;
+  border-right: 1px solid #e6e1db;
+  background: #f3f1ed;
+  color: #6e7177;
+  font: 800 9px "Manrope";
+  font-style: normal;
+}
+.promo-money-input > input {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 40px;
+  box-sizing: border-box;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  padding: 9px 10px !important;
+  outline: 0;
+  box-shadow: none !important;
+  color: #202328;
+  font: 800 11px "Manrope";
+}
+.promotion-product-editor .promotion-size-prices.compact {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 9px;
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.promotion-product-editor .promotion-size-prices.compact label {
+  grid-template-columns: minmax(82px, 0.72fr) minmax(118px, 1fr);
+  min-width: 0;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid #e4dfd8;
+  border-radius: 12px;
+  background: #fff;
+}
+.promotion-product-editor .promotion-size-prices label > span {
+  font-size: 10px;
+}
+.promotion-product-editor .promotion-size-prices label > span small {
+  margin-top: 2px;
+  font-size: 8px;
+  line-height: 1.3;
+}
+.promotion-product-editor .promotion-size-prices .promo-money-input {
+  min-height: 38px;
+}
+.promotion-product-editor .promotion-size-prices .promo-money-input > i {
+  min-width: 31px;
+}
+.promotion-product-editor .promotion-schedule-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-column: auto !important;
+  gap: 10px;
+}
+.promotion-product-editor .promotion-schedule-fields .promotion-section-heading {
+  grid-column: 1 / -1;
+}
+.promotion-product-editor .promotion-schedule-fields label {
+  gap: 6px;
+  color: #5d6167;
+  font-size: 9px;
+}
+.promotion-product-editor .promotion-schedule-fields input {
+  min-height: 42px;
+  border-radius: 11px;
+  background: #fff;
+  font-size: 10px;
+}
+.promotion-product-editor .promotion-admin-actions {
+  display: flex;
+  grid-column: auto !important;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 2px;
+}
+.promotion-product-editor .promotion-admin-actions .priority-controls {
+  margin-right: auto;
+}
+.promotion-product-editor .promotion-admin-actions .upload-icon-button,
+.promotion-product-editor .promotion-admin-actions button {
+  min-height: 40px;
+  border-radius: 11px;
+}
+.promotion-product-editor .promotion-admin-actions .upload-icon-button {
+  width: 42px;
+}
+.promotion-product-editor .promotion-admin-actions .area-toggle {
+  min-width: 112px;
+}
+.promotion-product-editor .promotion-admin-actions .subtle-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding-inline: 12px;
+}
+
+.admin-shell.admin-dark .promotion-product-editor .promotion-admin-main > small,
+.admin-shell.admin-dark .promotion-pricing-panel,
+.admin-shell.admin-dark .promotion-product-editor .promotion-schedule-fields {
+  background: #1a1f24 !important;
+  border-color: #394149 !important;
+  color: #c9cfd5 !important;
+}
+.admin-shell.admin-dark .promotion-section-heading > span {
+  color: #f2f4f6;
+}
+.admin-shell.admin-dark .promotion-section-heading > small,
+.admin-shell.admin-dark .promotion-product-editor .promotion-admin-values label,
+.admin-shell.admin-dark .promotion-product-editor .promotion-schedule-fields label {
+  color: #b3bac2 !important;
+}
+.admin-shell.admin-dark .promotion-product-editor .promotion-size-prices.compact label,
+.admin-shell.admin-dark .promo-money-input {
+  background: #242a30 !important;
+  border-color: #434b54 !important;
+}
+.admin-shell.admin-dark .promo-money-input.featured {
+  background: #2c2023 !important;
+  border-color: #714047 !important;
+}
+.admin-shell.admin-dark .promo-money-input > i {
+  background: #30373f;
+  border-color: #48515b;
+  color: #c5cbd2;
+}
+.admin-shell.admin-dark .promo-money-input > input {
+  color: #fff !important;
+}
+
+.kitchen-fullscreen-btn,
+.kitchen-screen-close,
+.kitchen-screen-switch button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  cursor: pointer;
+}
+.kitchen-fullscreen-btn.salon {
+  border-color: #b8d8c7;
+  color: #17683f;
+}
+.kitchen-page.focus-screen {
+  position: fixed;
+  z-index: 10000;
+  inset: 0;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: clamp(14px, 2vw, 28px);
+  background: #0e1115;
+  color: #f5f7f9;
+  overscroll-behavior: contain;
+}
+.kitchen-page.focus-screen:fullscreen {
+  width: 100vw;
+  height: 100vh;
+}
+.kitchen-page.focus-screen .kitchen-toolbar {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+  border-color: #343c45;
+  background: rgba(23, 27, 32, 0.96);
+  color: #fff;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(16px);
+}
+.kitchen-page.focus-screen .kitchen-toolbar h2,
+.kitchen-page.focus-screen .kitchen-empty h3 {
+  color: #fff;
+}
+.kitchen-page.focus-screen .kitchen-toolbar p,
+.kitchen-page.focus-screen .kitchen-empty p {
+  color: #aeb7c0;
+}
+.kitchen-screen-switch {
+  display: flex;
+  gap: 5px;
+  padding: 5px;
+  border: 1px solid #3b444d;
+  border-radius: 13px;
+  background: #111419;
+}
+.kitchen-screen-switch button,
+.kitchen-screen-close {
+  min-height: 40px;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 13px;
+  background: transparent;
+  color: #b9c1ca;
+  font: 800 10px "Manrope";
+}
+.kitchen-screen-switch button.active {
+  background: #e31b23;
+  color: #fff;
+}
+.kitchen-screen-close {
+  border: 1px solid #444d57;
+  background: #252b32;
+  color: #fff;
+}
+.kitchen-page.focus-screen .kitchen-board {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-content: start;
+}
+.kitchen-page.focus-screen .kitchen-ticket {
+  background: #191e24;
+  border-color: #3a424b;
+  color: #f5f7f9;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+}
+.kitchen-page.focus-screen .kitchen-ticket-head > span {
+  background: #2c333b;
+  color: #e9edf1;
+}
+.kitchen-page.focus-screen .kitchen-items {
+  border-color: #454d56;
+}
+.kitchen-page.focus-screen .kitchen-items small,
+.kitchen-page.focus-screen .kitchen-ticket-footer > small {
+  color: #b4bcc5;
+}
+.kitchen-page.focus-screen .kitchen-ticket-footer button:not(.kitchen-advance-btn) {
+  border-color: #434c56;
+  background: #252b32;
+  color: #f5f7f9;
+}
+.kitchen-ticket.status-ready_for_table,
+.kitchen-ticket.status-ready_for_pickup {
+  border-top-color: #2c9a63;
+}
+.kitchen-page.salon-screen {
+  background:
+    radial-gradient(circle at 10% -10%, rgba(35, 125, 82, 0.2), transparent 38%),
+    #0d1210;
+}
+.kitchen-page.salon-screen .salon-ticket.status-ready_for_table {
+  border-color: #31885d;
+  border-top-color: #43ca84;
+  box-shadow: 0 18px 55px rgba(28, 141, 84, 0.14);
+}
+.kitchen-page.salon-screen .salon-ticket h3 {
+  font-size: clamp(22px, 2vw, 30px) !important;
+}
+.kitchen-page.salon-screen .salon-ticket .kitchen-items b {
+  font-size: 13px !important;
+}
+
+.financial-report-kpis {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.financial-report-kpis article {
+  min-height: 108px;
+  align-items: flex-start;
+}
+.financial-report-kpis article > span {
+  min-width: 0;
+}
+.financial-report-kpis article em {
+  display: block;
+  margin-top: 5px;
+  color: #7e8389;
+  font-size: 8px;
+  font-style: normal;
+  line-height: 1.35;
+}
+.financial-report-kpis article.canceled svg,
+.financial-report-kpis article.refunded svg {
+  color: #b82b35;
+}
+.financial-report-kpis article.net {
+  border-color: #b8dfc9;
+  background: #f3fbf6;
+}
+.financial-report-kpis article.net svg,
+.financial-report-kpis article.net b {
+  color: #157344;
+}
+.report-financial-note {
+  margin: -4px 0 0;
+  padding: 11px 13px;
+  border: 1px solid #e4dfd8;
+  border-radius: 12px;
+  background: #faf9f6;
+  color: #686d73;
+  font-size: 9px;
+  line-height: 1.5;
+}
+.operational-report-kpis {
+  grid-template-columns: minmax(220px, 1fr);
+}
+.admin-shell.admin-dark .financial-report-kpis article.net {
+  border-color: #315d45 !important;
+  background: #183126 !important;
+}
+.admin-shell.admin-dark .financial-report-kpis article em {
+  color: #aeb5bd;
+}
+.admin-shell.admin-dark .financial-report-kpis article.net svg,
+.admin-shell.admin-dark .financial-report-kpis article.net b {
+  color: #90e3b4;
+}
+.admin-shell.admin-dark .report-financial-note {
+  border-color: #3a424b;
+  background: #1d2228;
+  color: #c1c7ce;
+}
+
+@media (max-width: 1180px) {
+  .financial-report-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 720px) {
+  .promotion-product-identity {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+  .promotion-product-identity > img {
+    width: 76px;
+    min-height: 96px;
+  }
+  .promotion-product-editor .promotion-admin-values,
+  .promotion-product-editor .promotion-schedule-fields,
+  .financial-report-kpis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .promotion-product-editor .promotion-size-prices.compact {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .promotion-product-editor .promotion-admin-actions {
+    flex-wrap: wrap;
+  }
+  .promotion-product-editor .promotion-admin-actions .priority-controls {
+    width: 100%;
+  }
+  .kitchen-page.focus-screen {
+    padding: 10px;
+  }
+  .kitchen-page.focus-screen .kitchen-toolbar {
+    position: static;
+  }
+  .kitchen-page.focus-screen .kitchen-actions,
+  .kitchen-page.focus-screen .kitchen-screen-switch {
+    width: 100%;
+  }
+  .kitchen-page.focus-screen .kitchen-screen-switch button {
+    flex: 1;
+  }
+  .kitchen-page.focus-screen .kitchen-screen-close {
+    width: 100%;
+  }
+  .kitchen-page.focus-screen .kitchen-board {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ===== v2.26 — contraste, acessibilidade móvel e cancelamento do cliente ===== */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+
+@supports (-webkit-touch-callout: none) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+.customer-cancel-order-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: max-content;
+  margin-top: 12px;
+  padding: 9px 12px;
+  border: 1px solid #efb8bb;
+  border-radius: 10px;
+  background: #fff5f5;
+  color: #b21d25;
+  font: 800 10px "Manrope", sans-serif;
+}
+.customer-cancel-backdrop {
+  z-index: 750;
+}
+.customer-cancel-modal {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  width: min(520px, calc(100vw - 24px));
+  padding: 26px;
+  border: 1px solid #ded8d0;
+  border-radius: 24px;
+  background: #fff;
+  color: #202227;
+  box-shadow: 0 32px 100px rgba(0, 0, 0, 0.32);
+}
+.customer-cancel-modal > .icon-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+}
+.customer-cancel-icon {
+  display: grid;
+  place-items: center;
+  width: 50px;
+  height: 50px;
+  border-radius: 16px;
+  background: #fff0f0;
+  color: #c9212a;
+}
+.customer-cancel-modal > small {
+  color: #e43a42;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+.customer-cancel-modal h2,
+.customer-cancel-modal p {
+  margin: 0;
+}
+.customer-cancel-modal h2 {
+  font: 800 28px/1.05 "Manrope", sans-serif;
+}
+.customer-cancel-modal p {
+  color: #676b72;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.customer-cancel-modal label {
+  display: grid;
+  gap: 7px;
+  font-size: 10px;
+  font-weight: 800;
+}
+.customer-cancel-modal label em {
+  color: #858990;
+  font-style: normal;
+  font-weight: 500;
+}
+.customer-cancel-modal textarea {
+  min-height: 100px;
+  padding: 12px;
+  border: 1px solid #d8d4ce;
+  border-radius: 13px;
+  background: #f8f7f4;
+  color: #23262b;
+  resize: vertical;
+}
+.customer-cancel-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+}
+.customer-cancel-actions .cancel-confirm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.store-maps-link {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+}
+.store-maps-link small {
+  color: var(--muted);
+  font-size: 9px;
+}
+.store-location-actions > a.ghost-dark-btn {
+  text-decoration: none;
+}
+.table-standard-payment-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.table-standard-payment-grid label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #faf9f7;
+  font-size: 10px;
+  font-weight: 800;
+}
+.operations-hours-panel {
+  max-width: 980px;
+  margin-top: 16px;
+}
+
+.admin-shell.admin-dark .cancel-order-modal,
+.admin-shell.admin-dark .customer-cancel-modal {
+  border: 1px solid #3c434c !important;
+  background: #1b1f24 !important;
+  color: #f5f6f8 !important;
+}
+.admin-shell.admin-dark .cancel-order-modal h2,
+.admin-shell.admin-dark .cancel-order-modal label,
+.admin-shell.admin-dark .customer-cancel-modal h2,
+.admin-shell.admin-dark .customer-cancel-modal label {
+  color: #f5f6f8 !important;
+}
+.admin-shell.admin-dark .cancel-order-modal p,
+.admin-shell.admin-dark .customer-cancel-modal p,
+.admin-shell.admin-dark .cancel-order-modal label small {
+  color: #b5bbc3 !important;
+}
+.admin-shell.admin-dark .cancel-modal-icon,
+.admin-shell.admin-dark .customer-cancel-icon {
+  background: #3a2024 !important;
+  color: #ff7379 !important;
+}
+.admin-shell.admin-dark .admin-order-eta,
+.admin-shell.admin-dark .order-detail-eta,
+.admin-shell.admin-dark .eta-waiting-banner {
+  border-color: #365276 !important;
+  background: #192a40 !important;
+  color: #a9caff !important;
+}
+.admin-shell.admin-dark .admin-order-eta b,
+.admin-shell.admin-dark .order-detail-eta b,
+.admin-shell.admin-dark .order-detail-eta small,
+.admin-shell.admin-dark .eta-waiting-banner b,
+.admin-shell.admin-dark .eta-waiting-banner small {
+  color: #d9e8ff !important;
+}
+.admin-shell.admin-dark .deadline-alert.warning,
+.admin-shell.admin-dark .table-payment-warning {
+  border-color: #64551e !important;
+  background: #3d3417 !important;
+  color: #ffe69b !important;
+}
+.admin-shell.admin-dark .deadline-alert.overdue {
+  border-color: #6b3137 !important;
+  background: #3d2024 !important;
+  color: #ffb0b5 !important;
+}
+.admin-shell.admin-dark .courier-capacity-list strong {
+  background: #183a2a !important;
+  color: #a8efc7 !important;
+}
+.admin-shell.admin-dark .courier-capacity-list strong.full {
+  background: #432227 !important;
+  color: #ffb0b6 !important;
+}
+.admin-shell.admin-dark .table-standard-payment-grid label {
+  border-color: #3d454e;
+  background: #20252b;
+  color: #f1f3f5;
+}
+
+@media (max-width: 560px) {
+  .customer-cancel-actions,
+  .table-standard-payment-grid {
+    grid-template-columns: 1fr;
+  }
+  .customer-cancel-actions {
+    display: grid;
+  }
+  .customer-cancel-actions > button {
+    width: 100%;
+  }
+}
+
 /* v2.25 - navegação administrativa fixa, cardápio da mesa e promoções por tamanho */
 .admin-sidebar {
   overflow: hidden;
@@ -16737,5 +17429,14 @@ html.dark-mode textarea {
   .order-live-notice {
     top: 12px;
     right: 16px;
+  }
+}
+
+/* Mantido no fim da cascata para nenhum estilo de formulário reativar o zoom. */
+@media (max-width: 820px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
   }
 }

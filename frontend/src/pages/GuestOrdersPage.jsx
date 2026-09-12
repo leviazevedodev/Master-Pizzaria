@@ -11,6 +11,7 @@ import { api } from "../lib/api";
 import { etaRange, money } from "../lib/format";
 import { readStoredStringArray } from "../lib/storage";
 import CustomerOrderNotifications from "../components/CustomerOrderNotifications";
+import CustomerCancelOrderButton from "../components/CustomerCancelOrderButton";
 
 const STATUS_LABEL = {
   SCHEDULED: "Agendado",
@@ -217,6 +218,16 @@ export default function GuestOrdersPage() {
                       Ver andamento
                     </Link>
                   </div>
+                  <CustomerCancelOrderButton
+                    order={o}
+                    onCanceled={(updated) =>
+                      setOrders((rows) =>
+                        rows.map((row) =>
+                          row.trackingCode === updated.trackingCode ? updated : row,
+                        ),
+                      )
+                    }
+                  />
                 </article>
               ))}
             </div>

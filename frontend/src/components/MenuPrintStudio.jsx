@@ -22,10 +22,12 @@ export default function MenuPrintStudio({
   subcategories = [],
   settings = {},
   notify = () => {},
+  onDigitalMenuChange = async () => {},
 }) {
   const [includePromotions, setIncludePromotions] = useState(true);
   const [generating, setGenerating] = useState("");
   const [error, setError] = useState("");
+  const [savingDigitalMenu, setSavingDigitalMenu] = useState(false);
   const printable = useMemo(() => printableMenuProducts(products), [products]);
   const sections = useMemo(
     () => buildMenuSections(printable, categories, subcategories),
@@ -42,7 +44,7 @@ export default function MenuPrintStudio({
   const menuUrl = useMemo(
     () =>
       settings.publicMenuUrl ||
-      new URL("/gestao/cardapiodigital", window.location.origin).href,
+      new URL("/cardapio-digital", window.location.origin).href,
     [settings.publicMenuUrl],
   );
 
@@ -116,6 +118,41 @@ export default function MenuPrintStudio({
               <b>Incluir preços promocionais ativos</b>
               <small>
                 Desmarque para imprimir somente os valores base do cardápio.
+              </small>
+            </span>
+          </label>
+
+          <label className="menu-promotion-option digital-menu-toggle">
+            <input
+              type="checkbox"
+              checked={settings.digitalMenuEnabled !== false}
+              disabled={savingDigitalMenu}
+              onChange={async (event) => {
+                const enabled = event.target.checked;
+                setSavingDigitalMenu(true);
+                setError("");
+                try {
+                  await onDigitalMenuChange(enabled);
+                  notify(
+                    enabled
+                      ? "Cardápio digital das mesas ativado."
+                      : "Cardápio digital das mesas desativado.",
+                  );
+                } catch (requestError) {
+                  setError(
+                    requestError.response?.data?.message ||
+                      "Não foi possível alterar o cardápio digital.",
+                  );
+                } finally {
+                  setSavingDigitalMenu(false);
+                }
+              }}
+            />
+            <span>
+              <b>Permitir acesso ao cardápio digital das mesas</b>
+              <small>
+                Quando desativado, o endereço e a finalização presencial ficam
+                bloqueados no site e na API.
               </small>
             </span>
           </label>

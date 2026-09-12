@@ -1,4 +1,6 @@
-# Auditoria técnica e de segurança — v2.19.18
+# Auditoria técnica e de segurança — v2.27.0
+
+> Versão v2.27.0 (11 de setembro de 2026): o editor de promoções com tamanhos foi reorganizado, Cozinha recebeu telas cheias independentes para produção e salão, Atendimento passou a avançar todo o fluxo presencial e os relatórios financeiros passaram a separar vendas, cancelamentos, estornos e receita final por meio de agregações completas no banco.
 
 > Atualização funcional v2.20.0 (10 de setembro de 2026): foi acrescentado o módulo de salão com mesas e comandas, perfil de garçom, rodadas integradas à cozinha, baixa de pagamento, troco, cancelamento auditado, restauração de estoque e isolamento da fila de entregadores. O schema Prisma e a migration versionada foram validados; 18 testes de backend, 3 testes de frontend e o build de produção passaram. A validação integrada com um banco PostgreSQL real continua fazendo parte do roteiro de implantação abaixo.
 
@@ -20,7 +22,7 @@
 
 > Versão v2.24.0 (11 de setembro de 2026): substituído o redirecionamento do Checkout Pro pelo checkout transparente com Pix e Card Payment Brick, validação de total exclusivamente no backend, idempotência e sincronização de pagamento. O cardápio impresso foi redesenhado em duas páginas escuras e sem fotos de produtos; o QR Code ficou restrito ao cardápio público. Foram adicionados a fila Aguardando fechamento, notificações operacionais persistentes, diagnóstico do e-mail de recuperação e a remoção da observação ao abrir mesa.
 
-Data da revisão final: 4 de setembro de 2026.
+Data da revisão final: 11 de setembro de 2026.
 
 Arquivo de origem analisado: `master-pizza-profissional-v2.19.16-darkmode-adicionais-preco-dinamico.zip`.
 
@@ -41,7 +43,7 @@ Nenhum sistema publicado na internet pode ser considerado perfeito para sempre. 
 | Seed              | Uma nova execução podia sobrescrever catálogo, preços, horários, promoções e senha                          | Seed preserva dados por padrão; alterações destrutivas exigem flags explícitas                             |
 | Administrador     | Um e-mail de cliente existente podia ser promovido pelo seed sem confirmação específica                     | Promoção exige `ADMIN_SEED_PROMOTE_EXISTING=true`                                                          |
 | Sessões           | Segredo JWT fraco ou de exemplo era aceito fora de produção                                                 | Segredo forte, com ao menos 32 caracteres, passou a ser obrigatório em qualquer ambiente                   |
-| Senhas            | Novas senhas aceitavam apenas oito caracteres                                                               | Mínimo elevado para 12 caracteres no backend e na interface                                                |
+| Senhas            | A política não distinguia contas de clientes e acessos administrativos                                     | Clientes usam mínimo de 8 caracteres; administradores e funcionários usam mínimo de 12                    |
 | Pedidos agendados | Duas requisições simultâneas podiam ultrapassar a capacidade do horário                                     | Contagem final protegida por lock transacional no PostgreSQL                                               |
 | Estoque           | Sabores que também são produtos eram verificados, mas não tinham estoque baixado/restaurado                 | Baixa, estorno e movimentos passaram a incluir esses itens                                                 |
 | Catálogo          | Produto indisponível por dia, horário ou pausa podia ser incluído em pedido por chamada direta à API        | Disponibilidade é recalculada no servidor para o horário atual ou agendado                                 |
@@ -59,6 +61,11 @@ Nenhum sistema publicado na internet pode ser considerado perfeito para sempre. 
 | Entradas da API   | Textos como `"false"`, ordens inválidas e quantidades decimais podiam ser normalizados incorretamente       | Booleanos, slugs, limites, relações, datas, ordens e quantidades receberam validação uniforme              |
 | Endereços         | Tornar um favorito padrão fazia atualizações separadas                                                      | Limpeza do padrão anterior e criação/edição agora são transacionais                                        |
 | Relatórios        | “Pedidos de hoje” dependia do fuso do servidor                                                              | Início do dia passou a usar o fuso configurado da loja, com teste automatizado                             |
+| Relatório financeiro | Totais não distinguiam cancelamentos e estornos e dependiam da lista limitada usada no ranking            | Agregações completas separam total vendido, cancelado, devolvido, líquido, quantidade e ticket médio       |
+| Atendimento presencial | A tela geral só permitia servir pedidos já prontos                                                        | Recebido e em preparo agora avançam pelas rotas transacionais da cozinha, uma etapa por vez                 |
+| Tela operacional  | Cozinha não oferecia visualização dedicada ao salão                                                         | Modos de tela cheia separados; salão filtra apenas mesas e omite dados pessoais e financeiros               |
+| Autorização da cozinha | Rotas operacionais aceitavam qualquer conta interna autenticada                                          | Acesso exige permissão de cozinha; garçom avança somente mesas e entregador permanece bloqueado             |
+| Promoções         | Produtos com muitos tamanhos comprimiam e desalinhavam os campos                                            | Editor responsivo dividido em identidade, preços gerais, grade de tamanhos, período e ações                 |
 | PWA               | A opção existia no banco, mas o navegador registrava o service worker sempre                                | A opção agora registra ou remove service worker e caches; controle foi incluído na gestão                  |
 | CSP               | A política do Netlify bloqueava as fontes usadas pelo próprio layout                                        | Políticas de Nginx e Netlify foram alinhadas e conexões do container foram restringidas à mesma origem     |
 | Consultas         | Metas, segmentos e detalhes de clientes carregavam mais linhas do que o necessário                          | Contagens e somas passaram para agregações do PostgreSQL e respostas detalhadas receberam limite           |
@@ -67,13 +74,13 @@ Nenhum sistema publicado na internet pode ser considerado perfeito para sempre. 
 
 - `prisma format`, geração do Prisma Client e validação do schema: aprovados.
 - Verificação sintática de todos os arquivos JavaScript do backend: aprovada.
-- Quarenta e um testes automatizados: 25 do backend e 16 do frontend, todos aprovados e sem falhas.
-- Build de produção do frontend com Vite: aprovado, 1.974 módulos transformados.
+- Cinquenta e cinco testes automatizados: 35 do backend e 20 do frontend, todos aprovados e sem falhas.
+- Build de produção do frontend com Vite: aprovado, 2.006 módulos transformados.
 - Inicialização da API e comportamento de CORS foram aprovados na primeira etapa desta mesma auditoria.
 - Inicialização final sem banco: aprovada; `/health` respondeu 503 corretamente para banco indisponível, com `X-Request-Id` e cabeçalhos de proteção.
 - Origem CORS permitida recebeu o cabeçalho esperado; origem não autorizada foi bloqueada com HTTP 403.
 - Sintaxe do `docker-compose.yml`: aprovada por `docker compose config --quiet` com variáveis fictícias.
-- `npm audit --omit=dev` encontrou 0 vulnerabilidades conhecidas nos dois pacotes na primeira etapa. A consulta final ao registro ficou indisponível; os `package-lock.json` não tiveram dependências alteradas depois dela.
+- `npm audit --omit=dev` encontrou 0 vulnerabilidades conhecidas nos dois pacotes nesta entrega.
 - Varredura do código-fonte por segredos, chaves privadas e APIs perigosas: nenhum segredo real encontrado.
 
 O teste integrado completo com PostgreSQL em containers não pôde ser repetido porque o mecanismo local do Docker Desktop permaneceu inacessível (erro anterior `500 Internal Server Error` e, na checagem final, acesso negado ao named pipe). Nenhum container ou volume deste projeto foi criado durante a tentativa. Assim que o Docker estiver saudável, execute o roteiro abaixo antes de publicar.

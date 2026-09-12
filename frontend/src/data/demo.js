@@ -348,6 +348,7 @@ export const DEMO_SETTINGS = {
   storePostalCode: "",
   storeLatitude: null,
   storeLongitude: null,
+  storeGoogleMapsUrl: "",
   estimatedDeliveryMin: 30,
   estimatedDeliveryMax: 45,
   logoImage: "",
@@ -365,6 +366,9 @@ export const DEMO_SETTINGS = {
   cashPaymentEnabled: true,
   onlinePaymentEnabled: false,
   onlinePaymentConfigured: false,
+  tablePaymentMethods: ["CASH", "PIX", "CREDIT", "DEBIT"],
+  customPaymentMethods: [],
+  digitalMenuEnabled: true,
   timezone: "America/Maceio",
   heroTitle: "Pizza artesanal, feita para impressionar.",
   heroSubtitle:

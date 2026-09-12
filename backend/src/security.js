@@ -47,6 +47,24 @@ export function isTrustedMercadoPagoUrl(value) {
   }
 }
 
+export function normalizeTrustedGoogleMapsUrl(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    if (url.protocol !== "https:" || url.username || url.password) return "";
+    const host = url.hostname.toLowerCase();
+    const trusted =
+      host === "maps.app.goo.gl" ||
+      host === "maps.google.com" ||
+      (host === "goo.gl" && url.pathname.startsWith("/maps")) ||
+      host === "google.com" ||
+      host.endsWith(".google.com") ||
+      /^(?:www\.|maps\.)?google\.[a-z]{2,3}(?:\.[a-z]{2})?$/.test(host);
+    return trusted ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
 export function verifyMercadoPagoSignature({
   xSignature,
   xRequestId,

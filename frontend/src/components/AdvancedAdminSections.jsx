@@ -6,13 +6,17 @@ import {
   Box,
   ChefHat,
   Check,
+  CircleX,
   Clock3,
   DollarSign,
   Gauge,
   History,
+  Maximize2,
+  Monitor,
   PackageSearch,
   Plus,
   Printer,
+  Receipt,
   RefreshCw,
   Save,
   Search,
@@ -20,8 +24,11 @@ import {
   Star,
   Trash2,
   Trophy,
+  Undo2,
   UserRound,
   Users,
+  UtensilsCrossed,
+  WalletCards,
   X,
 } from "lucide-react";
 import { api, authHeaders, mediaUrl } from "../lib/api";
@@ -499,6 +506,8 @@ export function KitchenAdmin({
   const headers = authHeaders(session.token);
   const [orders, setOrders] = useState([]);
   const [advancingId, setAdvancingId] = useState(null);
+  const [focusView, setFocusView] = useState(null);
+  const screenRef = useRef(null);
   const known = useRef(new Set());
   const [permission, setPermission] = useState(
     typeof Notification !== "undefined"
@@ -557,6 +566,14 @@ export function KitchenAdmin({
     permission,
     notificationsEnabled,
   ]);
+  useEffect(() => {
+    function syncFullscreenState() {
+      if (!document.fullscreenElement) setFocusView(null);
+    }
+    document.addEventListener("fullscreenchange", syncFullscreenState);
+    return () =>
+      document.removeEventListener("fullscreenchange", syncFullscreenState);
+  }, []);
   async function toggleNotifications() {
     if (notificationsEnabled && permission === "granted") {
       setNotificationsEnabled(false);
@@ -611,42 +628,124 @@ export function KitchenAdmin({
       setAdvancingId(null);
     }
   }
+  async function markServed(order) {
+    setAdvancingId(order.id);
+    try {
+      await api.post(`/admin/table-orders/${order.id}/served`, {}, headers);
+      notify(`${order.table?.name || "Mesa"} marcada como servida.`);
+      await load(true);
+    } catch (error) {
+      fail(error, "Não foi possível marcar o pedido como servido.");
+    } finally {
+      setAdvancingId(null);
+    }
+  }
+  function openFocus(view) {
+    setFocusView(view);
+    const request = screenRef.current?.requestFullscreen?.();
+    if (request?.catch) request.catch(() => {});
+  }
+  function closeFocus() {
+    if (document.fullscreenElement === screenRef.current) {
+      const exiting = document.exitFullscreen?.();
+      if (exiting?.catch) exiting.catch(() => {});
+    }
+    setFocusView(null);
+  }
   const notificationsActive = notificationsEnabled && permission === "granted";
+  const salonView = focusView === "SALON";
+  const visibleOrders = salonView
+    ? orders.filter((order) => order.fulfillmentType === "DINE_IN")
+    : orders;
   return (
-    <div className="kitchen-page">
+    <div
+      ref={screenRef}
+      className={`kitchen-page ${focusView ? "focus-screen" : ""} ${salonView ? "salon-screen" : ""}`}
+    >
       <section className="admin-panel kitchen-toolbar">
         <div>
-          <span className="eyebrow dark">Tela exclusiva</span>
-          <h2>Cozinha</h2>
+          <span className="eyebrow dark">
+            {salonView ? "Atendimento presencial" : "Produção em tempo real"}
+          </span>
+          <h2>{salonView ? "Tela do salão" : "Cozinha"}</h2>
           <p>
-            Pedidos recebidos e em preparo atualizam automaticamente a cada 10
-            segundos.
+            {salonView
+              ? "Exibe somente pedidos presenciais, sem dados pessoais, valores ou formas de pagamento."
+              : "Pedidos recebidos e em preparo atualizam automaticamente a cada 10 segundos."}
           </p>
         </div>
         <div className="kitchen-actions">
-          <span className="kitchen-auto-refresh">
-            <RefreshCw size={15} /> Atualização automática
-          </span>
-          <button
-            className={
-              notificationsActive
-                ? "ghost-dark-btn notification-toggle active"
-                : "ghost-dark-btn notification-toggle"
-            }
-            onClick={toggleNotifications}
-          >
-            {notificationsActive ? <BellOff size={16} /> : <Bell size={16} />}{" "}
-            {notificationsActive
-              ? "Desativar notificações"
-              : "Ativar notificações"}
-          </button>
+          {focusView ? (
+            <>
+              <div className="kitchen-screen-switch" aria-label="Tipo de tela">
+                <button
+                  type="button"
+                  className={!salonView ? "active" : ""}
+                  onClick={() => setFocusView("KITCHEN")}
+                >
+                  <ChefHat size={17} /> Cozinha
+                </button>
+                <button
+                  type="button"
+                  className={salonView ? "active" : ""}
+                  onClick={() => setFocusView("SALON")}
+                >
+                  <UtensilsCrossed size={17} /> Salão
+                </button>
+              </div>
+              <button
+                type="button"
+                className="kitchen-screen-close"
+                onClick={closeFocus}
+              >
+                <X size={18} /> Sair da tela cheia
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="kitchen-auto-refresh">
+                <RefreshCw size={15} /> Atualização automática
+              </span>
+              <button
+                className={
+                  notificationsActive
+                    ? "ghost-dark-btn notification-toggle active"
+                    : "ghost-dark-btn notification-toggle"
+                }
+                onClick={toggleNotifications}
+              >
+                {notificationsActive ? (
+                  <BellOff size={16} />
+                ) : (
+                  <Bell size={16} />
+                )}{" "}
+                {notificationsActive
+                  ? "Desativar notificações"
+                  : "Ativar notificações"}
+              </button>
+              <button
+                type="button"
+                className="ghost-dark-btn kitchen-fullscreen-btn"
+                onClick={() => openFocus("KITCHEN")}
+              >
+                <Maximize2 size={16} /> Tela cheia da cozinha
+              </button>
+              <button
+                type="button"
+                className="ghost-dark-btn kitchen-fullscreen-btn salon"
+                onClick={() => openFocus("SALON")}
+              >
+                <Monitor size={16} /> Tela cheia do salão
+              </button>
+            </>
+          )}
         </div>
       </section>
       <div className="kitchen-board">
-        {orders.map((o) => (
+        {visibleOrders.map((o) => (
           <article
             key={o.id}
-            className={`kitchen-ticket status-${o.status.toLowerCase()}`}
+            className={`kitchen-ticket ${salonView ? "salon-ticket" : ""} status-${o.status.toLowerCase()}`}
           >
             <div className="kitchen-ticket-head">
               <div>
@@ -662,11 +761,11 @@ export function KitchenAdmin({
               </span>
             </div>
             <h3>
-              {o.fulfillmentType === "DINE_IN"
+              {salonView || o.fulfillmentType === "DINE_IN"
                 ? o.table?.name || `Mesa ${o.table?.number || ""}`
                 : o.customerName}
             </h3>
-            {o.fulfillmentType === "DINE_IN" && (
+            {!salonView && o.fulfillmentType === "DINE_IN" && (
               <small className="kitchen-table-badge">ATENDIMENTO NO SALÃO</small>
             )}
             <div className="kitchen-items">
@@ -693,10 +792,12 @@ export function KitchenAdmin({
                   minute: "2-digit",
                 })}
               </small>
-              <button onClick={() => manualPrint(o)}>
-                <Printer size={15} /> Imprimir
-              </button>
-              {["RECEIVED", "PREPARING"].includes(o.status) && (
+              {!salonView && (
+                <button onClick={() => manualPrint(o)}>
+                  <Printer size={15} /> Imprimir
+                </button>
+              )}
+              {!salonView && ["RECEIVED", "PREPARING"].includes(o.status) && (
                 <button
                   className="kitchen-advance-btn"
                   disabled={advancingId === o.id}
@@ -710,22 +811,42 @@ export function KitchenAdmin({
                       : "Marcar pronto"}
                 </button>
               )}
+              {salonView && o.status === "READY_FOR_TABLE" && (
+                <button
+                  className="kitchen-advance-btn"
+                  disabled={advancingId === o.id}
+                  onClick={() => markServed(o)}
+                >
+                  <Check size={15} />
+                  {advancingId === o.id ? "Salvando..." : "Confirmar servido"}
+                </button>
+              )}
             </div>
           </article>
         ))}
-        {!orders.length && (
+        {!visibleOrders.length && (
           <div className="kitchen-empty">
-            <ChefHat />
-            <h3>Nenhum pedido na cozinha</h3>
-            <p>Os novos pedidos aparecerão aqui automaticamente.</p>
+            {salonView ? <UtensilsCrossed /> : <ChefHat />}
+            <h3>
+              {salonView
+                ? "Nenhum pedido presencial no momento"
+                : "Nenhum pedido na cozinha"}
+            </h3>
+            <p>
+              {salonView
+                ? "As mesas com pedidos ativos aparecerão aqui automaticamente."
+                : "Os novos pedidos aparecerão aqui automaticamente."}
+            </p>
           </div>
         )}
       </div>
-      <p className="field-note">
-        Impressão automática em navegador abre o diálogo de impressão. Impressão
-        totalmente silenciosa exige um agente local de impressão configurado no
-        computador da loja.
-      </p>
+      {!focusView && (
+        <p className="field-note">
+          Impressão automática em navegador abre o diálogo de impressão.
+          Impressão totalmente silenciosa exige um agente local de impressão
+          configurado no computador da loja.
+        </p>
+      )}
     </div>
   );
 }
@@ -797,28 +918,63 @@ export function ReportsAdmin({ session, fail = () => {} }) {
         </section>
       ) : !data ? null : (
         <>
-          <section className="report-kpis">
-            <article>
-              <ShoppingBag />
+          <section className="report-kpis financial-report-kpis">
+            <article className="gross">
+              <Receipt />
               <span>
-                <small>Pedidos concluídos</small>
-                <b>{data.summary.orders}</b>
+                <small>Total vendido</small>
+                <b>{money(data.summary.grossRevenue ?? data.summary.revenue)}</b>
+                <em>antes dos estornos</em>
+              </span>
+            </article>
+            <article className="canceled">
+              <CircleX />
+              <span>
+                <small>Pedidos cancelados</small>
+                <b>{money(data.summary.canceledValue || 0)}</b>
+                <em>{data.summary.canceledOrders || 0} pedidos</em>
+              </span>
+            </article>
+            <article className="refunded">
+              <Undo2 />
+              <span>
+                <small>Devolvido aos clientes</small>
+                <b>{money(data.summary.refundedValue || 0)}</b>
+                <em>{data.summary.refundedOrders || 0} estornos</em>
+              </span>
+            </article>
+            <article className="net">
+              <WalletCards />
+              <span>
+                <small>Receita após estornos</small>
+                <b>{money(data.summary.netRevenue ?? data.summary.revenue)}</b>
+                <em>valor que permaneceu nas vendas</em>
               </span>
             </article>
             <article>
-              <DollarSign />
+              <ShoppingBag />
               <span>
-                <small>Faturamento</small>
-                <b>{money(data.summary.revenue)}</b>
+                <small>Pedidos finalizados</small>
+                <b>{data.summary.completedOrders ?? data.summary.orders}</b>
+                <em>pagos e concluídos</em>
               </span>
             </article>
             <article>
               <Gauge />
               <span>
-                <small>Ticket médio</small>
+                <small>Média por pedido</small>
                 <b>{money(data.summary.averageTicket)}</b>
+                <em>somente pedidos finalizados</em>
               </span>
             </article>
+          </section>
+          <p className="report-financial-note">
+            Cancelamentos mostram o valor dos pedidos interrompidos, pagos ou
+            não. “Devolvido aos clientes” considera somente pagamentos
+            efetivamente estornados; a receita após estornos não soma esses
+            valores.
+          </p>
+          <section className="report-kpis operational-report-kpis">
             <article>
               <Clock3 />
               <span>

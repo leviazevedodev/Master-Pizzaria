@@ -1,4 +1,4 @@
-# Master Pizzaria Profissional v2.25.0
+# Master Pizzaria Profissional v2.27.0
 
 Aplicação de cardápio e gestão de pizzaria com React, Express, PostgreSQL e Prisma. Inclui pedidos, entrega/retirada, atendimento em mesas, agendamento, Pix e cartões transparentes pelo Mercado Pago, recuperação de senha por e-mail, painel administrativo, cozinha, garçons, entregadores, estoque, promoções, cupons e relatórios.
 
@@ -47,7 +47,9 @@ No painel do administrador, as comandas do salão também aparecem em **Atendime
 
 Pedidos em **Pronto para servir**, **Pronto para entrega** ou **Pronto para retirada** deixam a contagem e a lista **Em aberto**, permanecendo disponíveis nas respectivas filas específicas.
 
-O QR Code impresso abre `/gestao/cardapiodigital`. Nele, o cliente escolhe os produtos, informa o próprio nome e seleciona a mesa. O pedido entra como atendimento presencial nas filas **Recebidos**, **Em preparação**, **Pronto para servir** e **Aguardando fechamento**; o pagamento continua sendo baixado somente no fechamento da mesa.
+Na aba **Atendimento**, o administrador ou garçom pode iniciar o preparo de um pedido presencial, marcá-lo como **Pronto para servir** e, depois, como **Servido**. A aba **Cozinha** possui dois modos de tela cheia: a tela de produção reúne as filas da cozinha e a tela do salão mostra somente pedidos presenciais, sem telefone, endereço, pagamento ou valores.
+
+O QR Code impresso abre a rota pública isolada `/cardapio-digital`. Nela, o cliente escolhe os produtos, informa o próprio nome e vê somente mesas livres. O pedido entra como atendimento presencial nas filas **Recebidos**, **Em preparação**, **Pronto para servir** e **Aguardando fechamento**; o pagamento continua sendo baixado somente no fechamento da mesa. O acesso pode ser desativado em **Cardápio → Impressão**.
 
 ## Cardápio para impressão
 
@@ -60,7 +62,7 @@ O endereço é montado pela API a partir do `FRONTEND_URL`, evitando QR Codes ap
 
 ## Pagamentos personalizados e retenção
 
-Em **Loja → Pagamento**, o administrador pode cadastrar até 20 formas de pagamento próprias para o fechamento das mesas e desativá-las sem alterar pedidos antigos. Formas personalizadas nunca são aceitas no checkout público; dinheiro, Mercado Pago, Pix e cartões continuam como opções padronizadas.
+Em **Loja → Pagamento**, o administrador pode habilitar ou remover as opções padrão de mesa — Dinheiro, Pix, Cartão de crédito e Cartão de débito — e cadastrar até 20 formas próprias para o fechamento das comandas. Formas personalizadas nunca são aceitas no checkout público; dinheiro, Pix e cartões pelo Mercado Pago continuam como opções validadas do site.
 
 ## Sessões e senhas
 
@@ -81,6 +83,10 @@ A limpeza automática roda em segundo plano com os seguintes prazos:
 - pedidos, faturamento, pagamentos e fechamentos são removidos após 5 anos.
 
 Os pedidos permanecem independentes da comanda encerrada, portanto continuam em **Desempenho**, **Relatórios** e **Gestão 360°** até completar o prazo financeiro de 5 anos.
+
+Em **Relatórios**, o período selecionado apresenta separadamente o total vendido antes dos estornos, o valor de pedidos cancelados, o valor efetivamente devolvido aos clientes, a receita após estornos, os pedidos finalizados e a média por pedido. Os totais financeiros usam agregações completas no banco; o limite da lista analítica de produtos não limita esses valores.
+
+No editor de **Promoções**, produtos com tamanhos possuem uma grade própria de preços. Cada campo identifica o tamanho, o preço normal e o valor promocional; quando o valor específico fica vazio, aplica-se o desconto geral da oferta.
 
 ## Desenvolvimento sem Docker
 

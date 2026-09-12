@@ -31,10 +31,12 @@ export default function PaymentReturnPage() {
           );
           return;
         }
-        if (data.paymentStatus === "REJECTED") {
+        if (["REJECTED", "CANCELED", "REFUNDED"].includes(data.paymentStatus)) {
           setStatus("failed");
           setMessage(
-            "O pagamento não foi aprovado. Você pode tentar novamente.",
+            data.paymentStatus === "REFUNDED"
+              ? "O pagamento foi reembolsado e o pedido está cancelado."
+              : "O pagamento não foi aprovado. Você pode tentar novamente.",
           );
           return;
         }
