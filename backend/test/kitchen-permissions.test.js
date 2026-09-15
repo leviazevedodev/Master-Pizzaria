@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-test("rotas da cozinha exigem permissão e garçom avança somente pedido presencial", async () => {
+test("cozinha exige permissão e Pedidos avança somente atendimento presencial", async () => {
   const source = await readFile(
     new URL("../src/server.js", import.meta.url),
     "utf8",
@@ -17,5 +17,7 @@ test("rotas da cozinha exigem permissão e garçom avança somente pedido presen
     source,
     /const waiterTableAccess =[\s\S]*?staffRole === "WAITER"[\s\S]*?fulfillmentType: "DINE_IN"/,
   );
-  assert.match(source, /O garçom só pode avançar pedidos presenciais/);
+  assert.match(source, /__ORDER_OR_KITCHEN__/);
+  assert.match(source, /const orderManagementAccess =/);
+  assert.match(source, /somente pedidos presenciais podem ser avançados/);
 });

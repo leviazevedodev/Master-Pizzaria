@@ -9,6 +9,7 @@ import {
   Minus,
   Pencil,
   Plus,
+  Printer,
   ReceiptText,
   RefreshCw,
   Search,
@@ -20,7 +21,14 @@ import {
 import { api, authHeaders, mediaUrl } from "../lib/api";
 import { money } from "../lib/format";
 import PizzaBuilderModal from "./PizzaBuilderModal";
+import ComboContents from "./ComboContents";
 import { isTableCatalogProduct } from "../lib/productCustomizer";
+import { OPERATION_REFRESH_MS } from "../lib/operations";
+import {
+  TABLE_PAYMENT_LABELS,
+  tablePaymentOptions,
+} from "../lib/tablePayments";
+import { printOrderReceipt } from "../lib/orderReceipt";
 
 const STATUS = {
   RECEIVED: "Enviado à cozinha",
@@ -29,12 +37,6 @@ const STATUS = {
   SERVED: "Servido",
   DELIVERED: "Pago",
   CANCELED: "Cancelado",
-};
-const PAYMENT = {
-  CASH: "Dinheiro",
-  PIX: "Pix",
-  CREDIT: "Cartão de crédito",
-  DEBIT: "Cartão de débito",
 };
 const EMPTY_TABLE = {
   id: null,
@@ -89,24 +91,8 @@ export default function TablesAdmin({
     amountPaid: "",
   });
   const orderPanelRef = useRef(null);
-  const paymentOptions = useMemo(
-    () => [
-      ...Object.entries(PAYMENT)
-        .filter(([value]) =>
-          (settings.tablePaymentMethods || Object.keys(PAYMENT)).includes(value),
-        )
-        .map(([value, label]) => ({ value, label })),
-      ...(settings.customPaymentMethods || [])
-        .filter(
-          (method) => method.active !== false && method.tableEnabled !== false,
-        )
-        .map((method) => ({
-          value: `CUSTOM:${method.id}`,
-          label: method.label,
-        })),
-    ],
-    [settings.customPaymentMethods, settings.tablePaymentMethods],
-  );
+  const loadInFlight = useRef(false);
+  const paymentOptions = useMemo(() => tablePaymentOptions(settings), [settings]);
   useEffect(() => {
     if (
       paymentOptions.length &&
@@ -120,43 +106,49 @@ export default function TablesAdmin({
   }, [paymentOptions, closeForm.paymentMethod]);
 
   async function load({ quiet = false } = {}) {
+    if (loadInFlight.current) return;
+    loadInFlight.current = true;
     if (!quiet) setLoading(true);
     try {
       const tablePath = `/admin/tables${canConfigure && showInactive ? "?all=1" : ""}`;
-      const tableResult = await api.get(tablePath, headers);
-      const historyResult = await api.get(
-        "/admin/table-sessions/history?limit=30",
-        headers,
-      );
+      const [tableResult, historyResult] = await Promise.all([
+        api.get(tablePath, headers),
+        api.get("/admin/table-sessions/history?limit=30", headers),
+      ]);
       setTables(tableResult.data);
       setHistory(historyResult.data);
       if (!quiet) {
-        const productResult = await api.get("/products");
-        const categoryResult = await api.get("/categories");
+        const [productResult, categoryResult] = await Promise.all([
+          api.get("/products"),
+          api.get("/categories"),
+        ]);
         setCatalog(productResult.data.filter(isTableCatalogProduct));
         setCategories(categoryResult.data);
       }
     } catch (error) {
       if (!quiet) fail(error, "Não foi possível carregar as mesas.");
     } finally {
+      loadInFlight.current = false;
       if (!quiet) setLoading(false);
     }
   }
 
   useEffect(() => {
     load();
-  }, [showInactive]);
+  }, [showInactive, session.token]);
   useEffect(() => {
-    const timer = window.setInterval(() => load({ quiet: true }), 7000);
+    const timer = window.setInterval(() => {
+      if (!document.hidden) load({ quiet: true });
+    }, OPERATION_REFRESH_MS);
     return () => window.clearInterval(timer);
-  }, [showInactive]);
+  }, [showInactive, session.token]);
 
   const selected = tables.find((table) => table.id === selectedId) || null;
   const activeOrders = selected?.currentSession?.orders?.filter(
     (order) => order.status !== "CANCELED",
   ) || [];
   const hasKitchenPending = activeOrders.some((order) =>
-    ["RECEIVED", "PREPARING"].includes(order.status),
+    ["RECEIVED", "PREPARING", "READY_FOR_TABLE"].includes(order.status),
   );
   const filteredCatalog = useMemo(() => {
     const query = catalogSearch.trim().toLocaleLowerCase("pt-BR");
@@ -592,6 +584,7 @@ export default function TablesAdmin({
                     {order.items.map((item) => (
                       <p key={item.id}>
                         <b>{item.quantity}× {item.name}</b>
+                        <ComboContents items={item.comboItems} multiplier={item.quantity} />
                         {item.notes && <small>Obs.: {item.notes}</small>}
                         {item.options?.length > 0 && (
                           <small>{item.options.map((option) => `${option.groupName}: ${option.optionName}`).join(" • ")}</small>
@@ -601,6 +594,9 @@ export default function TablesAdmin({
                   </div>
                   <footer>
                     <strong>{money(order.total)}</strong>
+                    <button type="button" className="table-round-print-btn" onClick={() => printOrderReceipt(order, settings)}>
+                      <Printer size={15} /> Imprimir
+                    </button>
                     {order.status === "READY_FOR_TABLE" && (
                       <button type="button" className="table-serve-btn" disabled={saving} onClick={() => markServed(order)}>
                         <Check size={15} /> Marcar servido
@@ -672,7 +668,7 @@ export default function TablesAdmin({
             {closeForm.paymentMethod === "CASH" && (
               <label>Valor recebido<input type="number" min={selected.currentSession.summary.subtotal} step="0.01" required value={closeForm.amountPaid} onChange={(event) => setCloseForm((form) => ({ ...form, amountPaid: event.target.value }))} placeholder={selected.currentSession.summary.subtotal.toFixed(2)} /></label>
             )}
-            {hasKitchenPending && <p className="table-payment-warning"><Clock3 size={15} /> Aguarde a cozinha concluir todas as rodadas.</p>}
+            {hasKitchenPending && <p className="table-payment-warning"><Clock3 size={15} /> Todas as rodadas precisam estar servidas antes de receber o pagamento.</p>}
             {!paymentOptions.length && <p className="table-payment-warning"><CreditCard size={15} /> Habilite uma forma de pagamento em Loja antes de fechar a mesa.</p>}
             <button className="table-close-btn" disabled={saving || !activeOrders.length || hasKitchenPending || !paymentOptions.length}>{saving ? "Processando..." : "Confirmar pagamento e liberar mesa"}</button>
             <button type="button" className="table-abandon-btn" disabled={saving} onClick={cancelSession}>Cancelar comanda</button>
@@ -689,7 +685,7 @@ export default function TablesAdmin({
           {history.map((row) => (
             <article key={row.id}>
               <span><b>{row.table?.name || `Mesa ${row.table?.number}`}</b><small>{row.customerName || "Sem identificação"} • {new Date(row.closedAt).toLocaleString("pt-BR")}</small></span>
-              <span><small>{row.closedByName || "Equipe"}</small><b>{row.status === "CANCELED" ? "Cancelada" : row.paymentMethodLabel || PAYMENT[row.paymentMethod] || "—"}</b></span>
+              <span><small>{row.closedByName || "Equipe"}</small><b>{row.status === "CANCELED" ? "Cancelada" : row.paymentMethodLabel || TABLE_PAYMENT_LABELS[row.paymentMethod] || "—"}</b></span>
               <strong>{row.status === "CANCELED" ? "—" : money(row.total)}</strong>
             </article>
           ))}

@@ -10,6 +10,7 @@ import {
   detectImageMime,
   escapeHtml,
   normalizeTrustedGoogleMapsUrl,
+  paymentIdempotencyKey,
   verifyMercadoPagoSignature,
 } from "./security.js";
 import {
@@ -21,7 +22,14 @@ import {
 } from "./catalog.js";
 import { missingDeliveryAddressFields } from "./order-validation.js";
 import { booleanValue, boundedInteger, validSlug } from "./input-validation.js";
-import { isDatabaseAvailabilityError } from "./database-errors.js";
+import { isDatabaseAvailabilityError, isDatabaseSchemaError } from "./database-errors.js";
+import {
+  collectOrderStockNeeds,
+  comboComponentIsAvailable,
+  comboIsAvailableAt,
+  snapshotComboItems,
+} from "./combos.js";
+import { applyOrderStock, restoreOrderStock, lockOrderStock } from "./order-stock.js";
 import { createAsyncTtlCache } from "./async-ttl-cache.js";
 import {
   calculateTablePayment,
@@ -42,6 +50,16 @@ import {
   customerVisibleStatus,
 } from "./customer-order.js";
 import { buildFinancialSummaryFromTotals } from "./financial-report.js";
+import { adminOrderFilter } from "./order-access.js";
+import { canManageDineInOrders } from "./dine-in-access.js";
+import { cleanText, safeExternalUrl, safeMediaUrl } from "./sanitization.js";
+import { registerComboAdminRoutes } from "./combo-admin.js";
+import {
+  nextPaymentState,
+  releasesReservedBenefits,
+} from "./payment-state.js";
+import { canDispatchCouriers } from "./admin-permissions.js";
+import { permissionNeededForAdminRequest } from "./admin-route-permissions.js";
 
 dotenv.config({ quiet: true });
 
@@ -331,32 +349,6 @@ const rateLimitCleanupTimer = setInterval(() => {
 }, 5 * 60_000);
 rateLimitCleanupTimer.unref?.();
 
-const cleanText = (value, max = 120) =>
-  typeof value === "string" ? value.trim().slice(0, max) : "";
-const safeExternalUrl = (value, max = 600) => {
-  const cleaned = cleanText(value, max);
-  if (!cleaned) return "";
-  try {
-    const url = new URL(cleaned);
-    return url.protocol === "https:" && !url.username && !url.password
-      ? url.href
-      : "";
-  } catch {
-    return "";
-  }
-};
-const safeMediaUrl = (value) => {
-  const cleaned = cleanText(value, 600);
-  if (!cleaned) return "";
-  if (/^\/api\/media\/[A-Za-z0-9_-]{5,100}$/.test(cleaned)) return cleaned;
-  if (
-    /^\/images\/(?:products|modifiers)\/[A-Za-z0-9_-]+\.(?:webp|png|jpe?g)$/i.test(
-      cleaned,
-    )
-  )
-    return cleaned;
-  return safeExternalUrl(cleaned, 600);
-};
 const normalizePhone = (value) => {
   let digits = String(value || "").replace(/\D/g, "");
   if (digits.length === 13 && digits.startsWith("55")) digits = digits.slice(2);
@@ -681,6 +673,29 @@ const serializeProductSize = (entry) => ({
 const serializeProduct = (product) => ({
   ...product,
   price: Number(product.price),
+  isCombo: Boolean(product.isCombo),
+  comboItems: (product.comboItems || [])
+    .map((entry) => ({
+      productId: entry.productId,
+      sizeId: entry.sizeId || null,
+      sizeName: entry.size?.name || null,
+      quantity: Number(entry.quantity || 1),
+      sortOrder: Number(entry.sortOrder || 0),
+      product: entry.product
+        ? {
+            id: entry.product.id,
+            name: entry.product.name,
+            image: safeMediaUrl(entry.product.image),
+            price: Number(entry.product.price),
+            available: entry.product.available !== false,
+            stockAvailable:
+              !entry.product.stockTracked ||
+              Number(entry.product.stockQuantity || 0) >=
+                Number(entry.quantity || 1),
+          }
+        : null,
+    }))
+    .sort((a, b) => a.sortOrder - b.sortOrder),
   isFlavorOption: Boolean(product.isFlavorOption),
   availableSizes: (product.productSizes || [])
     .map(serializeProductSize)
@@ -813,6 +828,7 @@ const serializePublicProduct = (product) => {
     sortOrder: Number(product.sortOrder || 0),
     allowFlavorSplit: Boolean(product.allowFlavorSplit),
     isFlavorOption: Boolean(product.isFlavorOption),
+    isCombo: Boolean(product.isCombo),
     maxFlavors: Math.min(4, Number(product.maxFlavors || 1)),
     flavorPricingMode: product.flavorPricingMode,
     pausedUntil: product.pausedUntil,
@@ -849,6 +865,16 @@ const serializePublicProduct = (product) => {
     modifierGroupIds: (product.modifierGroups || [])
       .filter((entry) => entry.group?.active !== false)
       .map((entry) => entry.groupId),
+    comboItems: (product.comboItems || [])
+      .map((entry) => ({
+        productId: entry.productId,
+        sizeId: entry.sizeId || null,
+        sizeName: entry.size?.name || null,
+        quantity: Number(entry.quantity || 1),
+        sortOrder: Number(entry.sortOrder || 0),
+        name: entry.product?.name || "Produto",
+      }))
+      .sort((a, b) => a.sortOrder - b.sortOrder),
   };
 };
 const serializeFlavorProduct = (product) => {
@@ -904,6 +930,7 @@ const serializeTableSession = (session) => {
   };
 };
 const serializeOrder = (order) => {
+  const { stockSnapshot: _stockSnapshot, ...orderData } = order;
   const etaMinMinutes = Number(order.estimatedDeliveryMin ?? 30);
   const etaMaxMinutes = Number(order.estimatedDeliveryMax ?? 45);
   const accepted = order.acceptedAt ? new Date(order.acceptedAt) : null;
@@ -915,7 +942,7 @@ const serializeOrder = (order) => {
     ? new Date(accepted.getTime() + etaMaxMinutes * 60_000)
     : null;
   return {
-    ...order,
+    ...orderData,
     estimatedDeliveryMin: etaMinMinutes,
     estimatedDeliveryMax: etaMaxMinutes,
     estimatedFrom: estimatedFrom?.toISOString() || null,
@@ -1043,6 +1070,7 @@ const serializeCustomerOrder = (order) => {
       unitPrice: item.unitPrice,
       notes: item.notes,
       sizeName: item.sizeName || null,
+      comboItems: Array.isArray(item.comboItems) ? item.comboItems : [],
       sizePrice: numberOrNull(item.sizePrice),
       flavors: (item.flavors || []).map((flavor) => ({
         id: flavor.id,
@@ -1296,6 +1324,9 @@ function hasTableAccess(req) {
     req.adminUser.staffRole !== "DELIVERY" &&
     hasAdminPermission(req, "tables")
   );
+}
+function hasTableOrderAccess(req) {
+  return canManageDineInOrders(req.adminUser, req.adminPermissions);
 }
 function hasKitchenAccess(req) {
   return (
@@ -2242,245 +2273,6 @@ async function queueWhatsApp(order, event, statusLabel = "") {
   }
 }
 
-async function applyOrderStock(tx, orderId) {
-  const order = await tx.order.findUnique({
-    where: { id: orderId },
-    include: { items: { include: { flavors: true, options: true } } },
-  });
-  if (!order || order.stockApplied) return;
-  const productNeeds = new Map();
-  const ingredientNeeds = new Map();
-  const flavorNeeds = new Map();
-  const optionNeeds = new Map();
-  for (const item of order.items) {
-    productNeeds.set(
-      item.productId,
-      (productNeeds.get(item.productId) || 0) + item.quantity,
-    );
-    for (const flavor of item.flavors || []) {
-      if (flavor.productId && flavor.productId !== item.productId)
-        productNeeds.set(
-          flavor.productId,
-          (productNeeds.get(flavor.productId) || 0) + item.quantity,
-        );
-      if (flavor.flavorId)
-        flavorNeeds.set(
-          flavor.flavorId,
-          (flavorNeeds.get(flavor.flavorId) || 0) + item.quantity,
-        );
-    }
-    for (const option of item.options || [])
-      if (option.optionId)
-        optionNeeds.set(
-          option.optionId,
-          (optionNeeds.get(option.optionId) || 0) + item.quantity,
-        );
-  }
-  const productIds = [...productNeeds.keys()];
-  const products = await tx.product.findMany({
-    where: { id: { in: productIds } },
-    include: { recipeItems: { include: { inventoryItem: true } } },
-  });
-  const map = new Map(products.map((p) => [p.id, p]));
-  for (const item of order.items) {
-    const product = map.get(item.productId);
-    if (!product) continue;
-    for (const recipe of product.recipeItems || []) {
-      const need = Number(recipe.quantity || 0) * item.quantity;
-      ingredientNeeds.set(
-        recipe.inventoryItemId,
-        (ingredientNeeds.get(recipe.inventoryItemId) || 0) + need,
-      );
-    }
-  }
-  const [ingredients, flavors, options] = await Promise.all([
-    ingredientNeeds.size
-      ? tx.inventoryItem.findMany({
-          where: { id: { in: [...ingredientNeeds.keys()] } },
-        })
-      : [],
-    flavorNeeds.size
-      ? tx.flavor.findMany({ where: { id: { in: [...flavorNeeds.keys()] } } })
-      : [],
-    optionNeeds.size
-      ? tx.modifierOption.findMany({
-          where: { id: { in: [...optionNeeds.keys()] } },
-        })
-      : [],
-  ]);
-  const ingredientMap = new Map(ingredients.map((row) => [row.id, row]));
-  const flavorMapById = new Map(flavors.map((row) => [row.id, row]));
-  const optionMapById = new Map(options.map((row) => [row.id, row]));
-  // Baixas atômicas evitam estoque negativo se dois pedidos forem aceitos ao mesmo tempo.
-  for (const [productId, need] of productNeeds) {
-    const product = map.get(productId);
-    if (product?.stockTracked) {
-      const changed = await tx.product.updateMany({
-        where: { id: productId, stockQuantity: { gte: need } },
-        data: { stockQuantity: { decrement: need } },
-      });
-      if (changed.count !== 1)
-        throw Object.assign(
-          new Error(`Estoque insuficiente de ${product.name}.`),
-          { code: "OUT_OF_STOCK" },
-        );
-      await tx.inventoryMovement.create({
-        data: {
-          productId,
-          orderId,
-          type: "PRODUCT_SALE",
-          quantity: -need,
-          note: `Pedido ${order.id.slice(-8).toUpperCase()}`,
-        },
-      });
-    }
-  }
-  for (const [flavorId, need] of flavorNeeds) {
-    const flavor = flavorMapById.get(flavorId);
-    if (flavor?.stockTracked) {
-      const changed = await tx.flavor.updateMany({
-        where: { id: flavorId, stockQuantity: { gte: need } },
-        data: { stockQuantity: { decrement: need } },
-      });
-      if (changed.count !== 1)
-        throw Object.assign(
-          new Error(`Estoque insuficiente do sabor ${flavor.name}.`),
-          { code: "OUT_OF_STOCK" },
-        );
-    }
-  }
-  for (const [optionId, need] of optionNeeds) {
-    const option = optionMapById.get(optionId);
-    if (option?.stockTracked) {
-      const changed = await tx.modifierOption.updateMany({
-        where: { id: optionId, stockQuantity: { gte: need } },
-        data: { stockQuantity: { decrement: need } },
-      });
-      if (changed.count !== 1)
-        throw Object.assign(
-          new Error(`Estoque insuficiente do adicional ${option.name}.`),
-          { code: "OUT_OF_STOCK" },
-        );
-    }
-  }
-  for (const [inventoryItemId, need] of ingredientNeeds) {
-    const ingredient = ingredientMap.get(inventoryItemId);
-    const changed = await tx.inventoryItem.updateMany({
-      where: { id: inventoryItemId, quantity: { gte: need } },
-      data: { quantity: { decrement: need } },
-    });
-    if (changed.count !== 1)
-      throw Object.assign(
-        new Error(
-          `Estoque real insuficiente: ${ingredient?.name || "insumo"}.`,
-        ),
-        { code: "INGREDIENT_OUT_OF_STOCK" },
-      );
-    await tx.inventoryMovement.create({
-      data: {
-        inventoryItemId,
-        orderId,
-        type: "RECIPE_SALE",
-        quantity: -need,
-        note: `Consumo do pedido ${order.id.slice(-8).toUpperCase()}`,
-      },
-    });
-  }
-  await tx.order.update({
-    where: { id: orderId },
-    data: { stockApplied: true },
-  });
-}
-
-async function restoreOrderStock(tx, orderId) {
-  const order = await tx.order.findUnique({
-    where: { id: orderId },
-    include: { items: { include: { flavors: true, options: true } } },
-  });
-  if (!order?.stockApplied) return;
-  const productNeeds = new Map(),
-    ingredientNeeds = new Map(),
-    flavorNeeds = new Map(),
-    optionNeeds = new Map();
-  for (const item of order.items) {
-    productNeeds.set(
-      item.productId,
-      (productNeeds.get(item.productId) || 0) + item.quantity,
-    );
-    for (const f of item.flavors || []) {
-      if (f.productId && f.productId !== item.productId)
-        productNeeds.set(
-          f.productId,
-          (productNeeds.get(f.productId) || 0) + item.quantity,
-        );
-      if (f.flavorId)
-        flavorNeeds.set(
-          f.flavorId,
-          (flavorNeeds.get(f.flavorId) || 0) + item.quantity,
-        );
-    }
-    for (const o of item.options || [])
-      if (o.optionId)
-        optionNeeds.set(
-          o.optionId,
-          (optionNeeds.get(o.optionId) || 0) + item.quantity,
-        );
-  }
-  const products = await tx.product.findMany({
-    where: { id: { in: [...productNeeds.keys()] } },
-    include: { recipeItems: true },
-  });
-  const map = new Map(products.map((p) => [p.id, p]));
-  for (const item of order.items) {
-    const p = map.get(item.productId);
-    for (const r of p?.recipeItems || [])
-      ingredientNeeds.set(
-        r.inventoryItemId,
-        (ingredientNeeds.get(r.inventoryItemId) || 0) +
-          Number(r.quantity || 0) * item.quantity,
-      );
-  }
-  for (const [productId, qty] of productNeeds) {
-    const product = map.get(productId);
-    if (product?.stockTracked)
-      await tx.product.update({
-        where: { id: productId },
-        data: { stockQuantity: { increment: qty } },
-      });
-  }
-  for (const [flavorId, qty] of flavorNeeds) {
-    const flavor = await tx.flavor.findUnique({
-      where: { id: flavorId },
-      select: { stockTracked: true },
-    });
-    if (flavor?.stockTracked)
-      await tx.flavor.update({
-        where: { id: flavorId },
-        data: { stockQuantity: { increment: qty } },
-      });
-  }
-  for (const [optionId, qty] of optionNeeds) {
-    const option = await tx.modifierOption.findUnique({
-      where: { id: optionId },
-      select: { stockTracked: true },
-    });
-    if (option?.stockTracked)
-      await tx.modifierOption.update({
-        where: { id: optionId },
-        data: { stockQuantity: { increment: qty } },
-      });
-  }
-  for (const [inventoryItemId, qty] of ingredientNeeds)
-    await tx.inventoryItem.update({
-      where: { id: inventoryItemId },
-      data: { quantity: { increment: qty } },
-    });
-  await tx.order.update({
-    where: { id: orderId },
-    data: { stockApplied: false },
-  });
-}
-
 async function autoAssignCourier(tx, orderId) {
   const settings = await tx.businessSettings.findUnique({
     where: { id: "default" },
@@ -2661,18 +2453,30 @@ async function syncMercadoPagoPayment(paymentId, expectedTrackingCode = null) {
   )
     return null;
   const approved = payment.status === "approved";
-  const rejected = ["rejected", "cancelled"].includes(payment.status);
-  const refunded = ["refunded", "charged_back"].includes(payment.status);
-  const previousStatus = order.paymentStatus;
+  let previousStatus = order.paymentStatus;
   const updated = await prisma.$transaction(async (tx) => {
+    await lockOrderStock(tx, order.id);
+    const current = await tx.order.findUnique({ where: { id: order.id } });
+    if (!current) return null;
     if (
-      (rejected || refunded) &&
-      !["REJECTED", "REFUNDED"].includes(previousStatus)
-    ) {
+      current.paymentExternalId &&
+      current.paymentExternalId !== String(payment.id)
+    )
+      return null;
+    previousStatus = current.paymentStatus;
+    const nextState = nextPaymentState(
+      previousStatus,
+      payment.status,
+      current.paidAt,
+      payment.date_approved,
+    );
+    if (nextState.ignored)
+      return tx.order.findUnique({ where: { id: order.id }, include: orderInclude });
+    if (releasesReservedBenefits(previousStatus, nextState.status)) {
       await restoreOrderStock(tx, order.id);
-      if (order.couponCode && order.status !== "CANCELED")
+      if (current.couponCode && current.status !== "CANCELED")
         await tx.coupon.updateMany({
-          where: { code: order.couponCode, uses: { gt: 0 } },
+          where: { code: current.couponCode, uses: { gt: 0 } },
           data: { uses: { decrement: 1 } },
         });
     }
@@ -2680,18 +2484,13 @@ async function syncMercadoPagoPayment(paymentId, expectedTrackingCode = null) {
       where: { id: order.id },
       data: {
         paymentExternalId: String(payment.id),
-        paymentStatus: approved
-          ? "APPROVED"
-          : refunded
-            ? "REFUNDED"
-            : rejected
-              ? "REJECTED"
-              : "PENDING",
-        paidAt: approved ? new Date(payment.date_approved || Date.now()) : null,
+        paymentStatus: nextState.status,
+        paidAt: nextState.paidAt,
       },
       include: orderInclude,
     });
   });
+  if (!updated) return null;
   let finalOrder = updated;
   if (approved && updated.status === "CANCELED") {
     try {
@@ -2710,6 +2509,7 @@ async function syncMercadoPagoPayment(paymentId, expectedTrackingCode = null) {
   }
   if (
     approved &&
+    finalOrder.paymentStatus === "APPROVED" &&
     finalOrder.status !== "CANCELED" &&
     previousStatus !== "APPROVED"
   )
@@ -2758,6 +2558,29 @@ const productInclude = {
             where: { active: true },
             orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
           },
+        },
+      },
+    },
+    orderBy: { sortOrder: "asc" },
+  },
+  comboItems: {
+    include: {
+      size: true,
+      product: {
+        select: {
+          id: true,
+          name: true,
+          image: true,
+          price: true,
+          available: true,
+          deletedAt: true,
+          stockTracked: true,
+          stockQuantity: true,
+          pausedUntil: true,
+          availableDays: true,
+          availableStartTime: true,
+          availableEndTime: true,
+          productSizes: { include: { size: true } },
         },
       },
     },
@@ -2909,12 +2732,18 @@ app.get("/api/products", async (req, res) => {
   ]);
   const now = new Date();
   const timezone = settings.timezone || "America/Maceio";
-  const activeFlavorProducts = flavorProducts.filter((product) =>
-    isProductAvailableAt(product, now, timezone),
+  const activeFlavorProducts = flavorProducts.filter(
+    (product) =>
+      isProductAvailableAt(product, now, timezone) &&
+      comboIsAvailableAt(product, now, timezone),
   );
   res.json(
     products
-      .filter((product) => isProductAvailableAt(product, now, timezone))
+      .filter(
+        (product) =>
+          isProductAvailableAt(product, now, timezone) &&
+          comboIsAvailableAt(product, now, timezone),
+      )
       .map((product) =>
         attachProductFlavorOptions(
           serializePublicProduct(product),
@@ -2962,7 +2791,11 @@ app.get("/api/promotions", async (req, res) => {
   );
   res.json(
     rows
-      .filter((row) => isProductAvailableAt(row.product, now, timezone))
+      .filter(
+        (row) =>
+          isProductAvailableAt(row.product, now, timezone) &&
+          comboIsAvailableAt(row.product, now, timezone),
+      )
       .map((row) => ({
         ...serializePublicPromotion(row),
         product: attachProductFlavorOptions(
@@ -3821,6 +3654,24 @@ app.post(
         code: "OUT_OF_STOCK",
         message: `${base.name} não possui estoque suficiente. Restam ${Number(base.stockQuantity || 0)} unidade(s).`,
       });
+    if (base.isCombo) {
+      const invalidCustomization =
+        cleanText(item?.sizeId, 80) ||
+        (Array.isArray(item?.flavorIds) && item.flavorIds.length) ||
+        (Array.isArray(item?.optionIds) && item.optionIds.length);
+      if (invalidCustomization)
+        return res.status(400).json({
+          message: `${base.name} já possui itens definidos e não aceita tamanhos, sabores ou adicionais avulsos.`,
+        });
+      const unavailableComponent = (base.comboItems || []).find(
+        (entry) => !comboComponentIsAvailable(entry, availabilityTarget, timezone, quantity),
+      );
+      if (unavailableComponent || base.comboItems.length < 2)
+        return res.status(409).json({
+          code: "OUT_OF_STOCK",
+          message: `${base.name} está temporariamente indisponível porque um de seus itens acabou ou foi pausado.`,
+        });
+    }
     const requestedSizeId = cleanText(item?.sizeId, 80);
     const availableSizes = (base.productSizes || []).filter(
       (entry) => entry.size?.active !== false,
@@ -3988,6 +3839,7 @@ app.post(
       unitPrice: roundMoney(flavorPrice + optionsTotal),
       notes: itemNote,
       sizeName: chosenSize?.size?.name || null,
+      comboItems: snapshotComboItems(base),
       sizePrice: chosenSize ? Number(chosenSize.price) : null,
       flavors: chosenFlavors.map((f) => ({
         productId: f.id,
@@ -4010,6 +3862,35 @@ app.post(
         unitPrice: effectiveSimplePrice(o),
       })),
     });
+  }
+
+  // As validações por linha não detectam dois itens (ou combos) que usam o
+  // mesmo produto/adicional. Confere a necessidade total do carrinho usando
+  // exatamente a mesma agregação aplicada na baixa de estoque.
+  const aggregateStockNeeds = collectOrderStockNeeds(normalizedItems);
+  const stockProducts = new Map(
+    products.map((product) => [product.id, product]),
+  );
+  for (const product of products)
+    for (const entry of product.comboItems || [])
+      if (entry.product) stockProducts.set(entry.product.id, entry.product);
+  for (const product of flavorProducts)
+    stockProducts.set(product.id, product);
+  for (const [productId, needed] of aggregateStockNeeds.products) {
+    const product = stockProducts.get(productId);
+    if (product?.stockTracked && Number(product.stockQuantity || 0) < needed)
+      return res.status(409).json({
+        code: "OUT_OF_STOCK",
+        message: `${product.name} não possui estoque suficiente para todos os itens do carrinho.`,
+      });
+  }
+  for (const [optionId, needed] of aggregateStockNeeds.options) {
+    const option = optionMap.get(optionId);
+    if (option?.stockTracked && Number(option.stockQuantity || 0) < needed)
+      return res.status(409).json({
+        code: "OUT_OF_STOCK",
+        message: `O adicional ${option.name} não possui estoque suficiente para todos os itens do carrinho.`,
+      });
   }
 
   const subtotal = roundMoney(
@@ -4309,6 +4190,7 @@ app.post(
             unitPrice: item.unitPrice,
             notes: item.notes,
             sizeName: item.sizeName,
+            comboItems: item.comboItems,
             sizePrice: item.sizePrice,
             flavors: item.flavors.length ? { create: item.flavors } : undefined,
             options: item.options.length ? { create: item.options } : undefined,
@@ -4387,8 +4269,9 @@ app.post(
         }
       : null;
   if (paymentMethod === "PIX") {
+    let pixPayment;
     try {
-      const pixPayment = await mercadoPagoRequest("/v1/payments", {
+      pixPayment = await mercadoPagoRequest("/v1/payments", {
         method: "POST",
         body: JSON.stringify({
           transaction_amount: Number(order.total),
@@ -4406,25 +4289,10 @@ app.post(
         }),
         headers: { "X-Idempotency-Key": `pix-${order.id}` },
       });
-      const transaction = pixPayment?.point_of_interaction?.transaction_data || {};
-      if (pixPayment.status !== "approved" && !transaction.qr_code)
-        throw Object.assign(new Error("O provedor não retornou o Pix."), {
-          code: "PIX_NOT_CREATED",
-        });
-      order =
-        (await syncMercadoPagoPayment(
-          String(pixPayment.id),
-          order.trackingCode,
-        )) || order;
-      embeddedPayment = {
-        type: "PIX",
-        paymentId: String(pixPayment.id),
-        status: pixPayment.status,
-        qrCode: transaction.qr_code || "",
-        qrCodeBase64: transaction.qr_code_base64 || "",
-        expiresAt: pixPayment.date_of_expiration || null,
-      };
     } catch (error) {
+      // Somente uma falha anterior à criação no provedor permite apagar o
+      // pedido. Depois que existe um paymentId, o pedido precisa ser mantido
+      // para reconciliação e para impedir uma segunda cobrança.
       await prisma
         .$transaction(async (tx) => {
           await tx.order.delete({ where: { id: order.id } });
@@ -4440,6 +4308,52 @@ app.post(
         message: "Não foi possível gerar o Pix agora. Tente novamente.",
       });
     }
+
+    const pixPaymentId = String(pixPayment?.id || "");
+    const transaction = pixPayment?.point_of_interaction?.transaction_data || {};
+    if (!/^\d{1,32}$/.test(pixPaymentId)) {
+      console.error("Falha ao criar pagamento Pix: identificador inválido.");
+      return res.status(502).json({
+        message: "O provedor não confirmou a criação do Pix. Tente novamente.",
+      });
+    }
+    if (pixPayment.status !== "approved" && !transaction.qr_code) {
+      try {
+        await syncMercadoPagoPayment(pixPaymentId, order.trackingCode);
+      } catch (error) {
+        console.error("Falha ao reconciliar Pix sem QR Code:", error.message);
+      }
+      return res.status(502).json({
+        code: "PIX_NOT_CREATED",
+        message: "O provedor não retornou um QR Code válido. Tente novamente em instantes.",
+      });
+    }
+
+    // Vincula o identificador antes da consulta de confirmação. Se a segunda
+    // chamada falhar, o polling e o webhook ainda conseguem reconciliar o Pix.
+    await prisma.order
+      .updateMany({
+        where: { id: order.id, paymentExternalId: null },
+        data: { paymentExternalId: pixPaymentId },
+      })
+      .catch((error) =>
+        console.error("Pix criado; vínculo será reconciliado:", error.message),
+      );
+    try {
+      order =
+        (await syncMercadoPagoPayment(pixPaymentId, order.trackingCode)) ||
+        order;
+    } catch (error) {
+      console.error("Pix criado; confirmação será reconciliada:", error.message);
+    }
+    embeddedPayment = {
+      type: "PIX",
+      paymentId: pixPaymentId,
+      status: pixPayment.status,
+      qrCode: transaction.qr_code || "",
+      qrCodeBase64: transaction.qr_code_base64 || "",
+      expiresAt: pixPayment.date_of_expiration || null,
+    };
   }
   const serialized = isDineIn && !isDigitalTableOrder
     ? serializeOrder(order)
@@ -4476,7 +4390,6 @@ app.post(
       req.body?.payer?.identification?.number,
       40,
     );
-    const attemptId = cleanText(req.body?.attemptId, 100);
     if (
       !trackingCode ||
       token.length < 16 ||
@@ -4507,10 +4420,9 @@ app.post(
       return res.status(409).json({
         message: "Este pedido não está mais disponível para pagamento.",
       });
-    const idempotencyKey = crypto
-      .createHash("sha256")
-      .update(`${order.id}:${attemptId || "card-attempt"}`)
-      .digest("hex");
+    // O navegador não controla a chave: repetir o mesmo token do mesmo pedido
+    // sempre reaproveita a tentativa no provedor, inclusive após timeout de rede.
+    const idempotencyKey = paymentIdempotencyKey(order.id, token);
     try {
       const payment = await mercadoPagoRequest("/v1/payments", {
         method: "POST",
@@ -4555,6 +4467,12 @@ app.post(
       });
     } catch (error) {
       console.error("Falha ao processar cartão:", error.message);
+      if (isDatabaseAvailabilityError(error))
+        return res.status(503).json({
+          code: "PAYMENT_SYNC_RETRY",
+          message:
+            "O pagamento foi enviado, mas a confirmação está temporariamente indisponível. Consulte novamente em instantes.",
+        });
       const providerDetail = cleanText(
         error?.details?.cause?.[0]?.description || error?.details?.message,
         180,
@@ -4586,15 +4504,21 @@ app.post(
     if (!validSignature) return res.status(401).json({ ok: false });
     if (req.body?.type && req.body.type !== "payment")
       return res.status(200).json({ ok: true, ignored: true });
-    res.status(200).json({ ok: true });
-    syncMercadoPagoPayment(String(paymentId)).catch((error) =>
-      console.error("Falha ao sincronizar pagamento:", error.message),
-    );
+    try {
+      const synced = await syncMercadoPagoPayment(String(paymentId));
+      return res.status(200).json({ ok: true, matched: Boolean(synced) });
+    } catch (error) {
+      console.error("Falha ao sincronizar pagamento:", error.message);
+      return res.status(isDatabaseAvailabilityError(error) ? 503 : 502).json({
+        ok: false,
+        code: "PAYMENT_SYNC_RETRY",
+      });
+    }
   },
 );
 app.post(
   "/api/payments/mercadopago/sync",
-  paymentRateLimit,
+  trackingRateLimit,
   async (req, res) => {
     const paymentId = cleanText(req.body?.paymentId, 80);
     const trackingCode = cleanText(req.body?.trackingCode, 100);
@@ -4609,10 +4533,13 @@ app.post(
           .status(404)
           .json({ message: "Pagamento não corresponde a este pedido." });
       res.json(serializeCustomerOrder(order));
-    } catch {
-      res
-        .status(502)
-        .json({ message: "Não foi possível confirmar o pagamento." });
+    } catch (error) {
+      res.status(isDatabaseAvailabilityError(error) ? 503 : 502).json({
+        code: isDatabaseAvailabilityError(error)
+          ? "PAYMENT_SYNC_RETRY"
+          : "PAYMENT_SYNC_FAILED",
+        message: "Não foi possível confirmar o pagamento.",
+      });
     }
   },
 );
@@ -4712,6 +4639,12 @@ app.post(
           changedByRole: "CLIENTE",
         },
       });
+      await restoreOrderStock(tx, current.id);
+      if (current.couponCode)
+        await tx.coupon.updateMany({
+          where: { code: current.couponCode, uses: { gt: 0 } },
+          data: { uses: { decrement: 1 } },
+        });
       return { historyId: history.id };
     });
     if (!cancellation)
@@ -4724,50 +4657,24 @@ app.post(
     try {
       refund = await refundMercadoPagoOrder(current);
     } catch (error) {
-      await prisma
-        .$transaction(async (tx) => {
-          await tx.order.updateMany({
-            where: { id: current.id, status: "CANCELED" },
-            data: {
-              status: current.status,
-              cancelReason: current.cancelReason,
-              paymentStatus: current.paymentStatus,
-            },
-          });
-          await tx.orderStatusHistory.deleteMany({
-            where: { id: cancellation.historyId },
-          });
-        })
-        .catch(() => {});
       console.error("Falha ao reembolsar cancelamento do cliente:", error.message);
       return res.status(502).json({
-        code: "REFUND_FAILED",
+        code: "REFUND_PENDING",
         message:
-          "Não foi possível confirmar o reembolso agora. O pedido permaneceu ativo; tente novamente ou fale com a pizzaria.",
+          "O pedido foi cancelado, mas a confirmação do reembolso ainda está pendente. Acompanhe novamente em instantes ou fale com a pizzaria.",
       });
     }
 
     try {
-      await prisma.$transaction(async (tx) => {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${current.id}))`;
-        const locked = await tx.order.findUnique({
-          where: { id: current.id },
-          select: { status: true },
+      if (refund)
+        await prisma.order.updateMany({
+          where: {
+            id: current.id,
+            status: "CANCELED",
+            paymentStatus: "APPROVED",
+          },
+          data: { paymentStatus: "REFUNDED" },
         });
-        if (locked?.status !== "CANCELED")
-          throw new Error("O cancelamento mudou de estado antes da conclusão.");
-        await restoreOrderStock(tx, current.id);
-        if (current.couponCode)
-          await tx.coupon.updateMany({
-            where: { code: current.couponCode, uses: { gt: 0 } },
-            data: { uses: { decrement: 1 } },
-          });
-        if (refund)
-          await tx.order.update({
-            where: { id: current.id },
-            data: { paymentStatus: "REFUNDED" },
-          });
-      });
     } catch (error) {
       console.error("Falha ao concluir cancelamento do cliente:", error.message);
       return res.status(500).json({
@@ -4831,74 +4738,6 @@ app.get(
   },
 );
 
-function permissionNeededForAdminRequest(req) {
-  const path = req.path || "/";
-  if (path.startsWith("/staff")) return "__OWNER__";
-  if (path.startsWith("/tables") || path.startsWith("/table-"))
-    return "tables";
-  if (path.startsWith("/dashboard")) return "overview";
-  if (path.startsWith("/team-analytics")) return "analytics";
-  if (path.startsWith("/business-insights")) return "reports";
-  if (path.startsWith("/inventory") || path.includes("/recipe"))
-    return "inventory";
-  if (path.startsWith("/kitchen")) return "kitchen";
-  if (path.startsWith("/delivery-surcharges")) return "delivery";
-  if (path.startsWith("/courier")) return "orders";
-  if (path.startsWith("/orders")) return "orders";
-  if (path.startsWith("/customers")) return "customers";
-  if (path.startsWith("/customer-segments")) return "customers";
-  if (path.startsWith("/promotions")) return "promotions";
-  if (path.startsWith("/coupons")) return "promotions";
-  if (path.startsWith("/delivery-areas")) return "delivery";
-  if (path.startsWith("/map/deliveries")) return "orders";
-  if (path.startsWith("/cash")) return "operations";
-  if (path.startsWith("/goals") || path.startsWith("/operations-intelligence"))
-    return "reports";
-  if (
-    path.startsWith("/logs") ||
-    path.startsWith("/health") ||
-    path.startsWith("/advanced/settings")
-  )
-    return "settings";
-  if (path.startsWith("/store-hours")) return "operations";
-  if (path.startsWith("/operations")) return "operations";
-  if (path.startsWith("/media")) return "__CONTENT__";
-  if (path.startsWith("/products") || path.startsWith("/sizes"))
-    return req.method === "GET" ? "__PRODUCT_READ__" : "products";
-  if (path.startsWith("/categories") || path.startsWith("/subcategories"))
-    return req.method === "GET" ? "__CATEGORY_READ__" : "categories";
-  if (path.startsWith("/flavors") || path.startsWith("/modifier-"))
-    return req.method === "GET" ? "__ALTERATION_READ__" : "alterations";
-  if (path.startsWith("/modifier-groups"))
-    return req.method === "GET" ? "__ALTERATION_READ__" : "alterations";
-  if (path.startsWith("/settings")) {
-    if (req.method === "GET") return "__SHARED_SETTINGS__";
-    const keys = Object.keys(req.body || {});
-    const operationFields = new Set([
-      "isOpen",
-      "deliveryEnabled",
-      "pickupEnabled",
-      "schedulingEnabled",
-    ]);
-    const deliveryFields = new Set([
-      "deliveryPricingMode",
-      "deliveryHybridEnabled",
-      "deliveryPricePerKm",
-      "deliveryMinimumKm",
-      "deliveryMinimumFee",
-      "deliveryMaxDistanceKm",
-      "freeDeliveryThreshold",
-      "deliveryFee",
-      "defaultMinimumOrder",
-    ]);
-    if (keys.length && keys.every((key) => operationFields.has(key)))
-      return "operations";
-    if (keys.length && keys.every((key) => deliveryFields.has(key)))
-      return "delivery";
-    return "settings";
-  }
-  return null;
-}
 app.use("/api/admin", auth, admin, adminRateLimit, (req, res, next) => {
   const needed = permissionNeededForAdminRequest(req);
   if (!needed)
@@ -4908,7 +4747,17 @@ app.use("/api/admin", auth, admin, adminRateLimit, (req, res, next) => {
     });
   if (needed === "__OWNER__") return ownerOnly(req, res, next);
   if (needed === "__SHARED_SETTINGS__") return next();
-  if (needed === "__CONTENT__") {
+  if (needed === "__COURIER_DISPATCH__") {
+    if (canDispatchCouriers(req.adminUser, req.adminPermissions)) return next();
+  } else if (needed === "__TABLE_ORDER__") {
+    if (hasTableOrderAccess(req)) return next();
+  } else if (needed === "__ORDER_OR_KITCHEN__") {
+    if (
+      req.adminUser?.staffRole !== "DELIVERY" &&
+      (hasAdminPermission(req, "orders") || hasKitchenAccess(req))
+    )
+      return next();
+  } else if (needed === "__CONTENT__") {
     if (
       req.adminPermissions == null ||
       ["products", "promotions", "alterations", "settings"].some((key) =>
@@ -5185,8 +5034,8 @@ app.patch("/api/admin/table-sessions/:id", auth, admin, async (req, res) => {
 });
 
 app.post("/api/admin/table-orders/:id/served", auth, admin, async (req, res) => {
-  if (!hasTableAccess(req))
-    return res.status(403).json({ message: "Acesso às mesas não autorizado." });
+  if (!hasTableOrderAccess(req))
+    return res.status(403).json({ message: "Acesso aos pedidos presenciais não autorizado." });
   const row = await prisma.$transaction(async (tx) => {
     const target = await tx.order.findUnique({
       where: { id: req.params.id },
@@ -5227,8 +5076,8 @@ app.post("/api/admin/table-orders/:id/served", auth, admin, async (req, res) => 
 });
 
 app.post("/api/admin/table-orders/:id/cancel", auth, admin, async (req, res) => {
-  if (!hasTableAccess(req))
-    return res.status(403).json({ message: "Acesso às mesas não autorizado." });
+  if (!hasTableOrderAccess(req))
+    return res.status(403).json({ message: "Acesso aos pedidos presenciais não autorizado." });
   const reason = cleanText(req.body?.reason, 280);
   if (reason.length < 3)
     return res.status(400).json({ message: "Informe o motivo do cancelamento." });
@@ -5333,9 +5182,21 @@ app.post("/api/admin/table-sessions/:id/cancel", auth, admin, async (req, res) =
   res.json(serializeTableSession(row));
 });
 
+app.get("/api/admin/table-session-summary/:id", auth, admin, async (req, res) => {
+  if (!hasTableOrderAccess(req))
+    return res.status(403).json({ message: "Acesso aos pedidos presenciais não autorizado." });
+  const row = await prisma.tableSession.findFirst({
+    where: { id: req.params.id, status: "OPEN", openKey: { not: null } },
+    include: tableSessionInclude,
+  });
+  if (!row)
+    return res.status(404).json({ message: "Comanda aberta não encontrada." });
+  res.json(serializeTableSession(row));
+});
+
 app.post("/api/admin/table-sessions/:id/close", auth, admin, async (req, res) => {
-  if (!hasTableAccess(req))
-    return res.status(403).json({ message: "Acesso às mesas não autorizado." });
+  if (!hasTableOrderAccess(req))
+    return res.status(403).json({ message: "Acesso aos pedidos presenciais não autorizado." });
   const requestedPaymentMethod = cleanText(req.body?.paymentMethod, 80);
   let paymentMethod = requestedPaymentMethod.startsWith(CUSTOM_PAYMENT_PREFIX)
     ? requestedPaymentMethod
@@ -5385,7 +5246,7 @@ app.post("/api/admin/table-sessions/:id/close", auth, admin, async (req, res) =>
         code: "TABLE_PAYMENT_INVALID",
       });
     const pending = current.orders.filter((order) =>
-      ["RECEIVED", "PREPARING"].includes(order.status),
+      ["RECEIVED", "PREPARING", "READY_FOR_TABLE"].includes(order.status),
     );
     if (pending.length)
       throw Object.assign(
@@ -5937,34 +5798,10 @@ app.get("/api/admin/team-analytics", auth, admin, async (req, res) => {
 
 app.get("/api/admin/orders", auth, admin, async (req, res) => {
   await activateDueScheduledOrders();
-  const where = { paymentStatus: { in: ["APPROVED", "CASH_PENDING"] } };
-  if (req.adminUser?.staffRole === "DELIVERY") {
-    // Fila compartilhada: todos os entregadores veem somente corridas prontas ainda não aceitas.
-    // Assim que um deles aceita, o pedido passa a ser exclusivo daquele entregador.
-    where.OR = [
-      {
-        status: "READY_FOR_DELIVERY",
-        fulfillmentType: "DELIVERY",
-        assignedCourierId: null,
-      },
-      { status: "OUT_FOR_DELIVERY", assignedCourierId: req.adminUser.id },
-      {
-        status: "DELIVERED",
-        OR: [
-          { assignedCourierId: req.adminUser.id },
-          {
-            history: {
-              some: { status: "DELIVERED", changedByUserId: req.adminUser.id },
-            },
-          },
-        ],
-      },
-    ];
-  } else if (req.adminUser?.staffRole === "WAITER") {
-    where.fulfillmentType = "DINE_IN";
-  } else if (!hasAdminPermission(req, "tables")) {
-    where.fulfillmentType = { not: "DINE_IN" };
-  }
+  const where = adminOrderFilter({
+    role: req.adminUser?.staffRole,
+    userId: req.adminUser.id,
+  });
   const orders = await prisma.order.findMany({
     where,
     include: orderInclude,
@@ -5976,32 +5813,11 @@ app.get("/api/admin/orders", auth, admin, async (req, res) => {
 app.get("/api/admin/orders/:id", auth, admin, async (req, res) => {
   const where = {
     id: req.params.id,
-    paymentStatus: { in: ["APPROVED", "CASH_PENDING"] },
+    ...adminOrderFilter({
+      role: req.adminUser?.staffRole,
+      userId: req.adminUser.id,
+    }),
   };
-  if (req.adminUser?.staffRole === "DELIVERY")
-    where.OR = [
-      {
-        status: "READY_FOR_DELIVERY",
-        fulfillmentType: "DELIVERY",
-        assignedCourierId: null,
-      },
-      { status: "OUT_FOR_DELIVERY", assignedCourierId: req.adminUser.id },
-      {
-        status: "DELIVERED",
-        OR: [
-          { assignedCourierId: req.adminUser.id },
-          {
-            history: {
-              some: { status: "DELIVERED", changedByUserId: req.adminUser.id },
-            },
-          },
-        ],
-      },
-    ];
-  else if (req.adminUser?.staffRole === "WAITER")
-    where.fulfillmentType = "DINE_IN";
-  else if (!hasAdminPermission(req, "tables"))
-    where.fulfillmentType = { not: "DINE_IN" };
   const order = await prisma.order.findFirst({ where, include: orderInclude });
   if (!order)
     return res.status(404).json({
@@ -6011,6 +5827,8 @@ app.get("/api/admin/orders/:id", auth, admin, async (req, res) => {
   res.json(serializeOrder(order));
 });
 app.patch("/api/admin/orders/:id/status", auth, admin, async (req, res) => {
+  if (req.adminUser?.staffRole === "WAITER")
+    return res.status(403).json({ message: "O garçom pode servir pedidos presenciais pelo fluxo de mesas." });
   const status = cleanText(req.body?.status, 30);
   const cancelReason = cleanText(req.body?.cancelReason, 280);
   const allowed = [
@@ -7058,10 +6876,22 @@ app.post("/api/admin/sizes/reorder", auth, admin, async (req, res) => {
   res.json({ ok: true });
 });
 
+registerComboAdminRoutes({
+  app,
+  prisma,
+  auth,
+  admin,
+  productInclude,
+  serializeProduct,
+  writeAdminLog,
+});
+
 app.get("/api/admin/products", auth, admin, async (req, res) => {
   const includeArchived = req.query.archived === "1";
   const rows = await prisma.product.findMany({
-    where: includeArchived ? {} : { deletedAt: null },
+    where: includeArchived
+      ? { isCombo: false }
+      : { isCombo: false, deletedAt: null },
     include: productInclude,
     orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
   });
@@ -8481,7 +8311,10 @@ app.patch(
     const kitchenAccess = hasKitchenAccess(req);
     const waiterTableAccess =
       req.adminUser?.staffRole === "WAITER" && hasTableAccess(req);
-    if (!kitchenAccess && !waiterTableAccess)
+    const orderManagementAccess =
+      req.adminUser?.staffRole !== "DELIVERY" &&
+      hasAdminPermission(req, "orders");
+    if (!kitchenAccess && !waiterTableAccess && !orderManagementAccess)
       return res
         .status(403)
         .json({ message: "Acesso ao preparo não autorizado." });
@@ -8498,7 +8331,10 @@ app.patch(
       if (!tableOrder)
         return res
           .status(403)
-          .json({ message: "O garçom só pode avançar pedidos presenciais." });
+          .json({
+            message:
+              "Sem acesso à cozinha, somente pedidos presenciais podem ser avançados por Atendimento ou Pedidos.",
+          });
     }
     const row = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${req.params.id}))`;
@@ -9911,6 +9747,13 @@ app.use((err, req, res, next) => {
     });
   if (err?.code === "P2025")
     return res.status(404).json({ message: "Registro não encontrado." });
+  if (isDatabaseSchemaError(err)) {
+    logServerError();
+    return res.status(503).json({
+      code: "DATABASE_SCHEMA_OUTDATED",
+      message: "A estrutura do banco está desatualizada. Execute npm run prisma:migrate no backend e reinicie a API.",
+    });
+  }
   if (isDatabaseAvailabilityError(err)) {
     console.warn(
       `[database:${err.code}] ${req.method} ${req.originalUrl} temporariamente indisponível (request ${req.requestId || "sem-id"}).`,
@@ -9947,7 +9790,7 @@ app.use((err, req, res, next) => {
     return res.status(409).json({ code: err.code, message: err.message });
   if (err?.code === "PRODUCT_UNAVAILABLE")
     return res.status(409).json({ code: err.code, message: err.message });
-  if (err?.code === "INVALID_CATALOG_CONFIGURATION")
+  if (["INVALID_CATALOG_CONFIGURATION", "INVALID_COMBO"].includes(err?.code))
     return res.status(400).json({ code: err.code, message: err.message });
   if (["OUT_OF_STOCK", "INGREDIENT_OUT_OF_STOCK"].includes(err?.code))
     return res.status(409).json({ code: err.code, message: err.message });

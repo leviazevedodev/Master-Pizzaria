@@ -1,5 +1,27 @@
 # Histórico de versões
 
+## 2.28.0 — Combos, filas operacionais e diagnóstico do banco
+
+- criada a área **Cardápio → Combos**, com foto própria, produtos, quantidades e tamanhos; **Promoções** separa ofertas de produtos e combos;
+- composição do combo e movimentação de estoque são registradas no pedido, preservando o histórico e permitindo restaurar os componentes corretos no cancelamento;
+- o administrador vê pedidos online e presenciais em **Pedidos**; garçons consultam nessa aba somente **Pronto para servir**, com filtro também no backend;
+- adicionadas transições administrativas de entrega e fechamento presencial com escolha do pagamento; todas as rodadas precisam estar servidas antes de liberar a mesa;
+- impressão de comprovantes disponível em **Atendimento** e **Pedidos**;
+- cartões operacionais passam a seguir a cor da etapa nos temas claro e escuro: recebido em verde e preparo em amarelo; cozinha ganhou contagem regressiva circular;
+- atualização operacional a cada 5 segundos, protegida contra consultas sobrepostas;
+- atalho de instalação do site disponível junto ao controle de tema do painel;
+- contraste das informações de garçom e entregador corrigido no modo escuro;
+- Gestão 360° identifica as áreas que falharam e só orienta atualizar a estrutura do banco quando o erro é de schema; consultas de gestão receberam controle de concorrência;
+- novos padrões de entrega: **Exceções fixas**, saída de 10 km por R$ 4,00 e quilômetro excedente de R$ 1,00, preservando configurações existentes;
+- lógica compartilhada de pagamentos, combos e estados operacionais extraída para módulos menores, com testes das regras;
+- o webhook do Mercado Pago agora só confirma o recebimento depois da reconciliação, pagamentos aprovados/reembolsados não regridem com eventos atrasados e a chave idempotente impede duas cobranças do mesmo pedido;
+- a validação de estoque soma o carrinho inteiro, inclusive quando combos diferentes compartilham o mesmo componente, e a restauração usa o snapshot histórico uma única vez;
+- rotas de atribuição automática/manual de entregadores agora negam explicitamente os perfis Entregador e Garçom, impedindo que contornem o aceite e o limite de corridas por chamada direta à API;
+- sessão indisponível por falha temporária do banco deixou de ser apresentada como sessão expirada no painel;
+- o painel foi dividido em componentes e seções carregadas sob demanda; `AdvancedAdminSections.jsx` deixou de concentrar milhares de linhas e as consultas da Gestão 360° são serializadas para respeitar pools pequenos;
+- adicionados workflow de verificação contínua, atualização semanal de dependências e PDFs de referência renderizados para conferência visual;
+- migration obrigatória: `20260912000000_operational_orders_and_combos`; aplicar migrations e regenerar o Prisma Client ao atualizar.
+
 ## 2.27.0 — Operação em tela cheia e relatórios financeiros claros
 
 - editor de promoções reorganizado em blocos de produto, preços, tamanhos, período e ações, com campos monetários alinhados e responsivos;

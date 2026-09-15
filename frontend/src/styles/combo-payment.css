@@ -1,0 +1,77 @@
+.combos-admin, .table-payment-modal {
+  --combo-surface: #fff;
+  --combo-inset: #f7f8fa;
+  --combo-border: #d9dfe5;
+  --combo-text: #19232d;
+  --combo-muted: #586677;
+}
+.admin-dark :is(.combos-admin, .table-payment-modal) {
+  --combo-surface: #191e24;
+  --combo-inset: #222930;
+  --combo-border: #414c57;
+  --combo-text: #f3f6f9;
+  --combo-muted: #b9c6d2;
+}
+.combo-editor { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.2fr); gap: 24px; padding: 22px; margin-bottom: 24px; border: 1px solid var(--combo-border); border-radius: 16px; background: var(--combo-inset); }
+.combo-editor-fields { display: grid; grid-template-columns: minmax(0,1.5fr) minmax(120px,1fr); align-content: start; gap: 16px; }
+.combo-editor .span-2 { grid-column: 1 / -1; }
+.combo-editor label, .table-payment-modal > label { display: grid; gap: 7px; font-size: 12px; font-weight: 750; color: var(--combo-text); }
+.combos-admin :is(input,textarea,select), .table-payment-modal :is(input,select) { width: 100%; min-width: 0; padding: 11px 12px; border: 1px solid var(--combo-border); border-radius: 10px; color: var(--combo-text); background: var(--combo-surface); font: inherit; }
+.combo-editor textarea { min-height: 100px; resize: vertical; }
+.combo-photo-field > span { display: flex; position: relative; align-items: center; gap: 14px; padding: 10px; border: 1px dashed var(--combo-border); border-radius: 12px; background: var(--combo-surface); cursor: pointer; }
+.combo-photo-field :is(img,i) { width: 88px; height: 66px; flex-shrink: 0; object-fit: cover; border-radius: 8px; }
+.combo-photo-field i { display: grid; place-items: center; background: var(--combo-inset); color: var(--combo-muted); }
+.combo-photo-field input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.combo-products-editor { display: grid; align-content: start; gap: 12px; min-width: 0; }
+.combo-products-editor small, .combo-admin-list small { display: block; color: var(--combo-muted); }
+.combo-product-search { display: flex !important; align-items: center; gap: 8px; }
+.combo-search-results { display: grid; max-height: 260px; overflow-y: auto; border: 1px solid var(--combo-border); border-radius: 10px; }
+.combo-search-results > button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px; text-align: left; border: 0; border-bottom: 1px solid var(--combo-border); color: var(--combo-text); background: var(--combo-surface); }
+.combo-search-results > button:hover { background: var(--combo-inset); }
+.combo-search-results img, .combo-selected-products article > img { width: 42px; height: 42px; object-fit: cover; border-radius: 7px; }
+.combo-search-results span { flex: 1; }
+.combo-selected-products { display: grid; gap: 8px; }
+.combo-selected-products article { display: grid; grid-template-columns: 42px minmax(0,1fr) 82px 26px; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--combo-border); border-radius: 10px; background: var(--combo-surface); }
+.combo-selected-products article > span { min-width: 0; }
+.combo-selected-products article label { font-size: 10px; }
+.combo-selected-products .combo-size-field { margin-top: 6px; }
+.combo-selected-products select { padding: 7px; }
+.combo-empty-items { display: flex; gap: 10px; align-items: center; padding: 24px; font-size: 12px; color: var(--combo-muted); border: 1px dashed var(--combo-border); border-radius: 10px; }
+.combo-editor .combo-active-check { display: flex; align-items: center; gap: 8px; }
+.combo-active-check input { width: 17px; }
+.combo-editor > .primary-btn { justify-self: end; }
+.combo-hint { line-height: 1.5; }
+.combo-admin-list { display: grid; gap: 12px; }
+.combo-admin-list > article { display: grid; grid-template-columns: 94px minmax(0,1fr) auto auto auto auto; align-items: center; gap: 16px; padding: 16px; border: 1px solid var(--combo-border); border-radius: 14px; background: var(--combo-surface); }
+.combo-admin-list > article > img { width: 94px; height: 78px; border-radius: 10px; object-fit: cover; }
+.combo-admin-list h3 { margin: 4px 0 6px; font-size: 16px; }
+.combo-admin-list > article > strong { color: var(--red); white-space: nowrap; font-size: 20px; }
+.combo-admin-list .paused > img { opacity: .55; }
+.table-payment-modal { width: min(590px, calc(100vw - 28px)); max-height: calc(100dvh - 32px); overflow-y: auto; display: grid; gap: 18px; padding: 24px; border: 1px solid var(--combo-border); border-radius: 20px; background: var(--combo-surface); color: var(--combo-text); }
+.table-payment-modal .modal-head { padding: 0; }
+.table-payment-summary { display: flex; align-items: center; gap: 12px; padding: 18px; border: 1px solid var(--combo-border); border-radius: 12px; background: var(--combo-inset); }
+.table-payment-summary span { display: grid; gap: 5px; flex: 1; }
+.table-payment-summary small { color: var(--combo-muted); }
+.table-payment-summary strong { font-size: 30px; font-weight: 850; }
+.table-payment-summary em { font-size: 12px; color: var(--combo-muted); font-style: normal; }
+.table-payment-modal .table-payment-warning { background: #fff5cf; color: #68500b; line-height: 1.6; padding: 12px; }
+.admin-dark .table-payment-modal .table-payment-warning { background: #332a12 !important; color: #f7d985 !important; }
+.payment-inline-error { background: #ffebeb; color: #991b25; border: 1px solid #e8a5ad; border-radius: 10px; padding: 12px; margin: 0; font-size: 13px; }
+.admin-dark .payment-inline-error { background: #381e23; color: #ffc0c7; border-color: #79414a; }
+.payment-summary-loading { display: flex; align-items: center; gap: 10px; padding: 20px 0; }
+@media (max-width: 1100px) {
+  .combo-editor { grid-template-columns: 1fr; }
+  .combo-admin-list > article { grid-template-columns: 78px minmax(0,1fr) auto; }
+  .combo-admin-list > article > img { width: 78px; height: 70px; }
+}
+@media (max-width: 600px) {
+  .combo-editor { padding: 14px; gap: 18px; }
+  .combo-editor-fields { grid-template-columns: 1fr; }
+  .combo-selected-products article { grid-template-columns: minmax(0,1fr) 74px 24px; }
+  .combo-selected-products article > img { display: none; }
+  .combo-admin-list > article { gap: 10px; padding: 12px; }
+  .combo-admin-list > article > strong { font-size: 17px; }
+  .combos-admin :is(input,textarea,select), .table-payment-modal :is(input,select) { font-size: 16px; }
+  .table-payment-modal { padding: 18px; }
+  .table-payment-modal .modal-actions { flex-wrap: wrap; }
+}

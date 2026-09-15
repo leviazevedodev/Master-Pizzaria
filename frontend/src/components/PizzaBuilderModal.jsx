@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { money } from "../lib/format";
 import { mediaUrl } from "../lib/api";
+import ComboContents from "./ComboContents";
 import {
   customizerBlockReason,
   initialModifierSelections,
@@ -290,6 +291,13 @@ export default function PizzaBuilderModal({
             </span>
           </div>
         </div>
+
+        {baseProduct.isCombo && (
+          <section className="customizer-section">
+            <b>Este combo inclui</b>
+            <ComboContents items={baseProduct.comboItems} />
+          </section>
+        )}
 
         {sizes.length > 0 && (
           <section className="customizer-section">

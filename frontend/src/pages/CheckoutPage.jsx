@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   CalendarClock,
@@ -337,13 +337,19 @@ export default function CheckoutPage({
   }, [session?.token]);
   useEffect(() => {
     const trackingCode = pendingPayment?.order?.trackingCode;
+    const paymentId = pendingPayment?.paymentId;
     if (!trackingCode) return undefined;
     let active = true;
     const check = async () => {
       try {
-        const { data } = await api.get(
-          `/orders/payment-status/${encodeURIComponent(trackingCode)}`,
-        );
+        const { data } = paymentId
+          ? await api.post("/payments/mercadopago/sync", {
+              paymentId,
+              trackingCode,
+            })
+          : await api.get(
+              `/orders/payment-status/${encodeURIComponent(trackingCode)}`,
+            );
         if (!active) return;
         if (data.paymentStatus === "APPROVED") {
           setCart([]);
@@ -365,7 +371,7 @@ export default function CheckoutPage({
       active = false;
       window.clearInterval(timer);
     };
-  }, [pendingPayment?.order?.trackingCode]);
+  }, [pendingPayment?.order?.trackingCode, pendingPayment?.paymentId]);
   useEffect(() => {
     if (form.fulfillmentType !== "DELIVERY") return undefined;
     const cep = form.postalCode.replace(/\D/g, "");
@@ -707,7 +713,15 @@ export default function CheckoutPage({
           setPendingPayment(null);
           setSuccess({ ...pendingPayment.order, ...data });
         }}
-        onRetry={() => setPendingPayment(null)}
+        onRetry={async () => {
+          const trackingCode = pendingPayment.order.trackingCode;
+          await api.post(
+            `/orders/${encodeURIComponent(trackingCode)}/cancel`,
+            { reason: "Pagamento reiniciado pelo cliente." },
+            authHeaders(session?.token),
+          );
+          setPendingPayment(null);
+        }}
       />
     );
 
@@ -1503,15 +1517,36 @@ function Clock3Fallback() {
   return <CalendarClock size={14} />;
 }
 
+const CARD_PAYMENT_CUSTOMIZATION = Object.freeze({
+  paymentMethods: {
+    maxInstallments: 12,
+    types: { included: ["credit_card", "debit_card"] },
+  },
+});
+
 function EmbeddedPaymentStep({ payment, payerEmail, onApproved, onRetry }) {
   const [paymentError, setPaymentError] = useState("");
   const [paymentMessage, setPaymentMessage] = useState("");
   const [copied, setCopied] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const onApprovedRef = useRef(onApproved);
+  const cardRequestRef = useRef(null);
   const order = payment.order;
   const isPix = payment.type === "PIX";
   const qrImage = payment.qrCodeBase64
     ? `data:image/png;base64,${String(payment.qrCodeBase64).replace(/\s/g, "")}`
     : "";
+  const cardInitialization = useMemo(
+    () => ({
+      amount: Number(payment.amount),
+      payer: { email: payerEmail },
+    }),
+    [payment.amount, payerEmail],
+  );
+
+  useEffect(() => {
+    onApprovedRef.current = onApproved;
+  }, [onApproved]);
 
   async function copyPix() {
     try {
@@ -1525,41 +1560,72 @@ function EmbeddedPaymentStep({ payment, payerEmail, onApproved, onRetry }) {
     }
   }
 
-  async function submitCard(formData) {
+  const submitCard = useCallback((formData) => {
+    if (cardRequestRef.current) return cardRequestRef.current;
     setPaymentError("");
     setPaymentMessage("Processando o cartão com segurança...");
-    try {
-      const attemptId = globalThis.crypto?.randomUUID?.() || `${Date.now()}`;
-      const { data } = await api.post("/payments/mercadopago/card", {
-        ...formData,
-        trackingCode: order.trackingCode,
-        attemptId,
-        payer: {
-          ...(formData.payer || {}),
-          email: formData.payer?.email || payerEmail,
-        },
-      });
-      if (data.paymentStatus === "APPROVED") {
-        onApproved(data);
-        return;
-      }
-      if (["REJECTED", "CANCELED", "REFUNDED"].includes(data.paymentStatus))
-        throw new Error(
-          "Pagamento recusado. Confira os dados ou tente outro cartão.",
+    const request = (async () => {
+      try {
+        const { data } = await api.post("/payments/mercadopago/card", {
+          ...formData,
+          trackingCode: order.trackingCode,
+          payer: {
+            ...(formData.payer || {}),
+            email: formData.payer?.email || payerEmail,
+          },
+        });
+        if (data.paymentStatus === "APPROVED") {
+          onApprovedRef.current?.(data);
+          return;
+        }
+        if (["REJECTED", "CANCELED", "REFUNDED"].includes(data.paymentStatus))
+          throw new Error(
+            "Pagamento recusado. Confira os dados ou tente outro cartão.",
+          );
+        setPaymentMessage(
+          "Pagamento em análise. Esta tela será atualizada automaticamente.",
         );
-      setPaymentMessage(
-        "Pagamento em análise. Esta tela será atualizada automaticamente.",
-      );
+      } catch (error) {
+        const message =
+          error.response?.data?.message ||
+          error.message ||
+          "Não foi possível processar o cartão.";
+        setPaymentMessage("");
+        setPaymentError(message);
+        throw error;
+      }
+    })().finally(() => {
+      if (cardRequestRef.current === request) cardRequestRef.current = null;
+    });
+    cardRequestRef.current = request;
+    return request;
+  }, [order.trackingCode, payerEmail]);
+
+  async function restartPayment() {
+    if (retrying) return;
+    setRetrying(true);
+    setPaymentError("");
+    try {
+      await onRetry();
     } catch (error) {
-      const message =
+      setPaymentError(
         error.response?.data?.message ||
-        error.message ||
-        "Não foi possível processar o cartão.";
-      setPaymentMessage("");
-      setPaymentError(message);
-      throw error;
+          "Não foi possível encerrar a tentativa anterior. Aguarde e tente novamente.",
+      );
+    } finally {
+      setRetrying(false);
     }
   }
+
+  const handleCardReady = useCallback(() => setPaymentMessage(""), []);
+  const handleCardError = useCallback((brickError) => {
+    const detail = brickError?.message || brickError?.cause;
+    setPaymentError(
+      detail
+        ? `Não foi possível carregar o cartão: ${String(detail)}`
+        : "Não foi possível carregar o formulário do cartão.",
+    );
+  }, []);
 
   return (
     <div className="page-shell embedded-payment-page">
@@ -1627,26 +1693,11 @@ function EmbeddedPaymentStep({ payment, payerEmail, onApproved, onRetry }) {
               </div>
               <CardPayment
                 key={`${order.trackingCode}-${payment.amount}`}
-                initialization={{
-                  amount: Number(payment.amount),
-                  payer: { email: payerEmail },
-                }}
-                customization={{
-                  paymentMethods: {
-                    maxInstallments: 12,
-                    types: { included: ["credit_card", "debit_card"] },
-                  },
-                }}
+                initialization={cardInitialization}
+                customization={CARD_PAYMENT_CUSTOMIZATION}
                 onSubmit={submitCard}
-                onReady={() => setPaymentMessage("")}
-                onError={(brickError) => {
-                  const detail = brickError?.message || brickError?.cause;
-                  setPaymentError(
-                    detail
-                      ? `Não foi possível carregar o cartão: ${String(detail)}`
-                      : "Não foi possível carregar o formulário do cartão.",
-                  );
-                }}
+                onReady={handleCardReady}
+                onError={handleCardError}
               />
             </div>
           )}
@@ -1668,8 +1719,13 @@ function EmbeddedPaymentStep({ payment, payerEmail, onApproved, onRetry }) {
             Acompanhar pedido
           </Link>
           {!isPix && paymentError && (
-            <button type="button" className="text-button" onClick={onRetry}>
-              Voltar e gerar uma nova tentativa
+            <button
+              type="button"
+              className="text-button"
+              disabled={retrying}
+              onClick={restartPayment}
+            >
+              {retrying ? "Encerrando tentativa..." : "Voltar e tentar novamente"}
             </button>
           )}
         </div>

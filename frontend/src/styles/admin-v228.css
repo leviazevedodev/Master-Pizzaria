@@ -1,0 +1,149 @@
+.admin-shell .admin-quick-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.admin-shell .admin-quick-controls .admin-theme-toggle {
+  margin: 0;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+.admin-shell .admin-install-help {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  margin-top: 10px;
+  border: 1px solid #415168;
+  border-radius: 10px;
+  background: #1c293a;
+  color: #eef4ff;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.admin-shell .admin-install-help button {
+  display: flex;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.admin-shell.admin-dark .delivery-role-note,
+.admin-shell.admin-dark .delivery-role-create-note {
+  background: #1b2b40;
+  border-color: #385d85;
+  color: #cce2ff;
+}
+.admin-shell.admin-dark .delivery-role-note b,
+.admin-shell.admin-dark .delivery-role-create-note b {
+  color: #edf5ff;
+}
+.admin-shell.admin-dark .delivery-role-note small,
+.admin-shell.admin-dark .delivery-role-create-note small {
+  color: #b5cbe4;
+}
+.admin-shell.admin-dark .delivery-role-note > svg,
+.admin-shell.admin-dark .delivery-role-create-note > svg {
+  color: #91c3ff;
+  flex-shrink: 0;
+}
+.admin-shell.admin-dark :is(.staff-list > article, .staff-create-form, .courier-capacity-list article) {
+  background: #1d2329 !important;
+  border-color: #3b4651 !important;
+  color: #f4f7fa !important;
+}
+.admin-shell.admin-dark :is(.staff-permissions label, .staff-create-permissions label) {
+  background: #252c33 !important;
+  border-color: #46515d !important;
+  color: #e3e8ed !important;
+}
+.admin-shell.admin-dark :is(.staff-permissions label.selected, .staff-create-permissions label.selected) {
+  background: #173653 !important;
+  border-color: #4c8fd1 !important;
+  color: #cce6ff !important;
+}
+.admin-shell.admin-dark .staff-state {
+  background: #30363d !important;
+  color: #d7dde4 !important;
+}
+.admin-shell.admin-dark .staff-state.active,
+.admin-shell.admin-dark .courier-capacity-list strong:not(.full) {
+  background: #183a2a !important;
+  color: #a8efc7 !important;
+}
+.admin-shell.admin-dark .courier-capacity-list strong.full {
+  background: #432227 !important;
+  color: #ffb0b6 !important;
+}
+.admin-shell.admin-dark :is(.staff-identity small, .courier-capacity-list small) {
+  color: #b6c0ca !important;
+}
+.admin-shell .admin-order > .order-actions {
+  grid-column: 6;
+  display: grid;
+  gap: 9px;
+  justify-items: end;
+  min-width: 0;
+}
+.admin-shell .order-print-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #c9cdd1;
+  border-radius: 8px;
+  background: #fff;
+  color: #263644;
+  padding: 7px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.admin-shell.admin-dark .order-print-btn {
+  background: #252e38;
+  border-color: #546475;
+  color: #eef4ff;
+}
+.admin-shell .table-round-print-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 9px;
+  border: 1px solid #c9cdd1;
+  border-radius: 8px;
+  background: #fff;
+  color: #263644;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.admin-shell.admin-dark .table-round-print-btn {
+  background: #252e38;
+  border-color: #546475;
+  color: #eef4ff;
+}
+.admin-shell .order-status-name {
+  font-size: 11px;
+  font-weight: 700;
+}
+.admin-shell .order-detail-print { margin: 0 0 18px; }
+@media (max-width: 780px) {
+  .admin-shell .admin-order > .order-actions {
+    grid-column: 1 / -1;
+    justify-items: start;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .admin-shell .admin-install-help {
+    position: fixed;
+    right: 14px;
+    bottom: 20px;
+    width: min(340px, calc(100vw - 28px));
+    z-index: 120;
+  }
+}

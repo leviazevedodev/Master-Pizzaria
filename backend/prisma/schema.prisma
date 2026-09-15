@@ -175,6 +175,7 @@ model Product {
   sortOrder            Int                    @default(0)
   allowFlavorSplit     Boolean                @default(false)
   isFlavorOption       Boolean                @default(false)
+  isCombo              Boolean                @default(false)
   maxFlavors           Int                    @default(1)
   flavorPricingMode    String                 @default("MAX")
   stockTracked         Boolean                @default(false)
@@ -200,11 +201,29 @@ model Product {
   promotion            Promotion?
   recipeItems          ProductInventoryItem[]
   productSizes         ProductSize[]
+  comboItems           ComboItem[]            @relation("ComboProduct")
+  includedInCombos     ComboItem[]            @relation("ComboComponent")
 
   @@index([categoryId, available, deletedAt])
   @@index([subcategoryId, available])
   @@index([featured, available])
   @@index([sortOrder])
+}
+
+model ComboItem {
+  comboId   String
+  productId String
+  quantity  Int     @default(1)
+  sortOrder Int     @default(0)
+  sizeId    String?
+  size      PizzaSize? @relation(fields: [sizeId], references: [id], onDelete: Restrict)
+  combo     Product @relation("ComboProduct", fields: [comboId], references: [id], onDelete: Cascade)
+  product   Product @relation("ComboComponent", fields: [productId], references: [id], onDelete: Restrict)
+
+  @@id([comboId, productId])
+  @@index([productId])
+  @@index([sizeId])
+  @@index([comboId, sortOrder])
 }
 
 model PizzaSize {
@@ -215,6 +234,7 @@ model PizzaSize {
   sortOrder  Int           @default(0)
   active     Boolean       @default(true)
   products   ProductSize[]
+  comboItems ComboItem[]
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
 
@@ -462,6 +482,7 @@ model Order {
   status               OrderStatus          @default(RECEIVED)
   cancelReason         String?
   stockApplied         Boolean              @default(false)
+  stockSnapshot        Json?
   assignedCourierId    String?
   assignedCourier      User?                @relation("CourierOrders", fields: [assignedCourierId], references: [id], onDelete: SetNull)
   printedAt            DateTime?
@@ -496,6 +517,7 @@ model OrderItem {
   product   Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
   notes     String?
   sizeName  String?
+  comboItems Json?
   sizePrice Decimal?          @db.Decimal(10, 2)
   flavors   OrderItemFlavor[]
   options   OrderItemOption[]
@@ -675,10 +697,10 @@ model BusinessSettings {
   deliveryFee                  Decimal             @default(4.00) @db.Decimal(10, 2)
   freeDeliveryThreshold        Decimal             @default(0.00) @db.Decimal(10, 2)
   defaultMinimumOrder          Decimal             @default(0.00) @db.Decimal(10, 2)
-  deliveryPricingMode          DeliveryPricingMode @default(DISTANCE)
+  deliveryPricingMode          DeliveryPricingMode @default(AREA)
   deliveryHybridEnabled        Boolean             @default(true)
-  deliveryPricePerKm           Decimal             @default(2.00) @db.Decimal(10, 2)
-  deliveryMinimumKm            Decimal             @default(2.00) @db.Decimal(10, 2)
+  deliveryPricePerKm           Decimal             @default(1.00) @db.Decimal(10, 2)
+  deliveryMinimumKm            Decimal             @default(10.00) @db.Decimal(10, 2)
   deliveryMinimumFee           Decimal             @default(4.00) @db.Decimal(10, 2)
   deliveryMaxDistanceKm        Decimal             @default(15.00) @db.Decimal(10, 2)
   storePostalCode              String?

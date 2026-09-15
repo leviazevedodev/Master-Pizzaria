@@ -47,6 +47,15 @@ export function isTrustedMercadoPagoUrl(value) {
   }
 }
 
+export function paymentIdempotencyKey(orderId) {
+  const order = String(orderId || "");
+  if (!order) return "";
+  return crypto
+    .createHash("sha256")
+    .update(`mercadopago-card:${order}`)
+    .digest("hex");
+}
+
 export function normalizeTrustedGoogleMapsUrl(value) {
   try {
     const url = new URL(String(value || "").trim());

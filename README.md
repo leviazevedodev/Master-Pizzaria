@@ -1,4 +1,4 @@
-# Master Pizzaria Profissional v2.27.0
+# Master Pizzaria Profissional v2.28.0
 
 Aplicação de cardápio e gestão de pizzaria com React, Express, PostgreSQL e Prisma. Inclui pedidos, entrega/retirada, atendimento em mesas, agendamento, Pix e cartões transparentes pelo Mercado Pago, recuperação de senha por e-mail, painel administrativo, cozinha, garçons, entregadores, estoque, promoções, cupons e relatórios.
 
@@ -30,7 +30,7 @@ O backend aplica somente migrations versionadas ao iniciar. Ele não executa `pr
 
 ## Mesas e atendimento presencial
 
-Depois de aplicar as migrations, entre no painel e abra a aba **Mesas**. O administrador pode cadastrar cada mesa manualmente ou criar de uma vez as mesas 1 a 10. No cadastro de funcionário, a função **Garçom** recebe acesso exclusivo a essa área.
+Depois de aplicar as migrations, entre no painel e abra a aba **Mesas**. O administrador pode cadastrar cada mesa manualmente ou criar de uma vez as mesas 1 a 10. A função **Garçom** tem acesso a **Mesas** e, em **Pedidos**, somente à fila **Pronto para servir**. A API também aplica essa restrição.
 
 Fluxo operacional:
 
@@ -43,11 +43,23 @@ Fluxo operacional:
 
 Pedidos presenciais não aparecem para entregadores. A mesma mesa não pode ter duas comandas abertas simultaneamente, e cancelamentos ficam registrados com motivo e restauração de estoque quando aplicável.
 
-No painel do administrador, as comandas do salão também aparecem em **Atendimento**, identificadas como **Presencial** e com o nome da mesa. Elas acompanham as filas **Recebidos** e **Em preparação** e, quando a cozinha conclui a rodada, ficam separadas em **Pronto para servir**. Em celulares, tocar numa mesa ocupada leva diretamente à seção **Adicionar itens**.
+No painel do administrador, pedidos online e presenciais aparecem em **Pedidos** e **Atendimento**. As rodadas do salão são identificadas como **Presencial** e com o nome da mesa. Elas acompanham as filas **Recebidos** e **Em preparação** e, quando a cozinha conclui a rodada, ficam separadas em **Pronto para servir**. Em celulares, tocar numa mesa ocupada leva diretamente à seção **Adicionar itens**.
 
 Pedidos em **Pronto para servir**, **Pronto para entrega** ou **Pronto para retirada** deixam a contagem e a lista **Em aberto**, permanecendo disponíveis nas respectivas filas específicas.
 
-Na aba **Atendimento**, o administrador ou garçom pode iniciar o preparo de um pedido presencial, marcá-lo como **Pronto para servir** e, depois, como **Servido**. A aba **Cozinha** possui dois modos de tela cheia: a tela de produção reúne as filas da cozinha e a tela do salão mostra somente pedidos presenciais, sem telefone, endereço, pagamento ou valores.
+Em **Atendimento** e **Pedidos**, o administrador pode iniciar o preparo presencial, marcar **Pronto para servir**, confirmar o serviço e receber o pagamento em **Aguardando fechamento**. O pagamento encerra a comanda inteira e somente é liberado quando todas as rodadas estão servidas. Para entregas, o administrador pode avançar de **Pronto para entrega** para **Entregando** e **Entregue**. As duas áreas permitem imprimir o comprovante do pedido; ele não substitui documento fiscal.
+
+A aba **Cozinha** possui dois modos de tela cheia: produção e salão. A tela do salão mostra somente pedidos presenciais, sem telefone, endereço, pagamento ou valores. Os cartões usam verde para recebidos e amarelo para preparo, inclusive no tema escuro; a cozinha também exibe um relógio circular com o prazo previsto restante. As consultas operacionais são atualizadas a cada 5 segundos, sem sobreposição quando uma consulta demora.
+
+O botão **Instalar**, ao lado do tema no painel, abre a instalação quando o navegador oferece suporte; nos demais casos, mostra as instruções para adicionar o site à tela inicial.
+
+## Combos e promoções
+
+Em **Cardápio → Combos**, cadastre o nome, a foto, o preço e os produtos que compõem cada combo, com quantidades e tamanho quando aplicável. Os combos são vendidos no cardápio e nas mesas. Sua composição é salva no pedido para preservar o que foi comprado mesmo após editar o catálogo.
+
+**Promoções** possui uma seção de **Combos**. O servidor recalcula preço, disponibilidade e estoque dos componentes. Os campos e a composição compartilham componentes e regras com o restante do catálogo.
+
+Novas configurações de entrega usam **Exceções fixas**, **Km da saída: 10**, **Valor da saída: R$ 4,00** e **Km excedente: R$ 1,00**. A atualização dos padrões não sobrescreve as taxas já configuradas na loja.
 
 O QR Code impresso abre a rota pública isolada `/cardapio-digital`. Nela, o cliente escolhe os produtos, informa o próprio nome e vê somente mesas livres. O pedido entra como atendimento presencial nas filas **Recebidos**, **Em preparação**, **Pronto para servir** e **Aguardando fechamento**; o pagamento continua sendo baixado somente no fechamento da mesa. O acesso pode ser desativado em **Cardápio → Impressão**.
 
@@ -116,6 +128,18 @@ npm run dev
 - `npm run prisma:migrate`: aplica migrations pendentes sem apagar dados.
 - `npm run seed`: cria dados ausentes e preserva alterações já feitas no painel.
 
+Para atualizar para a v2.28.0, aplique a migration `20260912000000_operational_orders_and_combos` e regenere o Prisma Client antes de iniciar o backend:
+
+```bash
+cd backend
+npm ci
+npm run prisma:migrate
+npm run prisma:generate
+npm run prisma:status
+```
+
+A migration adiciona a composição dos combos, seus registros nos pedidos, o registro de estoque e os novos padrões de entrega. Não apaga pedidos, contas ou produtos existentes. A Gestão 360° agora identifica a área que falhou e diferencia estrutura de banco desatualizada de indisponibilidade temporária; uma falha isolada não significa, por si só, erro de schema.
+
 Para o Neon, mantenha a conexão pooled e limite o pool por processo. Um exemplo de final da URL é `?sslmode=require&connection_limit=5&pool_timeout=30&connect_timeout=10` (use `&` no lugar de `?` se a URL já possuir parâmetros).
 
 Não use `prisma db push` neste projeto: há histórico de migrations e o comando pode criar divergência entre o banco e os arquivos versionados. Também não use `migrate reset` em banco com dados reais.
@@ -162,11 +186,14 @@ Consulte `PRODUCAO.md` antes de publicar.
 - tokens com emissor, público, expiração e revogação por versão de sessão;
 - rate limiting em autenticação, pedidos, pagamentos, rastreamento e painel;
 - assinatura do webhook Mercado Pago e URL de redirecionamento verificadas;
+- reconciliação idempotente de pagamentos: eventos antigos não revertem aprovação/reembolso e uma tentativa não cobra duas vezes o mesmo pedido;
 - preços, promoções, adicionais, tamanhos, disponibilidade e estoque recalculados no servidor;
+- necessidade de estoque agregada em todo o carrinho, inclusive entre combos que compartilham componentes;
 - reservas de agendamento e baixas de estoque protegidas contra concorrência;
 - uploads limitados e conferidos pela assinatura real JPG, PNG ou WebP;
 - seed não destrutivo por padrão e migrations sem derivação automática de hostname;
 - containers sem privilégios, filesystem somente leitura e cabeçalhos de segurança.
 - comandas protegidas por trava transacional, autorização específica de garçom e trilha de auditoria de abertura, cancelamento, serviço e pagamento.
+- despacho manual e automático protegido por função; entregadores aceitam apenas pelas transições atômicas destinadas ao próprio perfil.
 
 Nenhum sistema conectado à internet é “perfeito” para sempre. Mantenha dependências, proxy HTTPS, backups, monitoramento e credenciais atualizados.

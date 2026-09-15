@@ -1,4 +1,6 @@
-# Auditoria técnica e de segurança — v2.27.0
+# Auditoria técnica e de segurança — v2.28.0
+
+> Versão v2.28.0 (15 de setembro de 2026): foram adicionados combos completos, filas e permissões operacionais, pagamentos de mesa, impressão e novos estados de atendimento. A revisão final também endureceu idempotência e reconciliação do Mercado Pago, estoque agregado, restauração por snapshot, despacho de entregadores, resiliência de sessão e concorrência da Gestão 360°. O frontend foi dividido em módulos menores e carregamento sob demanda, e o projeto recebeu verificação contínua de testes, build, Prisma e dependências.
 
 > Versão v2.27.0 (11 de setembro de 2026): o editor de promoções com tamanhos foi reorganizado, Cozinha recebeu telas cheias independentes para produção e salão, Atendimento passou a avançar todo o fluxo presencial e os relatórios financeiros passaram a separar vendas, cancelamentos, estornos e receita final por meio de agregações completas no banco.
 
@@ -22,11 +24,9 @@
 
 > Versão v2.24.0 (11 de setembro de 2026): substituído o redirecionamento do Checkout Pro pelo checkout transparente com Pix e Card Payment Brick, validação de total exclusivamente no backend, idempotência e sincronização de pagamento. O cardápio impresso foi redesenhado em duas páginas escuras e sem fotos de produtos; o QR Code ficou restrito ao cardápio público. Foram adicionados a fila Aguardando fechamento, notificações operacionais persistentes, diagnóstico do e-mail de recuperação e a remoção da observação ao abrir mesa.
 
-Data da revisão final: 11 de setembro de 2026.
+Data da revisão final: 15 de setembro de 2026.
 
-Arquivo de origem analisado: `master-pizza-profissional-v2.19.16-darkmode-adicionais-preco-dinamico.zip`.
-
-SHA-256 da origem: `52BF7A32A79BC71DB7EA7BBA70457E672E2167D2105B10BC765D3D41BB052043`.
+Base evoluída: `master-pizzaria-profissional-v2.27.0`, preservada separadamente no workspace. Entrega auditada: `master-pizzaria-profissional-v2.28.0`.
 
 ## Resultado
 
@@ -69,19 +69,30 @@ Nenhum sistema publicado na internet pode ser considerado perfeito para sempre. 
 | PWA               | A opção existia no banco, mas o navegador registrava o service worker sempre                                | A opção agora registra ou remove service worker e caches; controle foi incluído na gestão                  |
 | CSP               | A política do Netlify bloqueava as fontes usadas pelo próprio layout                                        | Políticas de Nginx e Netlify foram alinhadas e conexões do container foram restringidas à mesma origem     |
 | Consultas         | Metas, segmentos e detalhes de clientes carregavam mais linhas do que o necessário                          | Contagens e somas passaram para agregações do PostgreSQL e respostas detalhadas receberam limite           |
+| Pagamentos        | Repetição com outro token de cartão e eventos atrasados podiam gerar cobrança duplicada ou regressão de estado | Idempotência passou a usar o pedido; aprovação e reembolso são monotônicos e o webhook confirma somente após sincronizar |
+| Pix               | Uma falha local depois da criação no provedor podia apagar a referência do pedido                            | O identificador externo é vinculado antes da reconciliação e pode ser recuperado pela sincronização direta |
+| Estoque de combos | Combos distintos que compartilhassem um componente eram validados separadamente                             | A necessidade de todo o carrinho é agregada; baixa e restauração usam snapshot e trava idempotente          |
+| Despacho          | O perfil Entregador herdava `orders` e podia chamar rotas administrativas de atribuição                     | As rotas manual e automática exigem proprietário/equipe autorizada e negam Entregador/Garçom explicitamente |
+| Sessão do painel  | Falha temporária do banco podia ser confundida com expiração autenticada                                     | Somente respostas 401 de sessão inválida encerram o acesso; indisponibilidade continua recuperável          |
+| Gestão 360°       | Sete consultas simultâneas pressionavam o pool pequeno do Neon                                               | Consultas passaram a respeitar limite de concorrência e preservam a correspondência de cada área            |
+| Tema operacional  | A paleta nova carregava apenas ao abrir uma seção administrativa lazy                                        | O CSS de estados passou a carregar com o painel e mantém Recebido verde/Preparo amarelo desde a entrada      |
+| Arquitetura frontend | `AdminPage` e `AdvancedAdminSections` concentravam apresentação de muitas áreas                           | Seções foram extraídas, o arquivo avançado virou um barrel curto e áreas pesadas são carregadas sob demanda |
+| Entrega contínua  | Não havia repetição automática das verificações em cada alteração                                           | Workflow executa testes, build, Prisma, sintaxe e auditoria; Dependabot verifica os dois pacotes semanalmente |
 
 ## Verificações executadas
 
 - `prisma format`, geração do Prisma Client e validação do schema: aprovados.
 - Verificação sintática de todos os arquivos JavaScript do backend: aprovada.
-- Cinquenta e cinco testes automatizados: 35 do backend e 20 do frontend, todos aprovados e sem falhas.
-- Build de produção do frontend com Vite: aprovado, 2.006 módulos transformados.
+- Noventa e um testes automatizados: 61 do backend e 30 do frontend, todos aprovados e sem falhas.
+- Build de produção do frontend com Vite: aprovado, 2.039 módulos transformados e seções administrativas separadas em chunks sob demanda.
 - Inicialização da API e comportamento de CORS foram aprovados na primeira etapa desta mesma auditoria.
 - Inicialização final sem banco: aprovada; `/health` respondeu 503 corretamente para banco indisponível, com `X-Request-Id` e cabeçalhos de proteção.
 - Origem CORS permitida recebeu o cabeçalho esperado; origem não autorizada foi bloqueada com HTTP 403.
 - Sintaxe do `docker-compose.yml`: aprovada por `docker compose config --quiet` com variáveis fictícias.
 - `npm audit --omit=dev` encontrou 0 vulnerabilidades conhecidas nos dois pacotes nesta entrega.
 - Varredura do código-fonte por segredos, chaves privadas e APIs perigosas: nenhum segredo real encontrado.
+- Os PDFs de referência foram reabertos, tiveram contagem A4 e conteúdo conferidos e todas as três páginas foram renderizadas e inspecionadas visualmente, sem corte, sobreposição ou contraste ilegível.
+- O workflow versionado repete testes, build, validação Prisma, sintaxe e auditoria de dependências em push e pull request.
 
 O teste integrado completo com PostgreSQL em containers não pôde ser repetido porque o mecanismo local do Docker Desktop permaneceu inacessível (erro anterior `500 Internal Server Error` e, na checagem final, acesso negado ao named pipe). Nenhum container ou volume deste projeto foi criado durante a tentativa. Assim que o Docker estiver saudável, execute o roteiro abaixo antes de publicar.
 
@@ -102,11 +113,11 @@ O teste integrado completo com PostgreSQL em containers não pôde ser repetido 
 - Monitoramento de indisponibilidade, erros da API, espaço do banco e falhas de integração.
 - Testes reais do webhook Mercado Pago, e-mail e WhatsApp usando credenciais de homologação.
 - Política de privacidade, retenção/exclusão de dados e processo de atendimento à LGPD.
-- Pipeline de CI para repetir testes, build e auditoria em cada alteração.
-- Ampliar testes integrados e, depois, dividir gradualmente o arquivo principal do backend em módulos de rotas e serviços. Isso melhora a manutenção, mas deve ser feito em etapas para não introduzir regressões.
+- Ativar o workflow já incluído no repositório remoto e proteger a branch de produção exigindo sua aprovação.
+- Ampliar testes integrados com PostgreSQL e continuar dividindo gradualmente o arquivo principal do backend em módulos de rotas e serviços. A separação de pagamentos, estoque, combos e permissões já começou; as próximas extrações devem continuar em etapas para evitar regressões.
 - Teste de invasão externo antes de armazenar volume relevante de dados ou pagamentos reais.
 - Rate limiting centralizado somente se houver mais de uma instância do backend.
 
 ## O que seria desnecessário agora
 
-Sem uma necessidade comprovada de escala, não é recomendável reescrever a aplicação, dividi-la em microserviços, adotar Kubernetes, criar um aplicativo nativo ou adicionar Redis apenas por precaução. Essas mudanças aumentariam custo e complexidade sem corrigir uma falha atual. Primeiro devem ser concluídos os testes integrados, backups, monitoramento e validações operacionais acima.
+Sem uma necessidade comprovada de escala, uma reescrita total e simultânea, microserviços, Kubernetes, aplicativo nativo ou Redis seriam desnecessários agora. A refatoração desta entrega foi incremental, com testes a cada extração, preservando o comportamento. Antes de aumentar a arquitetura, devem ser concluídos os testes integrados, backups, monitoramento e validações operacionais acima.

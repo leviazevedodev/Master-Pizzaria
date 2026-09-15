@@ -1,4 +1,5 @@
 import axios from "axios";
+import { installSessionRefresh } from "./sessionRefresh";
 
 const configuredApi = String(import.meta.env.VITE_API_URL || "").trim();
 // Em desenvolvimento, sempre usa a mesma origem do Vite. Isso evita que celulares tentem acessar localhost/porta 3333 diretamente.
@@ -14,54 +15,15 @@ export const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
-let refreshRequest = null;
-
-api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const status = error?.response?.status;
-    const code = error?.response?.data?.code;
-    const config = error?.config;
-    const canRefresh =
-      status === 401 &&
-      ["INVALID_SESSION", "AUTH_REQUIRED"].includes(code) &&
-      config &&
-      !config._retriedAfterRefresh &&
-      !config._skipAuthRefresh;
-    if (canRefresh) {
-      config._retriedAfterRefresh = true;
-      try {
-        refreshRequest ||= api
-          .post(
-            "/auth/refresh",
-            {},
-            {
-              headers: { "X-Session-Refresh": "1" },
-              _skipAuthRefresh: true,
-            },
-          )
-          .finally(() => {
-            refreshRequest = null;
-          });
-        const { data } = await refreshRequest;
-        config.headers = config.headers || {};
-        config.headers.Authorization = `Bearer ${data.token}`;
-        window.dispatchEvent(
-          new CustomEvent("master-pizza-session-refreshed", { detail: data }),
-        );
-        return api(config);
-      } catch {}
-      try {
-        sessionStorage.setItem(
-          "master-pizza-auth-message",
-          "Sua sessão terminou. Entre novamente para continuar.",
-        );
-      } catch {}
-      window.dispatchEvent(new CustomEvent("master-pizza-session-expired"));
-    }
-    return Promise.reject(error);
+export const sessionRefresh = installSessionRefresh(api, {
+  onRefreshed(data) {
+    window.dispatchEvent(new CustomEvent("master-pizza-session-refreshed", { detail: data }));
   },
-);
+  onExpired() {
+    try { sessionStorage.setItem("master-pizza-auth-message", "Sua sessão terminou. Entre novamente para continuar."); } catch {}
+    window.dispatchEvent(new CustomEvent("master-pizza-session-expired"));
+  },
+});
 
 export function authHeaders(token) {
   return token ? { headers: { Authorization: `Bearer ${token}` } } : {};

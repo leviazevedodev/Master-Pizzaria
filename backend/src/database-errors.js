@@ -6,6 +6,8 @@ const DATABASE_AVAILABILITY_CODES = new Set([
   "P2024", // pool de conexoes esgotado
 ]);
 
+export const isDatabaseSchemaError = (error) => ["P2021", "P2022"].includes(error?.code);
+
 export function isDatabaseAvailabilityError(error) {
   if (DATABASE_AVAILABILITY_CODES.has(error?.code)) return true;
   return (

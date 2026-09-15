@@ -6,6 +6,7 @@ import {
   escapeHtml,
   isTrustedMercadoPagoUrl,
   normalizeTrustedGoogleMapsUrl,
+  paymentIdempotencyKey,
   verifyMercadoPagoSignature,
 } from "../src/security.js";
 
@@ -49,6 +50,14 @@ test("Mercado Pago redirect allowlist requires HTTPS and an official host", () =
     isTrustedMercadoPagoUrl("https://mercadopago.com.br.evil.example/checkout"),
     false,
   );
+});
+
+test("idempotência do cartão impede duas cobranças do pedido mesmo com tokens distintos", () => {
+  const first = paymentIdempotencyKey("order-1", "card-token-1");
+  assert.match(first, /^[a-f0-9]{64}$/);
+  assert.equal(first, paymentIdempotencyKey("order-1", "card-token-1"));
+  assert.equal(first, paymentIdempotencyKey("order-1", "card-token-2"));
+  assert.notEqual(first, paymentIdempotencyKey("order-2", "card-token-1"));
 });
 
 test("Mercado Pago webhook signature is verified in constant-time compatible format", () => {

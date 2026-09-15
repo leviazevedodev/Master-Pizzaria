@@ -1,5 +1,7 @@
 # Publicação segura
 
+Guia de atualização e publicação da v2.28.0.
+
 ## 1. Segredos e ambiente
 
 Copie `.env.example` para `.env` e substitua todos os exemplos. Nunca envie `.env`, dumps, chaves ou tokens para Git, ZIP público ou variáveis `VITE_*`.
@@ -34,6 +36,23 @@ docker compose run --rm backend npm run prisma:migrate
 Não use `prisma db push` nem `migrate reset` no banco real. Faça backup antes de atualizar e valide a restauração em um banco separado.
 
 A migration `20260911000000_payment_methods_and_data_retention` é obrigatória para os pagamentos personalizados e a limpeza automática. Ela adiciona colunas, tabelas de arquivo/log e índices sem apagar os dados existentes durante a instalação.
+
+Na v2.28.0, aplique também `20260912000000_operational_orders_and_combos`. Ela adiciona `Product.isCombo`, a tabela `ComboItem`, os registros de composição e estoque nos pedidos e altera somente os padrões de novas configurações de entrega. Valores já cadastrados em `BusinessSettings` são preservados.
+
+Para atualização sem Docker, com `backend/.env` configurado:
+
+```bash
+cd backend
+npm ci
+npm run prisma:migrate
+npm run prisma:generate
+npm run prisma:status
+npm start
+```
+
+Republique frontend e backend da mesma versão. O frontend novo consulta campos de combos e o backend deve usar o Prisma Client gerado para o schema novo. Não é necessário executar o seed para atualizar uma instalação existente.
+
+Se a Gestão 360° informar `DATABASE_SCHEMA_OUTDATED`, confira as migrations e regenere o Prisma Client. Erros de conexão ou tempo limite exigem conferir disponibilidade e limite de conexões do banco; não são resolvidos por reset. A tela mostra a área afetada e permite tentar novamente.
 
 ## 3. Administrador inicial
 
@@ -78,3 +97,15 @@ npm audit
 Também teste cadastro, login, recuperação de senha, pedido em dinheiro, pagamento online em ambiente de teste, cancelamento, baixa/restauração de estoque e permissões de cada função administrativa.
 
 Para o atendimento presencial, valide ainda: criação e reativação de mesas, bloqueio de abertura duplicada, várias rodadas na mesma comanda, impressão e avanço pela cozinha, confirmação pelo garçom, cancelamento com motivo, pagamento em dinheiro com troco e liberação automática da mesa. Confirme com uma conta de entregador que nenhum pedido `DINE_IN` aparece na fila.
+
+Na v2.28.0, confira também:
+
+- o garçom só vê pedidos **Pronto para servir** em **Pedidos**, inclusive ao consultar um pedido pelo identificador;
+- garçom e entregador recebem HTTP 403 ao tentar atribuir uma corrida pelas rotas administrativas; o entregador deve aceitar somente pelo fluxo próprio;
+- uma mesa com rodada recebida, em preparo ou ainda pronta para servir não pode ser encerrada;
+- combos aparecem no cardápio e nas mesas, com composição correta no pedido e estoque dos componentes; edição posterior do combo não altera a composição do pedido anterior;
+- dois combos diferentes que usem o mesmo componente têm a quantidade total validada antes da confirmação do pedido;
+- promoções de combos são aplicadas pelo servidor e o cancelamento restaura o estoque registrado;
+- cartões recebidos/preparando, avisos de equipe e relógio da cozinha ficam legíveis nos dois temas;
+- impressão de comprovante em **Atendimento** e **Pedidos**, e atualização automática com a API lenta, sem acúmulo de consultas;
+- o botão de instalação funciona num navegador compatível, servido por HTTPS, com PWA habilitado.
