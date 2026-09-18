@@ -1936,6 +1936,7 @@ export default function AdminPage({
               requestCrop(file, onDone, label, aspect)
             }
             imageUploading={imageUploading}
+            uploadError={error}
           />
         )}
         {tab === "management" && isOwner && (

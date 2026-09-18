@@ -1,6 +1,32 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Activity, Clock3, CreditCard, ImagePlus, MapPin, PackagePlus, Palette, Plus, Route, Save, Settings, ShieldCheck, Trash2, Upload, Users } from "lucide-react";
 import { mediaUrl } from "../../lib/api";
+
+function MediaUploadButton({ disabled, onChange, title, children }) {
+  const inputRef = useRef(null);
+  return (
+    <>
+      <button
+        type="button"
+        className="upload-icon-button media-upload-standard"
+        title={title}
+        disabled={disabled}
+        onClick={() => inputRef.current?.click()}
+      >
+        {children}
+      </button>
+      <input
+        ref={inputRef}
+        className="media-file-input"
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        disabled={disabled}
+        onChange={onChange}
+      />
+    </>
+  );
+}
+
 export default function StoreSettings({
   settings,
   setSettings,
@@ -10,6 +36,7 @@ export default function StoreSettings({
   goProducts,
   uploadMedia,
   imageUploading,
+  uploadError,
 }) {
   const [newPaymentName, setNewPaymentName] = useState("");
   const standardTablePayments = [
@@ -936,19 +963,14 @@ export default function StoreSettings({
               alt="Logo"
             />
           </div>
-          <label
-            className="upload-icon-button media-upload-standard"
+          <MediaUploadButton
             title="Trocar logo"
+            disabled={imageUploading}
+            onChange={(event) => selectSettingFile("logoImage", event)}
           >
             <Upload size={17} />
             <span>{imageUploading ? "Enviando..." : "Anexar imagem"}</span>
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              disabled={imageUploading}
-              onChange={(event) => selectSettingFile("logoImage", event)}
-            />
-          </label>
+          </MediaUploadButton>
           <input
             className="logo-url-input"
             placeholder="Ou URL da logo"
@@ -958,6 +980,11 @@ export default function StoreSettings({
             }
           />
         </div>
+        {uploadError && (
+          <p className="media-upload-error" role="alert">
+            {uploadError}
+          </p>
+        )}
         <div className="brand-assets-grid">
           {[
             ["faviconImage", "Ícone do navegador", "quadrado"],
@@ -966,10 +993,9 @@ export default function StoreSettings({
             <div className="logo-admin-setting compact" key={field}>
               <div><b>{label}</b><small>{hint}</small></div>
               {settings[field] && <img src={mediaUrl(settings[field])} alt="" />}
-              <label className="upload-icon-button media-upload-standard">
+              <MediaUploadButton disabled={imageUploading} onChange={(event) => selectSettingFile(field, event)}>
                 <ImagePlus size={17} /><span>Anexar</span>
-                <input type="file" accept="image/jpeg,image/png,image/webp" disabled={imageUploading} onChange={(event) => selectSettingFile(field, event)} />
-              </label>
+              </MediaUploadButton>
               <input value={settings[field] || ""} placeholder="Ou URL da imagem" onChange={(event) => setSettings({ ...settings, [field]: event.target.value })} />
             </div>
           ))}
@@ -1057,19 +1083,14 @@ export default function StoreSettings({
                 <ImagePlus />
               )}
             </div>
-            <label
-              className="upload-icon-button media-upload-standard"
+            <MediaUploadButton
               title="Anexar imagem"
+              disabled={imageUploading}
+              onChange={(event) => selectSettingFile("heroImage", event)}
             >
               <Upload size={17} />
               <span>{imageUploading ? "Enviando..." : "Anexar imagem"}</span>
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                disabled={imageUploading}
-                onChange={(event) => selectSettingFile("heroImage", event)}
-              />
-            </label>
+            </MediaUploadButton>
             <input
               placeholder="Ou URL da imagem"
               value={settings.heroImage || ""}
@@ -1118,19 +1139,14 @@ export default function StoreSettings({
                 <ImagePlus />
               )}
             </div>
-            <label
-              className="upload-icon-button media-upload-standard"
+            <MediaUploadButton
               title="Anexar imagem"
+              disabled={imageUploading}
+              onChange={(event) => selectSettingFile("aboutImage", event)}
             >
               <Upload size={17} />
               <span>{imageUploading ? "Enviando..." : "Anexar imagem"}</span>
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                disabled={imageUploading}
-                onChange={(event) => selectSettingFile("aboutImage", event)}
-              />
-            </label>
+            </MediaUploadButton>
             <input
               placeholder="Ou URL da imagem"
               value={settings.aboutImage || ""}

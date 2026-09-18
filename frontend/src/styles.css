@@ -9853,6 +9853,24 @@ textarea {
 .media-upload-standard span {
   white-space: nowrap;
 }
+.media-file-input {
+  position: fixed !important;
+  left: -10000px !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.media-upload-error {
+  margin: -6px 0 16px;
+  padding: 10px 12px;
+  border: 1px solid #e8a9ad;
+  border-radius: 10px;
+  background: #fff1f2;
+  color: #9d171e;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
 .media-upload-mini {
   width: 40px !important;
   min-width: 40px !important;
