@@ -1059,7 +1059,7 @@ export default function AdminPage({
   async function uploadMedia(file, onDone) {
     if (!file) return;
     if (file.size > 1_800_000)
-      return setError("A imagem deve ter no máximo 1,8 MB.");
+      throw new Error("A imagem deve ter no máximo 1,8 MB.");
     const form = new FormData();
     form.append("image", file);
     setImageUploading(true);
@@ -1067,23 +1067,25 @@ export default function AdminPage({
       const { data } = await api.post("/admin/media", form, {
         headers: {
           Authorization: `Bearer ${session.token}`,
-          "Content-Type": "multipart/form-data",
         },
       });
-      onDone(data.url);
-      notify("Imagem enviada.");
+      await onDone(data.url);
     } catch (err) {
-      fail(err, "Não foi possível enviar a imagem.");
+      throw new Error(
+        err.response?.data?.message || "Não foi possível enviar a imagem.",
+      );
     } finally {
       setImageUploading(false);
     }
   }
-  async function requestCrop(file, onDone, label = "Imagem", aspect = 1) {
+  async function requestCrop(file, onDone, label = "Imagem", fitOptions = 1) {
     if (!file) return;
     setError("");
     try {
       setImageUploading(true);
-      const fitted = await fitImageFile(file, { aspect });
+      const options =
+        typeof fitOptions === "number" ? { aspect: fitOptions } : fitOptions;
+      const fitted = await fitImageFile(file, options);
       await uploadMedia(fitted, onDone);
       notify(`${label} ajustada automaticamente.`);
     } catch (err) {
@@ -1176,6 +1178,24 @@ export default function AdminPage({
     } catch (err) {
       fail(err, "Não foi possível salvar as configurações.");
     }
+  }
+  async function saveUploadedSetting(key, value) {
+    const allowed = new Set([
+      "logoImage",
+      "faviconImage",
+      "shareImage",
+      "heroImage",
+      "aboutImage",
+    ]);
+    if (!allowed.has(key)) throw new Error("Imagem de configuração inválida.");
+    const { data } = await api.patch(
+      "/admin/settings",
+      { [key]: value },
+      headers,
+    );
+    setSettings((current) => ({ ...current, ...data }));
+    await onCatalogChanged?.();
+    return data[key] || value;
   }
   async function saveDeliverySettings(e) {
     e.preventDefault();
@@ -1906,6 +1926,7 @@ export default function AdminPage({
             settings={settings}
             setSettings={setSettings}
             saveSettings={saveStoreSettings}
+            saveUploadedSetting={saveUploadedSetting}
             lookupStoreCep={lookupStoreCep}
             goProducts={() => {
               setTab("catalog");

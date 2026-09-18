@@ -5830,6 +5830,8 @@ textarea {
   gap: 7px;
 }
 .upload-icon-button {
+  position: relative;
+  overflow: hidden;
   display: grid;
   place-items: center;
   height: 34px;
@@ -5838,8 +5840,15 @@ textarea {
   background: #faf9f7;
   cursor: pointer;
 }
-.upload-icon-button input {
-  display: none;
+.upload-icon-button input[type="file"] {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
 }
 .promo-image-preview {
   height: 145px;
@@ -9807,6 +9816,8 @@ textarea {
   min-height: 36px;
 }
 .media-upload-standard {
+  position: relative !important;
+  overflow: hidden !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -9829,8 +9840,15 @@ textarea {
   background: #fff !important;
   transform: translateY(-1px) !important;
 }
-.media-upload-standard input {
-  display: none !important;
+.media-upload-standard input[type="file"] {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 2 !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  opacity: 0 !important;
+  cursor: pointer !important;
 }
 .media-upload-standard span {
   white-space: nowrap;

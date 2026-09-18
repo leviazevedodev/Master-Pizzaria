@@ -5,6 +5,7 @@ export default function StoreSettings({
   settings,
   setSettings,
   saveSettings,
+  saveUploadedSetting,
   lookupStoreCep,
   goProducts,
   uploadMedia,
@@ -70,7 +71,10 @@ export default function StoreSettings({
     });
   const uploadSetting = (key, file) => {
     const config = {
-      logoImage: ["Logo do site", 16 / 7],
+      logoImage: [
+        "Logo do site",
+        { aspect: 16 / 7, fit: "contain", padding: 0.04 },
+      ],
       faviconImage: ["Ícone do site", 1],
       shareImage: ["Imagem de compartilhamento", 1.91],
       heroImage: ["Imagem principal da home", 1 / 1.05],
@@ -78,10 +82,20 @@ export default function StoreSettings({
     }[key] || ["Imagem do site", 1];
     uploadMedia(
       file,
-      (url) => setSettings((current) => ({ ...current, [key]: url })),
+      async (url) => {
+        const savedUrl = saveUploadedSetting
+          ? await saveUploadedSetting(key, url)
+          : url;
+        setSettings((current) => ({ ...current, [key]: savedUrl }));
+      },
       config[0],
       config[1],
     );
+  };
+  const selectSettingFile = (key, event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    uploadSetting(key, file);
   };
   function useDeviceLocation() {
     if (!navigator.geolocation)
@@ -911,7 +925,7 @@ export default function StoreSettings({
           <div>
             <b>Logo do site</b>
             <small>
-              Use uma imagem com fundo compatível com o cabeçalho preto.
+              PNG, JPG ou WebP. A imagem será ajustada sem cortar a logo.
             </small>
           </div>
           <div className="site-logo-preview">
@@ -932,7 +946,7 @@ export default function StoreSettings({
               type="file"
               accept="image/jpeg,image/png,image/webp"
               disabled={imageUploading}
-              onChange={(e) => uploadSetting("logoImage", e.target.files?.[0])}
+              onChange={(event) => selectSettingFile("logoImage", event)}
             />
           </label>
           <input
@@ -954,7 +968,7 @@ export default function StoreSettings({
               {settings[field] && <img src={mediaUrl(settings[field])} alt="" />}
               <label className="upload-icon-button media-upload-standard">
                 <ImagePlus size={17} /><span>Anexar</span>
-                <input type="file" accept="image/jpeg,image/png,image/webp" disabled={imageUploading} onChange={(event) => uploadSetting(field, event.target.files?.[0])} />
+                <input type="file" accept="image/jpeg,image/png,image/webp" disabled={imageUploading} onChange={(event) => selectSettingFile(field, event)} />
               </label>
               <input value={settings[field] || ""} placeholder="Ou URL da imagem" onChange={(event) => setSettings({ ...settings, [field]: event.target.value })} />
             </div>
@@ -1053,9 +1067,7 @@ export default function StoreSettings({
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 disabled={imageUploading}
-                onChange={(e) =>
-                  uploadSetting("heroImage", e.target.files?.[0])
-                }
+                onChange={(event) => selectSettingFile("heroImage", event)}
               />
             </label>
             <input
@@ -1116,9 +1128,7 @@ export default function StoreSettings({
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 disabled={imageUploading}
-                onChange={(e) =>
-                  uploadSetting("aboutImage", e.target.files?.[0])
-                }
+                onChange={(event) => selectSettingFile("aboutImage", event)}
               />
             </label>
             <input

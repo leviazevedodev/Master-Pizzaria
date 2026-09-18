@@ -16,7 +16,13 @@ function loadImage(file) {
 
 export async function fitImageFile(
   file,
-  { aspect = 1, maxWidth = 1200, maxHeight = 1200, padding = 0 } = {},
+  {
+    aspect = 1,
+    maxWidth = 1200,
+    maxHeight = 1200,
+    padding = 0,
+    fit = "cover",
+  } = {},
 ) {
   if (!file) return null;
   if (file.size > 12 * 1024 * 1024)
@@ -39,10 +45,11 @@ export async function fitImageFile(
   );
   const availW = Math.max(1, width - pad * 2),
     availH = Math.max(1, height - pad * 2);
-  const scale = Math.max(
+  const scales = [
     availW / (img.naturalWidth || 1),
     availH / (img.naturalHeight || 1),
-  );
+  ];
+  const scale = fit === "contain" ? Math.min(...scales) : Math.max(...scales);
   const drawW = Math.round((img.naturalWidth || 1) * scale),
     drawH = Math.round((img.naturalHeight || 1) * scale);
   const x = Math.round((width - drawW) / 2),
