@@ -93,19 +93,24 @@ export default function ProductEditorModal({
               <span>Prévia do card</span>
             </div>
             <div className="product-image-actions">
-              <label
-                className="upload-icon-button media-upload-standard product-upload-button"
-                title="Anexar imagem"
-              >
-                <Upload size={18} />
-                <span>{imageUploading ? "Enviando..." : "Anexar imagem"}</span>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  disabled={imageUploading}
-                  onChange={(e) => onUpload(e.target.files?.[0])}
-                />
-              </label>
+              <div className="media-upload-control">
+                <label
+                  className="upload-icon-button media-upload-standard product-upload-button"
+                  title="Anexar imagem"
+                >
+                  <Upload size={18} />
+                  <span>{imageUploading ? "Enviando..." : "Anexar imagem"}</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    disabled={imageUploading}
+                    onChange={(e) => onUpload(e.target.files?.[0])}
+                  />
+                </label>
+                <small className="upload-resolution-hint">
+                  Resolução recomendada: 1200 × 900 px
+                </small>
+              </div>
               <label className="product-image-url">
                 <span>Ou URL da imagem</span>
                 <input

@@ -689,27 +689,32 @@ export default function FlavorsAdmin({
               placeholder="https://..."
             />
           </label>
-          <label className="upload-icon-button media-upload-standard">
-            <ImagePlus size={16} aria-hidden="true" />
-            <span>{imageUploading ? "Preparando imagem..." : "Escolher foto"}</span>
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              disabled={imageUploading}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file && requestCrop)
-                  requestCrop(
-                    file,
-                    (image) =>
-                      setFlavorForm((current) => ({ ...current, image })),
-                    "Foto do sabor",
-                    4 / 3,
-                  );
-                event.target.value = "";
-              }}
-            />
-          </label>
+          <div className="media-upload-control upload-resolution-field">
+            <label className="upload-icon-button media-upload-standard">
+              <ImagePlus size={16} aria-hidden="true" />
+              <span>{imageUploading ? "Preparando imagem..." : "Escolher foto"}</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                disabled={imageUploading}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file && requestCrop)
+                    requestCrop(
+                      file,
+                      (image) =>
+                        setFlavorForm((current) => ({ ...current, image })),
+                      "Foto do sabor",
+                      4 / 3,
+                    );
+                  event.target.value = "";
+                }}
+              />
+            </label>
+            <small className="upload-resolution-hint">
+              Resolução recomendada: 1200 × 900 px
+            </small>
+          </div>
         </div>
         {flavorForm.image && (
           <div className="promo-image-preview">

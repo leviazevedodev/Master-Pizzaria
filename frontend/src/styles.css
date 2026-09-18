@@ -9861,6 +9861,38 @@ textarea {
   opacity: 0 !important;
   pointer-events: none !important;
 }
+.media-upload-control {
+  display: grid;
+  gap: 6px;
+  align-items: start;
+  min-width: 0;
+}
+.media-upload-control > .media-upload-standard {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.upload-resolution-field > .media-upload-standard,
+.product-image-actions .media-upload-control > .media-upload-standard {
+  width: 100% !important;
+}
+.upload-resolution-hint {
+  display: block;
+  margin: 0;
+  color: #6f7379;
+  font: 750 8px/1.45 "Manrope", sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.media-upload-control.compact {
+  width: 116px;
+  justify-items: center;
+  text-align: center;
+  flex: 0 0 auto;
+}
+.media-upload-control.compact .upload-resolution-hint {
+  max-width: 116px;
+  font-size: 7px;
+}
 .media-upload-error {
   margin: -6px 0 16px;
   padding: 10px 12px;
@@ -15346,7 +15378,7 @@ html.dark-mode textarea {
 }
 .modifier-option-admin-row {
   display: grid;
-  grid-template-columns: 64px minmax(160px, 1fr) 135px auto 92px 34px;
+  grid-template-columns: 96px minmax(160px, 1fr) 135px auto 92px 34px;
   gap: 10px;
   align-items: center;
   padding: 9px 12px;
@@ -15399,6 +15431,16 @@ html.dark-mode textarea {
 .modifier-option-photo:hover i {
   background: var(--red);
 }
+.option-image-upload-control {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  min-width: 0;
+}
+.option-image-upload-control .upload-resolution-hint {
+  max-width: 96px;
+  font-size: 7px;
+}
 .modifier-option-photo input,
 .inline-option-image-upload input {
   display: none !important;
@@ -15438,7 +15480,7 @@ html.dark-mode textarea {
 }
 .modifier-option-create-compact {
   display: grid;
-  grid-template-columns: 72px minmax(130px, 1fr) minmax(160px, 1.2fr) 120px auto;
+  grid-template-columns: 96px minmax(130px, 1fr) minmax(160px, 1.2fr) 120px auto;
   gap: 8px;
   align-items: center;
   padding: 11px 12px;
@@ -15607,7 +15649,7 @@ html.dark-mode textarea {
     justify-self: end;
   }
   .modifier-option-admin-row {
-    grid-template-columns: 60px minmax(160px, 1fr) 125px auto 88px;
+    grid-template-columns: 92px minmax(160px, 1fr) 125px auto 88px;
   }
   .modifier-option-admin-row > .subtle-danger {
     grid-column: 5;
@@ -15637,7 +15679,7 @@ html.dark-mode textarea {
     width: 100%;
   }
   .modifier-option-admin-row {
-    grid-template-columns: 58px 1fr auto;
+    grid-template-columns: 86px 1fr auto;
   }
   .modifier-option-price-edit {
     grid-column: 2;
@@ -15654,7 +15696,7 @@ html.dark-mode textarea {
     grid-row: 2;
   }
   .modifier-option-create-compact {
-    grid-template-columns: 64px 1fr;
+    grid-template-columns: 86px 1fr;
   }
   .modifier-option-create-compact > input,
   .modifier-option-create-compact > button {
@@ -15674,7 +15716,7 @@ html.dark-mode textarea {
     grid-template-columns: 1fr !important;
   }
   .modifier-option-admin-row {
-    grid-template-columns: 54px 1fr;
+    grid-template-columns: 82px 1fr;
   }
   .modifier-option-admin-row > .area-toggle,
   .modifier-option-admin-row > .subtle-danger {
@@ -15978,6 +16020,9 @@ html.dark-mode textarea {
 .admin-shell.admin-dark .hero-stamp-editor > small,
 .admin-shell.admin-dark .priority-create-note {
   color: #aeb6bf !important;
+}
+.admin-shell.admin-dark .upload-resolution-hint {
+  color: #b8c0c9 !important;
 }
 .admin-shell.admin-dark .logo-url-input {
   background: #242a30 !important;

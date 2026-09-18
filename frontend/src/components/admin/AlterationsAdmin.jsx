@@ -205,29 +205,34 @@ export default function AlterationsAdmin({
                     key={option.id}
                     className={`modifier-option-admin-row ${!option.active ? "paused" : ""}`}
                   >
-                    <label
-                      className="modifier-option-photo"
-                      title="Clique para trocar a imagem"
-                    >
-                      {option.image ? (
-                        <img src={mediaUrl(option.image)} alt={option.name} />
-                      ) : (
-                        <span className="modifier-placeholder">
-                          <ImagePlus size={18} />
-                        </span>
-                      )}
-                      <i>
-                        <Upload size={12} />
-                      </i>
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        disabled={imageUploading}
-                        onChange={(e) =>
-                          replaceOptionImage(option, e.target.files?.[0])
-                        }
-                      />
-                    </label>
+                    <div className="option-image-upload-control">
+                      <label
+                        className="modifier-option-photo"
+                        title="Clique para trocar a imagem"
+                      >
+                        {option.image ? (
+                          <img src={mediaUrl(option.image)} alt={option.name} />
+                        ) : (
+                          <span className="modifier-placeholder">
+                            <ImagePlus size={18} />
+                          </span>
+                        )}
+                        <i>
+                          <Upload size={12} />
+                        </i>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          disabled={imageUploading}
+                          onChange={(e) =>
+                            replaceOptionImage(option, e.target.files?.[0])
+                          }
+                        />
+                      </label>
+                      <small className="upload-resolution-hint">
+                        Resolução recomendada: 1200 × 900 px
+                      </small>
+                    </div>
                     <span className="modifier-option-copy">
                       <b>{option.name}</b>
                       <small>{option.description || "Sem descrição"}</small>
@@ -278,27 +283,32 @@ export default function AlterationsAdmin({
                 className="inline-option-form modifier-option-create-compact"
                 onSubmit={(e) => createOption(e, group)}
               >
-                <label
-                  className="inline-option-image-upload"
-                  title="Imagem do adicional"
-                >
-                  {optionForm(group).image ? (
-                    <img src={mediaUrl(optionForm(group).image)} alt="Prévia" />
-                  ) : (
-                    <ImagePlus size={20} />
-                  )}
-                  <span>
-                    <Upload size={12} /> Foto
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    disabled={imageUploading}
-                    onChange={(e) =>
-                      uploadOptionImage(group, e.target.files?.[0])
-                    }
-                  />
-                </label>
+                <div className="option-image-upload-control">
+                  <label
+                    className="inline-option-image-upload"
+                    title="Imagem do adicional"
+                  >
+                    {optionForm(group).image ? (
+                      <img src={mediaUrl(optionForm(group).image)} alt="Prévia" />
+                    ) : (
+                      <ImagePlus size={20} />
+                    )}
+                    <span>
+                      <Upload size={12} /> Foto
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      disabled={imageUploading}
+                      onChange={(e) =>
+                        uploadOptionImage(group, e.target.files?.[0])
+                      }
+                    />
+                  </label>
+                  <small className="upload-resolution-hint">
+                    Resolução recomendada: 1200 × 900 px
+                  </small>
+                </div>
                 <input
                   required
                   placeholder="Nome da opção"
@@ -422,4 +432,3 @@ export default function AlterationsAdmin({
     </div>
   );
 }
-

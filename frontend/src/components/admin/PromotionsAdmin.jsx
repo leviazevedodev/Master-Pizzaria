@@ -300,22 +300,27 @@ export default function PromotionsAdmin({
                         onUp={() => reorder(r, -1)}
                         onDown={() => reorder(r, 1)}
                       />
-                      <label
-                        className="upload-icon-button media-upload-standard media-upload-mini"
-                        title="Trocar imagem"
-                      >
-                        <Upload size={16} />
-                        <input
-                          type="file"
-                          accept="image/jpeg,image/png,image/webp"
-                          disabled={imageUploading}
-                          onChange={(e) =>
-                            uploadMedia(e.target.files?.[0], (url) =>
-                              update(r, { image: url }),
-                            )
-                          }
-                        />
-                      </label>
+                      <div className="media-upload-control compact">
+                        <label
+                          className="upload-icon-button media-upload-standard media-upload-mini"
+                          title="Trocar imagem"
+                        >
+                          <Upload size={16} />
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            disabled={imageUploading}
+                            onChange={(e) =>
+                              uploadMedia(e.target.files?.[0], (url) =>
+                                update(r, { image: url }),
+                              )
+                            }
+                          />
+                        </label>
+                        <small className="upload-resolution-hint">
+                          Resolução recomendada: 1200 × 675 px
+                        </small>
+                      </div>
                       <button
                         type="button"
                         className={
@@ -474,23 +479,28 @@ export default function PromotionsAdmin({
                 <Megaphone />
               )}
             </div>
-            <label
-              className="upload-icon-button media-upload-standard"
-              title="Anexar imagem"
-            >
-              <Upload size={16} />
-              <span>{imageUploading ? "Enviando..." : "Anexar imagem"}</span>
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                disabled={imageUploading}
-                onChange={(e) =>
-                  uploadMedia(e.target.files?.[0], (url) =>
-                    setForm((x) => ({ ...x, image: url })),
-                  )
-                }
-              />
-            </label>
+            <div className="media-upload-control">
+              <label
+                className="upload-icon-button media-upload-standard"
+                title="Anexar imagem"
+              >
+                <Upload size={16} />
+                <span>{imageUploading ? "Enviando..." : "Anexar imagem"}</span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={imageUploading}
+                  onChange={(e) =>
+                    uploadMedia(e.target.files?.[0], (url) =>
+                      setForm((x) => ({ ...x, image: url })),
+                    )
+                  }
+                />
+              </label>
+              <small className="upload-resolution-hint">
+                Resolução recomendada: 1200 × 675 px
+              </small>
+            </div>
             <label>
               Ou URL da imagem
               <input
@@ -647,4 +657,3 @@ export default function PromotionsAdmin({
     </div>
   );
 }
-

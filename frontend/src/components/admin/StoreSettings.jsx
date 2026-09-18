@@ -2,10 +2,10 @@ import React, { useRef, useState } from "react";
 import { Activity, Clock3, CreditCard, ImagePlus, MapPin, PackagePlus, Palette, Plus, Route, Save, Settings, ShieldCheck, Trash2, Upload, Users } from "lucide-react";
 import { mediaUrl } from "../../lib/api";
 
-function MediaUploadButton({ disabled, onChange, title, children }) {
+function MediaUploadButton({ disabled, onChange, title, resolution, children }) {
   const inputRef = useRef(null);
   return (
-    <>
+    <div className="media-upload-control">
       <button
         type="button"
         className="upload-icon-button media-upload-standard"
@@ -23,7 +23,10 @@ function MediaUploadButton({ disabled, onChange, title, children }) {
         disabled={disabled}
         onChange={onChange}
       />
-    </>
+      <small className="upload-resolution-hint">
+        Resolução recomendada: {resolution}
+      </small>
+    </div>
   );
 }
 
@@ -965,6 +968,7 @@ export default function StoreSettings({
           </div>
           <MediaUploadButton
             title="Trocar logo"
+            resolution="1200 × 525 px"
             disabled={imageUploading}
             onChange={(event) => selectSettingFile("logoImage", event)}
           >
@@ -987,13 +991,13 @@ export default function StoreSettings({
         )}
         <div className="brand-assets-grid">
           {[
-            ["faviconImage", "Ícone do navegador", "quadrado"],
-            ["shareImage", "Imagem de compartilhamento", "1200 × 630 recomendado"],
-          ].map(([field, label, hint]) => (
+            ["faviconImage", "Ícone do navegador", "Formato quadrado", "512 × 512 px"],
+            ["shareImage", "Imagem de compartilhamento", "Prévia exibida em links e redes sociais", "1200 × 630 px"],
+          ].map(([field, label, hint, resolution]) => (
             <div className="logo-admin-setting compact" key={field}>
               <div><b>{label}</b><small>{hint}</small></div>
               {settings[field] && <img src={mediaUrl(settings[field])} alt="" />}
-              <MediaUploadButton disabled={imageUploading} onChange={(event) => selectSettingFile(field, event)}>
+              <MediaUploadButton resolution={resolution} disabled={imageUploading} onChange={(event) => selectSettingFile(field, event)}>
                 <ImagePlus size={17} /><span>Anexar</span>
               </MediaUploadButton>
               <input value={settings[field] || ""} placeholder="Ou URL da imagem" onChange={(event) => setSettings({ ...settings, [field]: event.target.value })} />
@@ -1085,6 +1089,7 @@ export default function StoreSettings({
             </div>
             <MediaUploadButton
               title="Anexar imagem"
+              resolution="1000 × 1050 px"
               disabled={imageUploading}
               onChange={(event) => selectSettingFile("heroImage", event)}
             >
@@ -1141,6 +1146,7 @@ export default function StoreSettings({
             </div>
             <MediaUploadButton
               title="Anexar imagem"
+              resolution="1200 × 900 px"
               disabled={imageUploading}
               onChange={(event) => selectSettingFile("aboutImage", event)}
             >
