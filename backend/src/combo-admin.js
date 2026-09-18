@@ -106,6 +106,299 @@ async function syncComboItems(tx, comboId, items) {
   });
 }
 
+const SLOT_TYPES = new Set([
+  "FIXED_PRODUCT",
+  "PRODUCT_CHOICE",
+  "CONFIGURABLE_PIZZA",
+]);
+const FLAVOR_SCOPES = new Set(["ALL", "GROUPS", "MANUAL"]);
+const FLAVOR_RULES = new Set([
+  "INCLUDED",
+  "SURCHARGE",
+  "DISCOUNT",
+  "BLOCKED",
+]);
+const MODIFIER_RULES = new Set([
+  "NORMAL",
+  "INCLUDED",
+  "SURCHARGE",
+  "DISCOUNT",
+  "BLOCKED",
+]);
+
+const boundedMoney = (value, { negative = false } = {}) => {
+  const amount = Number(value || 0);
+  return Number.isFinite(amount) &&
+    amount <= 99_999_999.99 &&
+    (negative ? amount >= -99_999_999.99 : amount >= 0)
+    ? Math.round((amount + Number.EPSILON) * 100) / 100
+    : null;
+};
+
+function normalizeRules(rawRules, idField, allowedRules) {
+  const rows = (Array.isArray(rawRules) ? rawRules : [])
+    .map((entry) => ({
+      [idField]: cleanText(entry?.[idField], 80),
+      pricingRule: cleanText(entry?.pricingRule, 30).toUpperCase(),
+      amount: boundedMoney(entry?.amount),
+    }))
+    .filter((entry) => entry[idField]);
+  if (
+    rows.some(
+      (entry) =>
+        !allowedRules.has(entry.pricingRule) || entry.amount == null,
+    ) ||
+    new Set(rows.map((entry) => entry[idField])).size !== rows.length
+  )
+    throw invalidCombo("Uma regra de preço do combo é inválida ou está repetida.");
+  return rows;
+}
+
+export async function validateComboSlots(tx, rawSlots, comboId = null) {
+  const rows = Array.isArray(rawSlots) ? rawSlots : [];
+  if (rows.length < 2 || rows.length > 20)
+    throw invalidCombo("Configure entre 2 e 20 itens para o combo.");
+
+  const slots = rows.map((entry, sortOrder) => {
+    const type = cleanText(entry?.type, 40).toUpperCase();
+    const quantity = boundedInteger(entry?.quantity ?? 1, 1, 20);
+    if (!SLOT_TYPES.has(type) || quantity == null)
+      throw invalidCombo("Um tipo ou quantidade de item do combo é inválido.");
+    const flavorScope = cleanText(entry?.flavorScope, 20).toUpperCase() || "ALL";
+    if (!FLAVOR_SCOPES.has(flavorScope))
+      throw invalidCombo("A regra de sabores do combo é inválida.");
+    const rawMax = entry?.maxFlavors;
+    const maxFlavors =
+      rawMax === "" || rawMax == null
+        ? null
+        : boundedInteger(rawMax, 1, 4);
+    if (rawMax !== "" && rawMax != null && maxFlavors == null)
+      throw invalidCombo("O limite de sabores do combo deve ficar entre 1 e 4.");
+    const modifierPricingMode =
+      cleanText(entry?.modifierPricingMode, 20).toUpperCase() || "NORMAL";
+    if (!new Set(["NORMAL", "INCLUDED"]).has(modifierPricingMode))
+      throw invalidCombo("A cobrança de adicionais do combo é inválida.");
+    const products = (Array.isArray(entry?.products) ? entry.products : [])
+      .map((choice, choiceOrder) => ({
+        productId: cleanText(choice?.productId, 80),
+        sizeId: cleanText(choice?.sizeId, 80) || null,
+        priceAdjustment: boundedMoney(choice?.priceAdjustment, {
+          negative: true,
+        }),
+        sortOrder: choiceOrder,
+      }))
+      .filter((choice) => choice.productId);
+    if (products.some((choice) => choice.priceAdjustment == null))
+      throw invalidCombo("O acréscimo de uma opção do combo é inválido.");
+    const choiceKeys = products.map(
+      (choice) => `${choice.productId}:${choice.sizeId || ""}`,
+    );
+    if (new Set(choiceKeys).size !== choiceKeys.length)
+      throw invalidCombo("Não repita o mesmo produto e tamanho no mesmo item.");
+    return {
+      type,
+      name: cleanText(entry?.name, 100),
+      quantity,
+      sortOrder,
+      baseProductId: cleanText(entry?.baseProductId, 80) || null,
+      sizeId: cleanText(entry?.sizeId, 80) || null,
+      flavorScope,
+      maxFlavors,
+      allowModifiers: booleanValue(entry?.allowModifiers),
+      modifierPricingMode,
+      products,
+      flavorGroupRules: normalizeRules(
+        entry?.flavorGroupRules,
+        "flavorGroupId",
+        FLAVOR_RULES,
+      ),
+      flavorRules: normalizeRules(
+        entry?.flavorRules,
+        "flavorId",
+        FLAVOR_RULES,
+      ),
+      modifierRules: normalizeRules(
+        entry?.modifierRules,
+        "optionId",
+        MODIFIER_RULES,
+      ),
+    };
+  });
+
+  const productIds = [
+    ...new Set(
+      slots
+        .flatMap((slot) => [
+          slot.baseProductId,
+          ...slot.products.map((choice) => choice.productId),
+        ])
+        .filter(Boolean),
+    ),
+  ];
+  if (productIds.includes(comboId))
+    throw invalidCombo("Um combo não pode conter ele mesmo.");
+  const products = await tx.product.findMany({
+    where: { id: { in: productIds }, isCombo: false, deletedAt: null },
+    select: {
+      id: true,
+      name: true,
+      allowFlavorSplit: true,
+      maxFlavors: true,
+      productSizes: { include: { size: true } },
+      productFlavors: {
+        include: { flavor: { include: { group: true, sizes: true } } },
+      },
+      modifierGroups: {
+        include: { group: { include: { options: true } } },
+      },
+    },
+  });
+  if (products.length !== productIds.length)
+    throw invalidCombo("O combo contém produto inexistente, arquivado ou outro combo.");
+  const productMap = new Map(products.map((product) => [product.id, product]));
+
+  for (const slot of slots) {
+    if (["FIXED_PRODUCT", "PRODUCT_CHOICE"].includes(slot.type)) {
+      const requiredChoices = slot.type === "FIXED_PRODUCT" ? 1 : 2;
+      if (
+        (slot.type === "FIXED_PRODUCT" && slot.products.length !== 1) ||
+        (slot.type === "PRODUCT_CHOICE" && slot.products.length < requiredChoices)
+      )
+        throw invalidCombo(
+          slot.type === "FIXED_PRODUCT"
+            ? "Um item fixo deve possuir exatamente um produto."
+            : "Uma escolha deve possuir pelo menos dois produtos.",
+        );
+      for (const choice of slot.products) {
+        const product = productMap.get(choice.productId);
+        const activeSizes = product.productSizes.filter(
+          (entry) => entry.size.active,
+        );
+        const validSize = choice.sizeId
+          ? activeSizes.some((entry) => entry.sizeId === choice.sizeId)
+          : activeSizes.length === 0;
+        if (!validSize)
+          throw invalidCombo(
+            `Escolha um tamanho válido para ${product.name} no combo.`,
+          );
+      }
+      slot.name ||=
+        slot.type === "FIXED_PRODUCT"
+          ? productMap.get(slot.products[0].productId).name
+          : `Escolha ${slot.sortOrder + 1}`;
+      slot.baseProductId = null;
+      slot.sizeId = null;
+      slot.flavorScope = "ALL";
+      slot.maxFlavors = null;
+      slot.flavorGroupRules = [];
+      slot.flavorRules = [];
+      slot.modifierRules = [];
+      slot.allowModifiers = false;
+      slot.modifierPricingMode = "NORMAL";
+      continue;
+    }
+
+    const base = productMap.get(slot.baseProductId);
+    if (!base?.allowFlavorSplit || !slot.sizeId)
+      throw invalidCombo("Escolha uma pizza base e um tamanho para a pizza configurável.");
+    const size = base.productSizes.find(
+      (entry) => entry.sizeId === slot.sizeId && entry.size.active,
+    );
+    if (!size)
+      throw invalidCombo(`O tamanho escolhido não está disponível para ${base.name}.`);
+    const effectiveMaxFlavors = Math.min(
+      4,
+      Math.max(1, Number(base.maxFlavors || 1)),
+      Math.max(1, Number(size.size.maxFlavors || 4)),
+    );
+    if (
+      slot.maxFlavors != null &&
+      Number(slot.maxFlavors) > effectiveMaxFlavors
+    )
+      throw invalidCombo(
+        `${base.name} no tamanho ${size.size.name} permite no máximo ${effectiveMaxFlavors} sabor(es).`,
+      );
+    const linkedFlavors = new Map(
+      base.productFlavors.map((entry) => [entry.flavorId, entry.flavor]),
+    );
+    if (!linkedFlavors.size)
+      throw invalidCombo(`${base.name} não possui sabores vinculados.`);
+    const allowedGroupIds = new Set(
+      [...linkedFlavors.values()].map((flavor) => flavor.groupId).filter(Boolean),
+    );
+    if (
+      slot.flavorGroupRules.some(
+        (rule) => !allowedGroupIds.has(rule.flavorGroupId),
+      ) ||
+      slot.flavorRules.some((rule) => !linkedFlavors.has(rule.flavorId))
+    )
+      throw invalidCombo("Uma regra usa grupo ou sabor que não pertence à pizza base.");
+    const specificRules = new Map(
+      slot.flavorRules.map((rule) => [rule.flavorId, rule]),
+    );
+    const groupRules = new Map(
+      slot.flavorGroupRules.map((rule) => [rule.flavorGroupId, rule]),
+    );
+    const hasAvailableFlavor = [...linkedFlavors.values()].some((flavor) => {
+      const rule =
+        specificRules.get(flavor.id) ||
+        groupRules.get(flavor.groupId) ||
+        (slot.flavorScope === "ALL"
+          ? { pricingRule: "INCLUDED" }
+          : { pricingRule: "BLOCKED" });
+      return (
+        flavor.active !== false &&
+        rule.pricingRule !== "BLOCKED" &&
+        (flavor.sizes || []).some(
+          (entry) => entry.sizeId === slot.sizeId && entry.available !== false,
+        )
+      );
+    });
+    if (!hasAvailableFlavor)
+      throw invalidCombo(
+        `${base.name} não possui sabor permitido e disponível para o tamanho escolhido.`,
+      );
+    const activeOptionIds = new Set(
+      base.modifierGroups.flatMap((entry) =>
+        entry.group.options.filter((option) => option.active).map((option) => option.id),
+      ),
+    );
+    if (slot.modifierRules.some((rule) => !activeOptionIds.has(rule.optionId)))
+      throw invalidCombo("Uma regra usa borda ou adicional que não pertence à pizza base.");
+    if (!slot.allowModifiers) slot.modifierRules = [];
+    slot.products = [];
+    slot.name ||= `Pizza ${size.size.name}`;
+  }
+  return slots;
+}
+
+async function syncComboSlots(tx, comboId, slots) {
+  await tx.comboSlot.deleteMany({ where: { comboId } });
+  for (const slot of slots) {
+    const {
+      products,
+      flavorGroupRules,
+      flavorRules,
+      modifierRules,
+      ...data
+    } = slot;
+    await tx.comboSlot.create({
+      data: {
+        ...data,
+        comboId,
+        products: products.length ? { create: products } : undefined,
+        flavorGroupRules: flavorGroupRules.length
+          ? { create: flavorGroupRules }
+          : undefined,
+        flavorRules: flavorRules.length ? { create: flavorRules } : undefined,
+        modifierRules: modifierRules.length
+          ? { create: modifierRules }
+          : undefined,
+      },
+    });
+  }
+}
+
 function readComboFields(body, { partial = false } = {}) {
   const data = {};
   if (!partial || body?.name !== undefined) {
@@ -159,7 +452,12 @@ export function registerComboAdminRoutes({
   app.post("/api/admin/combos", auth, admin, async (req, res) => {
     const fields = readComboFields(req.body);
     const combo = await prisma.$transaction(async (tx) => {
-      const items = await validateComboItems(tx, req.body?.items);
+      const slots = Array.isArray(req.body?.slots)
+        ? await validateComboSlots(tx, req.body.slots)
+        : null;
+      const items = slots
+        ? null
+        : await validateComboItems(tx, req.body?.items);
       const category = await ensureComboCategory(tx);
       const sort = await tx.product.aggregate({
         where: { isCombo: true },
@@ -176,12 +474,13 @@ export function registerComboAdminRoutes({
           sortOrder: Number(sort._max.sortOrder || 0) + 1,
         },
       });
-      await syncComboItems(tx, product.id, items);
+      if (slots) await syncComboSlots(tx, product.id, slots);
+      else await syncComboItems(tx, product.id, items);
       return tx.product.findUnique({ where: { id: product.id }, include });
     });
     await writeAdminLog(req, "CREATE_COMBO", "Product", combo.id, {
       name: combo.name,
-      items: combo.comboItems.length,
+      items: combo.comboSlots?.length || combo.comboItems.length,
     });
     res.status(201).json(serializeProduct(combo));
   });
@@ -196,11 +495,48 @@ export function registerComboAdminRoutes({
       }
       const data = readComboFields(req.body, { partial: true });
       if (data.name) data.slug = await uniqueComboSlug(tx, data.name, current.id);
-      const items = Array.isArray(req.body?.items)
+      const slots = Array.isArray(req.body?.slots)
+        ? await validateComboSlots(tx, req.body.slots, current.id)
+        : null;
+      const items = !slots && Array.isArray(req.body?.items)
         ? await validateComboItems(tx, req.body.items, current.id)
         : null;
       await tx.product.update({ where: { id: current.id }, data });
-      if (items) await syncComboItems(tx, current.id, items);
+      if (slots) await syncComboSlots(tx, current.id, slots);
+      else if (items) {
+        await syncComboItems(tx, current.id, items);
+        // Clientes administrativos de uma versão anterior continuam podendo
+        // editar combos fixos durante um deploy gradual. Os slots equivalentes
+        // são atualizados junto, sem apagar a composição legada.
+        const compatibleSlots = items.map((item, index) => ({
+          type: "FIXED_PRODUCT",
+          name: "",
+          quantity: item.quantity,
+          sortOrder: index,
+          baseProductId: null,
+          sizeId: null,
+          flavorScope: "ALL",
+          maxFlavors: null,
+          allowModifiers: false,
+          modifierPricingMode: "NORMAL",
+          products: [
+            {
+              productId: item.productId,
+              sizeId: item.sizeId,
+              priceAdjustment: 0,
+              sortOrder: 0,
+            },
+          ],
+          flavorGroupRules: [],
+          flavorRules: [],
+          modifierRules: [],
+        }));
+        await syncComboSlots(
+          tx,
+          current.id,
+          await validateComboSlots(tx, compatibleSlots, current.id),
+        );
+      }
       return tx.product.findUnique({ where: { id: current.id }, include });
     });
     await writeAdminLog(req, "UPDATE_COMBO", "Product", combo.id, { name: combo.name });

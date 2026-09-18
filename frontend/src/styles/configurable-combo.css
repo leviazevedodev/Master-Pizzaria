@@ -1,0 +1,135 @@
+.combo-builder-modal .combo-builder-summary span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.combo-builder-modal .combo-fixed-chips {
+  display: grid;
+  gap: 7px;
+  padding: 12px 14px;
+}
+
+.combo-builder-modal .combo-fixed-chips > span {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 11px;
+  font-size: 12px;
+}
+
+.combo-builder-modal .modifier-option-grid {
+  display: grid;
+}
+
+.combo-builder-modal .modifier-option-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 58px;
+  border: 0;
+  border-bottom: 1px dashed var(--line);
+  padding: 10px 12px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+}
+
+.combo-builder-modal .modifier-option-card:last-child {
+  border-bottom: 0;
+}
+
+.combo-builder-modal .modifier-option-card.active {
+  background: #f3faf5;
+}
+
+.combo-builder-modal .modifier-option-card > span {
+  display: grid;
+  gap: 3px;
+}
+
+.combo-builder-modal .modifier-option-card small {
+  color: var(--muted);
+}
+
+.combo-builder-modal .modifier-option-card > i {
+  display: grid;
+  width: 38px;
+  height: 28px;
+  place-items: center;
+  border-radius: 999px;
+  background: #d4d5d6;
+  color: #fff;
+  font-style: normal;
+}
+
+.combo-builder-modal .modifier-option-card.active > i {
+  background: #0b9627;
+}
+
+.combo-builder-modal .customizer-notes {
+  display: block;
+  width: calc(100% - 24px);
+  min-height: 76px;
+  margin: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 11px 12px;
+  resize: vertical;
+}
+
+.combo-builder-modal .customizer-validation-message {
+  margin: 12px 22px;
+  border: 1px solid #e8a5ad;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #ffebeb;
+  color: #991b25;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.combo-builder-modal .combo-step-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 8;
+  margin: 0;
+  border-top: 1px solid var(--line);
+  padding: 12px 22px calc(12px + env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(12px);
+}
+
+.admin-shell.admin-dark .combo-builder-modal .modifier-option-card,
+.admin-shell.admin-dark .combo-builder-modal .combo-step-actions {
+  background: #191d21;
+  color: #f4f5f7;
+}
+
+.admin-shell.admin-dark .combo-builder-modal .modifier-option-card.active {
+  background: #183322;
+}
+
+.admin-shell.admin-dark .combo-builder-modal .customizer-validation-message {
+  border-color: #79414a;
+  background: #381e23;
+  color: #ffc0c7;
+}
+
+@media (max-width: 620px) {
+  .combo-builder-modal .customizer-validation-message {
+    margin-right: 15px;
+    margin-left: 15px;
+  }
+
+  .combo-builder-modal .combo-step-actions {
+    display: grid;
+    grid-template-columns: minmax(92px, auto) minmax(0, 1fr);
+    padding-right: 15px;
+    padding-left: 15px;
+  }
+
+  .combo-builder-modal .combo-step-actions .primary-btn {
+    min-width: 0;
+  }
+}

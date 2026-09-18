@@ -10,6 +10,18 @@
   margin: 2px 0;
 }
 
+.combo-contents li > span,
+.combo-contents li > small {
+  display: block;
+}
+
+.combo-contents li > small {
+  margin-top: 1px;
+  color: inherit;
+  font-size: 0.9em;
+  opacity: 0.82;
+}
+
 .kitchen-combo-contents {
   margin-top: 4px;
   color: var(--muted, #5f6873);

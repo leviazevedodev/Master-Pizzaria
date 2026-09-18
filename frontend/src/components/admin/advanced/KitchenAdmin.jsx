@@ -14,6 +14,10 @@ import {
 import { api, authHeaders } from "../../../lib/api";
 import { money } from "../../../lib/format";
 import { kitchenCountdown, OPERATION_REFRESH_MS } from "../../../lib/operations";
+import {
+  comboSnapshotDetailLines,
+  comboSnapshotItemLabel,
+} from "../../../lib/comboSnapshot";
 import ComboContents from "../../ComboContents";
 
 function escapeReceiptHtml(value) {
@@ -38,13 +42,14 @@ function printKitchenOrder(order) {
         ? `<ul class="combo">${item.comboItems
             .map(
               (component) =>
-                `<li>${escapeReceiptHtml(
-                  Number(component.quantity || 1) * Number(item.quantity || 1),
-                )}x ${escapeReceiptHtml(component.name)}${
-                  component.sizeName
-                    ? ` • ${escapeReceiptHtml(component.sizeName)}`
-                    : ""
-                }</li>`,
+                `<li><b>${escapeReceiptHtml(
+                  comboSnapshotItemLabel(component, item.quantity),
+                )}</b>${comboSnapshotDetailLines(component)
+                  .map(
+                    (detail) =>
+                      `<small>${escapeReceiptHtml(detail)}</small>`,
+                  )
+                  .join("")}</li>`,
             )
             .join("")}</ul>`
         : "";
@@ -55,7 +60,7 @@ function printKitchenOrder(order) {
     order.fulfillmentType === "DINE_IN"
       ? order.table?.name || `Mesa ${order.table?.number || ""}`
       : order.customerName;
-  iframe.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><title>Pedido ${escapeReceiptHtml(order.shortCode)}</title><style>body{font-family:Arial,sans-serif;width:72mm;margin:0;padding:8mm 3mm;font-size:13px}h1{font-size:20px;margin:0 0 4px}ul{padding-left:18px}li{margin:8px 0}.combo{margin:3px 0 0;padding-left:16px;font-size:11px}.combo li{margin:2px 0}.line{border-top:1px dashed #000;margin:10px 0}</style></head><body><h1>Pedido #${escapeReceiptHtml(order.shortCode)}</h1><b>${escapeReceiptHtml(destination)}</b><div class="line"></div><ul>${items}</ul><div class="line"></div><b>Total: ${escapeReceiptHtml(money(order.total))}</b></body></html>`;
+  iframe.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><title>Pedido ${escapeReceiptHtml(order.shortCode)}</title><style>body{font-family:Arial,sans-serif;width:72mm;margin:0;padding:8mm 3mm;font-size:13px}h1{font-size:20px;margin:0 0 4px}ul{padding-left:18px}li{margin:8px 0}.combo{margin:3px 0 0;padding-left:16px;font-size:11px}.combo li{margin:2px 0}.combo small{display:block;margin-top:1px}.line{border-top:1px dashed #000;margin:10px 0}</style></head><body><h1>Pedido #${escapeReceiptHtml(order.shortCode)}</h1><b>${escapeReceiptHtml(destination)}</b><div class="line"></div><ul>${items}</ul><div class="line"></div><b>Total: ${escapeReceiptHtml(money(order.total))}</b></body></html>`;
   document.body.appendChild(iframe);
   iframe.onload = () => {
     setTimeout(() => {
@@ -474,4 +479,3 @@ export function KitchenAdmin({
     </div>
   );
 }
-

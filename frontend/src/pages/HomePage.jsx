@@ -320,12 +320,16 @@ export default function HomePage({
 
         <section className="about-section container" id="sobre">
           <div className="about-visual">
-            <img src={aboutImage} alt="Master Pizzaria" loading="lazy" />
+            <img
+              src={aboutImage}
+              alt={settings.storeName || "Pizzaria"}
+              loading="lazy"
+            />
             <span className="about-chip">Feita na hora</span>
           </div>
           <div className="about-copy">
             <span className="eyebrow dark">
-              {settings.aboutEyebrow || "Sobre a Master"}
+              {settings.aboutEyebrow || `Sobre a ${settings.storeName || "pizzaria"}`}
             </span>
             <h2>{settings.aboutTitle}</h2>
             <p>{settings.aboutText}</p>

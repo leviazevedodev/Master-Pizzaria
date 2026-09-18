@@ -40,3 +40,15 @@ test("separa configurações operacionais, de entrega e da loja", () => {
 test("nega por padrão qualquer rota administrativa sem mapeamento", () => {
   assert.equal(permission("/rota-nova-sem-permissao"), null);
 });
+
+test("catálogo central de sabores possui leitura e escrita mapeadas", () => {
+  assert.equal(permission("/flavors"), "__ALTERATION_READ__");
+  assert.equal(permission("/flavor-groups"), "__ALTERATION_READ__");
+  assert.equal(permission("/sizes"), "__ALTERATION_READ__");
+  assert.equal(permission("/sizes/size-1", "PATCH"), "products");
+  assert.equal(permission("/flavors/flavor-1", "PATCH"), "__FLAVOR_WRITE__");
+  assert.equal(
+    permission("/flavor-groups/group-1", "DELETE"),
+    "__FLAVOR_WRITE__",
+  );
+});

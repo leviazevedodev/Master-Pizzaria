@@ -118,6 +118,7 @@ model Category {
   active        Boolean       @default(true)
   products      Product[]
   subcategories Subcategory[]
+  flavorGroups  FlavorGroup[]
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -140,9 +141,32 @@ model Subcategory {
   @@index([categoryId, active, sortOrder])
 }
 
+model FlavorGroup {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String
+  description String?
+  categoryId  String
+  active      Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  category    Category  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  flavors     Flavor[]
+  comboRules  ComboSlotFlavorGroupRule[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([categoryId, slug])
+  @@index([categoryId, active, sortOrder])
+}
+
 model Flavor {
   id                String            @id @default(cuid())
   name              String            @unique
+  slug              String            @unique
+  description       String            @default("")
+  ingredients       Json              @default("[]")
+  groupId           String?
+  sourceProductId   String?           @unique
   price             Decimal           @db.Decimal(10, 2)
   promoPrice        Decimal?          @db.Decimal(10, 2)
   promoActive       Boolean           @default(false)
@@ -150,16 +174,23 @@ model Flavor {
   promoEndAt        DateTime?
   image             String?
   active            Boolean           @default(true)
+  featured          Boolean           @default(false)
+  allowHalfAndHalf  Boolean           @default(true)
   sortOrder         Int               @default(0)
   stockTracked      Boolean           @default(false)
   stockQuantity     Int               @default(0)
   stockLowThreshold Int               @default(5)
+  group             FlavorGroup?      @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  sourceProduct     Product?          @relation("FlavorSourceProduct", fields: [sourceProductId], references: [id], onDelete: SetNull)
+  sizes             FlavorSize[]
   products          ProductFlavor[]
+  comboRules        ComboSlotFlavorRule[]
   orderItems        OrderItemFlavor[]
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
   @@index([active, sortOrder])
+  @@index([groupId, active, sortOrder])
 }
 
 model Product {
@@ -203,6 +234,10 @@ model Product {
   productSizes         ProductSize[]
   comboItems           ComboItem[]            @relation("ComboProduct")
   includedInCombos     ComboItem[]            @relation("ComboComponent")
+  comboSlots           ComboSlot[]            @relation("ComboSlots")
+  comboSlotTemplates   ComboSlot[]            @relation("ComboSlotBaseProduct")
+  comboSlotChoices     ComboSlotProduct[]
+  centralFlavor        Flavor?                @relation("FlavorSourceProduct")
 
   @@index([categoryId, available, deletedAt])
   @@index([subcategoryId, available])
@@ -226,19 +261,121 @@ model ComboItem {
   @@index([comboId, sortOrder])
 }
 
+model ComboSlot {
+  id                  String                     @id @default(cuid())
+  comboId             String
+  type                String                     @default("FIXED_PRODUCT")
+  name                String                     @default("")
+  quantity            Int                        @default(1)
+  sortOrder           Int                        @default(0)
+  baseProductId       String?
+  sizeId              String?
+  flavorScope         String                     @default("ALL")
+  maxFlavors          Int?
+  allowModifiers      Boolean                    @default(false)
+  modifierPricingMode String                     @default("NORMAL")
+  combo               Product                    @relation("ComboSlots", fields: [comboId], references: [id], onDelete: Cascade)
+  baseProduct         Product?                   @relation("ComboSlotBaseProduct", fields: [baseProductId], references: [id], onDelete: Restrict)
+  size                PizzaSize?                 @relation(fields: [sizeId], references: [id], onDelete: Restrict)
+  products            ComboSlotProduct[]
+  flavorGroupRules    ComboSlotFlavorGroupRule[]
+  flavorRules         ComboSlotFlavorRule[]
+  modifierRules       ComboSlotModifierRule[]
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+
+  @@index([comboId, sortOrder])
+  @@index([baseProductId])
+  @@index([sizeId])
+}
+
+model ComboSlotProduct {
+  id              String     @id @default(cuid())
+  slotId          String
+  productId       String
+  sizeId          String?
+  priceAdjustment Decimal    @default(0) @db.Decimal(10, 2)
+  sortOrder       Int        @default(0)
+  slot            ComboSlot  @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  product         Product    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  size            PizzaSize? @relation(fields: [sizeId], references: [id], onDelete: Restrict)
+
+  @@index([slotId, sortOrder])
+  @@index([productId])
+  @@index([sizeId])
+}
+
+model ComboSlotFlavorGroupRule {
+  slotId        String
+  flavorGroupId String
+  pricingRule   String      @default("INCLUDED")
+  amount        Decimal     @default(0) @db.Decimal(10, 2)
+  slot          ComboSlot   @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  flavorGroup   FlavorGroup @relation(fields: [flavorGroupId], references: [id], onDelete: Restrict)
+
+  @@id([slotId, flavorGroupId])
+  @@index([flavorGroupId])
+}
+
+model ComboSlotFlavorRule {
+  slotId      String
+  flavorId    String
+  pricingRule String    @default("INCLUDED")
+  amount      Decimal   @default(0) @db.Decimal(10, 2)
+  slot        ComboSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  flavor      Flavor    @relation(fields: [flavorId], references: [id], onDelete: Restrict)
+
+  @@id([slotId, flavorId])
+  @@index([flavorId])
+}
+
+model ComboSlotModifierRule {
+  slotId      String
+  optionId    String
+  pricingRule String         @default("NORMAL")
+  amount      Decimal        @default(0) @db.Decimal(10, 2)
+  slot        ComboSlot      @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  option      ModifierOption @relation(fields: [optionId], references: [id], onDelete: Restrict)
+
+  @@id([slotId, optionId])
+  @@index([optionId])
+}
+
 model PizzaSize {
   id         String        @id @default(cuid())
   name       String        @unique
   slug       String        @unique
   diameterCm Int?
+  maxFlavors Int           @default(4)
   sortOrder  Int           @default(0)
   active     Boolean       @default(true)
   products   ProductSize[]
+  flavors    FlavorSize[]
   comboItems ComboItem[]
+  comboSlots ComboSlot[]
+  comboSlotProducts ComboSlotProduct[]
+  orderItems OrderItem[]
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
 
   @@index([active, sortOrder])
+}
+
+model FlavorSize {
+  flavorId   String
+  sizeId     String
+  pricingMode String    @default("FIXED")
+  price      Decimal    @default(0) @db.Decimal(10, 2)
+  available  Boolean    @default(true)
+  sortOrder  Int        @default(0)
+  flavor     Flavor     @relation(fields: [flavorId], references: [id], onDelete: Cascade)
+  size       PizzaSize  @relation(fields: [sizeId], references: [id], onDelete: Restrict)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@id([flavorId, sizeId])
+  @@index([sizeId, available])
+  @@index([flavorId, available])
 }
 
 model ProductSize {
@@ -321,6 +458,7 @@ model ModifierOption {
   stockLowThreshold Int               @default(5)
   group             ModifierGroup     @relation(fields: [groupId], references: [id], onDelete: Cascade)
   orderItems        OrderItemOption[]
+  comboRules        ComboSlotModifierRule[]
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
@@ -516,14 +654,18 @@ model OrderItem {
   order     Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product   Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
   notes     String?
+  sizeId    String?
   sizeName  String?
   comboItems Json?
   sizePrice Decimal?          @db.Decimal(10, 2)
+  priceBreakdown Json?
+  size      PizzaSize?        @relation(fields: [sizeId], references: [id], onDelete: SetNull)
   flavors   OrderItemFlavor[]
   options   OrderItemOption[]
 
   @@index([orderId])
   @@index([productId])
+  @@index([sizeId])
 }
 
 model OrderItemFlavor {

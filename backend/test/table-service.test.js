@@ -39,6 +39,18 @@ test("calculateTablePayment calcula troco sem erro de ponto flutuante", () => {
   });
 });
 
+test("dinheiro vazio considera pagamento exato da comanda", () => {
+  const expected = {
+    ok: true,
+    total: 49.9,
+    amountPaid: 49.9,
+    changeAmount: 0,
+  };
+  assert.deepEqual(calculateTablePayment(49.9, "CASH", undefined), expected);
+  assert.deepEqual(calculateTablePayment(49.9, "CASH", ""), expected);
+  assert.deepEqual(calculateTablePayment(49.9, "CASH", "   "), expected);
+});
+
 test("calculateTablePayment rejeita dinheiro insuficiente", () => {
   const result = calculateTablePayment(50, "CASH", 49.99);
   assert.equal(result.ok, false);

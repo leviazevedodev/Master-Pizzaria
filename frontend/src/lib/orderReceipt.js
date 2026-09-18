@@ -1,5 +1,6 @@
 import { mediaUrl } from "./api";
 import { STATUS_LABEL, paymentLabel } from "./adminOrders";
+import { comboSnapshotText } from "./comboSnapshot";
 
 const escapeHtml = (value) =>
   String(value ?? "")
@@ -28,14 +29,12 @@ export function printOrderReceipt(order, settings = {}) {
   const itemRows = (order.items || [])
     .map((item) => {
       const details = [
-        item.comboItems?.length
-          ? `Itens do combo: ${item.comboItems
-              .map(
-                (component) =>
-                  `${Number(component.quantity || 1) * Number(item.quantity || 1)}× ${component.name || "Produto"}${component.sizeName ? ` (${component.sizeName})` : ""}`,
-              )
-              .join(" / ")}`
-          : "",
+        ...(Array.isArray(item.comboItems)
+          ? item.comboItems.map(
+              (component) =>
+                `Combo: ${comboSnapshotText(component, item.quantity)}`,
+            )
+          : []),
         item.flavors?.length
           ? `Sabores: ${item.flavors.map((flavor) => flavor.name).join(" / ")}`
           : "",

@@ -18,9 +18,9 @@ export default function Footer({ settings }) {
         <div className="footer-brand">
           <img
             src={
-              mediaUrl(settings?.logoImage) || "/images/master-pizzaria-logo.png"
+              mediaUrl(settings?.logoImage) || "/images/store-placeholder.svg"
             }
-            alt="Master Pizzaria"
+            alt={settings.storeName || "Pizzaria"}
           />
           {settings.footerText && <p>{settings.footerText}</p>}
         </div>
@@ -89,7 +89,7 @@ export default function Footer({ settings }) {
       </div>
       <div className="container footer-bottom">
         <span>
-          © {new Date().getFullYear()} {settings.storeName || "Master Pizzaria"}.
+          © {new Date().getFullYear()} {settings.storeName || "Pizzaria"}.
         </span>
         <span>Entrega e retirada</span>
       </div>

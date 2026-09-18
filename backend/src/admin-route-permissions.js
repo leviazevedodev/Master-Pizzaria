@@ -58,11 +58,15 @@ export function permissionNeededForAdminRequest(req) {
   if (path.startsWith("/media")) return "__CONTENT__";
   if (path.startsWith("/combos"))
     return method === "GET" ? "__PRODUCT_READ__" : "products";
-  if (path.startsWith("/products") || path.startsWith("/sizes"))
+  if (path.startsWith("/products"))
     return method === "GET" ? "__PRODUCT_READ__" : "products";
+  if (path.startsWith("/sizes"))
+    return method === "GET" ? "__ALTERATION_READ__" : "products";
   if (path.startsWith("/categories") || path.startsWith("/subcategories"))
     return method === "GET" ? "__CATEGORY_READ__" : "categories";
-  if (path.startsWith("/flavors") || path.startsWith("/modifier-"))
+  if (path.startsWith("/flavor-groups") || path.startsWith("/flavors"))
+    return method === "GET" ? "__ALTERATION_READ__" : "__FLAVOR_WRITE__";
+  if (path.startsWith("/modifier-"))
     return method === "GET" ? "__ALTERATION_READ__" : "alterations";
   if (path.startsWith("/modifier-groups"))
     return method === "GET" ? "__ALTERATION_READ__" : "alterations";

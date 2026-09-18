@@ -3915,6 +3915,13 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 12px;
 }
+.category-admin-list article.size-admin-row {
+  grid-template-columns: minmax(150px, 1fr) 72px 110px 90px 38px;
+}
+.size-max-flavors-control select {
+  width: 100%;
+  min-height: 34px;
+}
 .category-admin-list article > div {
   display: grid;
   gap: 3px;
@@ -4351,6 +4358,9 @@ textarea {
   .delivery-admin-list article {
     grid-template-columns: 1fr 90px;
   }
+  .category-admin-list article.size-admin-row {
+    grid-template-columns: minmax(0, 1fr) 90px;
+  }
   .category-admin-list .area-toggle,
   .category-admin-list .subtle-danger,
   .delivery-admin-list .area-toggle,
@@ -4427,6 +4437,9 @@ textarea {
   }
   .category-admin-list article,
   .delivery-admin-list article {
+    grid-template-columns: 1fr;
+  }
+  .category-admin-list article.size-admin-row {
     grid-template-columns: 1fr;
   }
   .product-modal-actions {

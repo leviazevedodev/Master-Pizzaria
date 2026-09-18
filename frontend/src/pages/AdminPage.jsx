@@ -76,6 +76,7 @@ const ProductEditorModal = lazy(
 const CategoriesAdmin = lazy(
   () => import("../components/admin/CategoriesAdmin"),
 );
+const FlavorsAdmin = lazy(() => import("../components/admin/FlavorsAdmin"));
 const SizesAdmin = lazy(() => import("../components/admin/SizesAdmin"));
 const AlterationsAdmin = lazy(
   () => import("../components/admin/AlterationsAdmin"),
@@ -148,7 +149,12 @@ export default function AdminPage({
     if (isOwner) return true;
     if (isWaiter && ["tables", "orders"].includes(key)) return true;
     const list = Array.isArray(permissions) ? permissions : [];
-    const catalogKeys = ["products", "promotions", "alterations", "categories"];
+    const catalogKeys = [
+      "products",
+      "promotions",
+      "alterations",
+      "categories",
+    ];
     if (key === "catalog")
       return (
         list.includes("catalog") ||
@@ -166,6 +172,8 @@ export default function AdminPage({
     [orders, setOrders] = useState([]),
     [products, setProducts] = useState([]),
     [combos, setCombos] = useState([]),
+    [flavors, setFlavors] = useState([]),
+    [flavorGroups, setFlavorGroups] = useState([]),
     [sizes, setSizes] = useState([]),
     [categories, setCategories] = useState([]),
     [subcategories, setSubcategories] = useState([]),
@@ -219,6 +227,7 @@ export default function AdminPage({
       name: "",
       slug: "",
       diameterCm: "",
+      maxFlavors: 4,
       sortOrder: 0,
     }),
     [subForm, setSubForm] = useState({
@@ -286,6 +295,7 @@ export default function AdminPage({
       "alterations",
       "categories",
     ].filter(can);
+    if (can("products") || can("alterations")) allowed.push("flavors");
     if (can("products")) allowed.push("sizes", "print", "combos");
     if (tab === "catalog" && !allowed.includes(catalogSection))
       setCatalogSection(allowed[0] || "products");
@@ -357,9 +367,13 @@ export default function AdminPage({
         );
       if (can("products") || can("promotions"))
         jobs.combos = () => api.get("/admin/combos", headers);
-      if (can("products"))
+      if (can("products") || can("alterations"))
         jobs.sizes = () => api.get("/admin/sizes", headers);
-      if (can("categories") || can("products")) {
+      if (can("products") || can("alterations")) {
+        jobs.flavors = () => api.get("/admin/flavors", headers);
+        jobs.flavorGroups = () => api.get("/admin/flavor-groups", headers);
+      }
+      if (can("categories") || can("products") || can("alterations")) {
         jobs.categories = () => api.get("/admin/categories", headers);
         jobs.subcategories = () => api.get("/admin/subcategories", headers);
       }
@@ -402,6 +416,8 @@ export default function AdminPage({
           }));
       }
       if (data.combos) setCombos(data.combos);
+      if (data.flavors) setFlavors(data.flavors);
+      if (data.flavorGroups) setFlavorGroups(data.flavorGroups);
       if (data.sizes) setSizes(data.sizes);
       if (data.categories) {
         setCategories(data.categories);
@@ -691,7 +707,7 @@ export default function AdminPage({
       isFlavorOption: Boolean(p.isFlavorOption),
       maxFlavors: Number(p.maxFlavors || 1),
       flavorPricingMode: p.flavorPricingMode || "MAX",
-      flavorIds: [],
+      flavorIds: p.flavorIds || [],
       modifierGroupIds: p.modifierGroupIds || [],
       sizePrices: (p.availableSizes || []).map((size) => ({
         sizeId: size.id,
@@ -849,6 +865,7 @@ export default function AdminPage({
         name: "",
         slug: "",
         diameterCm: "",
+        maxFlavors: 4,
         sortOrder: sizes.length + 1,
       });
       notify("Tamanho criado.");
@@ -1531,6 +1548,15 @@ export default function AdminPage({
                   <Pizza size={16} /> Produtos
                 </button>
               )}
+              {(can("alterations") || can("products")) && (
+                <button
+                  type="button"
+                  className={catalogSection === "flavors" ? "active" : ""}
+                  onClick={() => setCatalogSection("flavors")}
+                >
+                  <Layers3 size={16} /> Sabores
+                </button>
+              )}
               {can("products") && (
                 <button
                   type="button"
@@ -1687,6 +1713,24 @@ export default function AdminPage({
                 </div>
               </section>
             )}
+            {catalogSection === "flavors" &&
+              (can("alterations") || can("products")) && (
+                <FlavorsAdmin
+                  session={session}
+                  flavors={flavors}
+                  groups={flavorGroups}
+                  sizes={sizes}
+                  categories={categories}
+                  reload={async () => {
+                    await loadAll();
+                    await onCatalogChanged?.();
+                  }}
+                  notify={notify}
+                  fail={fail}
+                  requestCrop={requestCrop}
+                  imageUploading={imageUploading}
+                />
+              )}
             {catalogSection === "combos" && can("products") && (
               <CombosAdmin
                 session={session}
@@ -1932,6 +1976,7 @@ export default function AdminPage({
           categories={categories}
           subcategories={subcategories}
           sizes={sizes}
+          flavors={flavors}
           modifierGroups={modifierGroups}
           onClose={() => setProductEditor(null)}
           onSave={saveProduct}

@@ -17,7 +17,7 @@ import MotoIcon from "../components/MotoIcon";
 import CustomerOrderNotifications from "../components/CustomerOrderNotifications";
 import CustomerCancelOrderButton from "../components/CustomerCancelOrderButton";
 
-export default function TrackOrderPage({ session }) {
+export default function TrackOrderPage({ session, settings = {} }) {
   const { code } = useParams();
   const navigate = useNavigate();
   const [input, setInput] = useState(code || "");
@@ -114,6 +114,7 @@ export default function TrackOrderPage({ session }) {
           <CustomerOrderNotifications
             orders={order ? [order] : []}
             ready={!loading && Boolean(order)}
+            settings={settings}
           />
           {error && <div className="form-error">{error}</div>}
         </div>

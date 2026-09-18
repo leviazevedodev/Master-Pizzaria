@@ -20,14 +20,33 @@ export default function SizesAdmin({ rows, form, setForm, create, update, remove
         </div>
         <div className="category-admin-list">
           {rows.map((row) => (
-            <article key={row.id} className={!row.active ? "paused" : ""}>
+            <article
+              key={row.id}
+              className={`size-admin-row ${!row.active ? "paused" : ""}`}
+            >
               <div>
                 <b>{row.name}</b>
                 <small>
                   {row.diameterCm ? `${row.diameterCm} cm • ` : ""}
-                  {row.slug}
+                  {row.slug} • até {row.maxFlavors || 4}{" "}
+                  {(row.maxFlavors || 4) === 1 ? "sabor" : "sabores"}
                 </small>
               </div>
+              <label className="size-max-flavors-control">
+                <span>Máximo</span>
+                <select
+                  value={row.maxFlavors || 4}
+                  onChange={(event) =>
+                    update(row, { maxFlavors: Number(event.target.value) })
+                  }
+                >
+                  {[1, 2, 3, 4].map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <PriorityArrows
                 value={row.sortOrder}
                 onUp={() => reorder(row, -1)}
@@ -88,6 +107,21 @@ export default function SizesAdmin({ rows, form, setForm, create, update, remove
             placeholder="35"
           />
         </label>
+        <label>
+          Máximo de sabores neste tamanho
+          <select
+            value={form.maxFlavors || 4}
+            onChange={(e) =>
+              setForm({ ...form, maxFlavors: Number(e.target.value) })
+            }
+          >
+            {[1, 2, 3, 4].map((value) => (
+              <option key={value} value={value}>
+                {value} {value === 1 ? "sabor" : "sabores"}
+              </option>
+            ))}
+          </select>
+        </label>
         <button className="primary-btn full">
           <Plus size={16} /> Criar tamanho
         </button>
@@ -95,4 +129,3 @@ export default function SizesAdmin({ rows, form, setForm, create, update, remove
     </div>
   );
 }
-

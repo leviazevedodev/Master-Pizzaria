@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Pizzaria">
+  <rect width="512" height="512" rx="112" fill="#111214"/>
+  <path d="M93 387 226 91c13-29 54-29 67 0l126 296c11 26-8 55-36 55H129c-29 0-48-30-36-55Z" fill="#e31b23"/>
+  <path d="M143 371 255 121l107 250H143Z" fill="#f7c85d"/>
+  <path d="M143 371h219" stroke="#fff3d6" stroke-width="32" stroke-linecap="round"/>
+  <circle cx="235" cy="238" r="25" fill="#d62828"/>
+  <circle cx="292" cy="302" r="23" fill="#d62828"/>
+  <circle cx="310" cy="210" r="20" fill="#18804b"/>
+</svg>

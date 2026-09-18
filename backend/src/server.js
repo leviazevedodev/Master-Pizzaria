@@ -24,9 +24,11 @@ import { missingDeliveryAddressFields } from "./order-validation.js";
 import { booleanValue, boundedInteger, validSlug } from "./input-validation.js";
 import { isDatabaseAvailabilityError, isDatabaseSchemaError } from "./database-errors.js";
 import {
+  ComboConfigurationError,
   collectOrderStockNeeds,
   comboComponentIsAvailable,
   comboIsAvailableAt,
+  resolveComboSelection,
   snapshotComboItems,
 } from "./combos.js";
 import { applyOrderStock, restoreOrderStock, lockOrderStock } from "./order-stock.js";
@@ -60,6 +62,10 @@ import {
 } from "./payment-state.js";
 import { canDispatchCouriers } from "./admin-permissions.js";
 import { permissionNeededForAdminRequest } from "./admin-route-permissions.js";
+import {
+  FlavorPricingError,
+  quoteFlavorSelection,
+} from "./flavor-pricing.js";
 
 dotenv.config({ quiet: true });
 
@@ -549,11 +555,44 @@ const simplePromotionIsActive = (row, now = new Date()) =>
 const hasSimplePromotion = (row) => simplePromotionIsActive(row);
 const effectiveSimplePrice = (row) =>
   hasSimplePromotion(row) ? Number(row.promoPrice) : Number(row.price);
+const serializeFlavorSize = (entry) => ({
+  sizeId: entry.sizeId,
+  name: entry.size?.name,
+  slug: entry.size?.slug,
+  diameterCm: entry.size?.diameterCm ?? null,
+  pricingMode: entry.pricingMode === "SURCHARGE" ? "SURCHARGE" : "FIXED",
+  price: Number(entry.price),
+  available: entry.available !== false && entry.size?.active !== false,
+  sortOrder: Number(entry.sortOrder ?? entry.size?.sortOrder ?? 0),
+});
 const serializeFlavor = (flavor) => {
   const basePrice = Number(flavor.price),
     promo = hasSimplePromotion(flavor);
   return {
     ...flavor,
+    ingredients: Array.isArray(flavor.ingredients) ? flavor.ingredients : [],
+    featured: Boolean(flavor.featured),
+    allowHalfAndHalf: flavor.allowHalfAndHalf !== false,
+    group: flavor.group
+      ? {
+          ...flavor.group,
+          category: flavor.group.category || undefined,
+        }
+      : null,
+    sizes: (flavor.sizes || [])
+      .map(serializeFlavorSize)
+      .sort((a, b) => a.sortOrder - b.sortOrder),
+    sizePrices: Object.fromEntries(
+      (flavor.sizes || []).map((entry) => [
+        entry.sizeId,
+        {
+          pricingMode:
+            entry.pricingMode === "SURCHARGE" ? "SURCHARGE" : "FIXED",
+          price: Number(entry.price),
+          available: entry.available !== false && entry.size?.active !== false,
+        },
+      ]),
+    ),
     basePrice,
     price: promo ? Number(flavor.promoPrice) : basePrice,
     promoPrice: numberOrNull(flavor.promoPrice),
@@ -666,6 +705,7 @@ const serializeProductSize = (entry) => ({
   name: entry.size.name,
   slug: entry.size.slug,
   diameterCm: entry.size.diameterCm,
+  maxFlavors: Math.min(4, Math.max(1, Number(entry.size.maxFlavors || 4))),
   price: Number(entry.price),
   sortOrder: Number(entry.sortOrder ?? entry.size.sortOrder ?? 0),
   active: entry.size.active !== false,
@@ -674,6 +714,12 @@ const serializeProduct = (product) => ({
   ...product,
   price: Number(product.price),
   isCombo: Boolean(product.isCombo),
+  comboMode: product.comboSlots?.length
+    ? product.comboSlots.some((slot) => slot.type !== "FIXED_PRODUCT")
+      ? "CONFIGURABLE"
+      : "FIXED"
+    : "LEGACY_FIXED",
+  comboSlots: (product.comboSlots || []).map(serializeComboSlot),
   comboItems: (product.comboItems || [])
     .map((entry) => ({
       productId: entry.productId,
@@ -734,6 +780,9 @@ const serializePublicFlavor = (flavor) => {
   return {
     id: serialized.id,
     name: serialized.name,
+    slug: serialized.slug,
+    description: serialized.description,
+    ingredients: serialized.ingredients,
     image: safeMediaUrl(serialized.image),
     price: serialized.price,
     basePrice: serialized.basePrice,
@@ -741,6 +790,18 @@ const serializePublicFlavor = (flavor) => {
     promoActiveNow: serialized.promoActiveNow,
     sortOrder: serialized.sortOrder,
     active: serialized.active,
+    featured: serialized.featured,
+    allowHalfAndHalf: serialized.allowHalfAndHalf,
+    group: serialized.group
+      ? {
+          id: serialized.group.id,
+          name: serialized.group.name,
+          slug: serialized.group.slug,
+        }
+      : null,
+    sourceProductId: serialized.sourceProductId || null,
+    sizes: serialized.sizes,
+    availableSizes: serialized.sizes.filter((size) => size.available),
     stockAvailable:
       !flavor.stockTracked || Number(flavor.stockQuantity || 0) > 0,
   };
@@ -776,6 +837,95 @@ const serializePublicModifierGroup = (group) => ({
     .filter((option) => option.active !== false)
     .map(serializePublicModifierOption)
     .sort((a, b) => Number(a.sortOrder) - Number(b.sortOrder)),
+});
+const serializeComboSlotBaseProduct = (product) =>
+  product
+    ? {
+        id: product.id,
+        name: product.name,
+        image: safeMediaUrl(product.image),
+        categoryId: product.categoryId,
+        allowFlavorSplit: Boolean(product.allowFlavorSplit),
+        maxFlavors: Math.min(4, Math.max(1, Number(product.maxFlavors || 1))),
+        flavorPricingMode: product.flavorPricingMode,
+        stockAvailable:
+          !product.stockTracked || Number(product.stockQuantity || 0) > 0,
+        availableSizes: (product.productSizes || [])
+          .map((entry) => ({
+            ...serializeProductSize(entry),
+            promoPrice: promotionIsActive(product.promotion)
+              ? effectiveProductSizePrice(product, entry)
+              : null,
+          }))
+          .filter((size) => size.active),
+        availableFlavors: (product.productFlavors || [])
+          .map((entry) => serializePublicFlavor(entry.flavor))
+          .filter((flavor) => flavor.active && flavor.stockAvailable),
+        availableModifierGroups: (product.modifierGroups || [])
+          .filter((entry) => entry.group?.active !== false)
+          .map((entry) => serializePublicModifierGroup(entry.group)),
+      }
+    : null;
+const serializeComboSlot = (slot) => ({
+  id: slot.id,
+  type: slot.type,
+  name: slot.name,
+  quantity: Number(slot.quantity || 1),
+  sortOrder: Number(slot.sortOrder || 0),
+  baseProductId: slot.baseProductId || null,
+  baseProduct: serializeComboSlotBaseProduct(slot.baseProduct),
+  sizeId: slot.sizeId || null,
+  size: slot.size
+    ? {
+        id: slot.size.id,
+        name: slot.size.name,
+        slug: slot.size.slug,
+        maxFlavors: Number(slot.size.maxFlavors || 1),
+      }
+    : null,
+  flavorScope: slot.flavorScope,
+  maxFlavors: slot.maxFlavors == null ? null : Number(slot.maxFlavors),
+  allowModifiers: Boolean(slot.allowModifiers),
+  modifierPricingMode: slot.modifierPricingMode,
+  products: (slot.products || []).map((entry) => ({
+    id: entry.id,
+    productId: entry.productId,
+    sizeId: entry.sizeId || null,
+    sizeName: entry.size?.name || null,
+    priceAdjustment: Number(entry.priceAdjustment || 0),
+    sortOrder: Number(entry.sortOrder || 0),
+    product: entry.product
+      ? {
+          id: entry.product.id,
+          name: entry.product.name,
+          image: safeMediaUrl(entry.product.image),
+          price: Number(entry.product.price),
+          available: entry.product.available !== false,
+          stockAvailable:
+            !entry.product.stockTracked ||
+            Number(entry.product.stockQuantity || 0) >= Number(slot.quantity || 1),
+        }
+      : null,
+  })),
+  flavorGroupRules: (slot.flavorGroupRules || []).map((entry) => ({
+    flavorGroupId: entry.flavorGroupId,
+    groupName: entry.flavorGroup?.name || null,
+    pricingRule: entry.pricingRule,
+    amount: Number(entry.amount || 0),
+  })),
+  flavorRules: (slot.flavorRules || []).map((entry) => ({
+    flavorId: entry.flavorId,
+    flavorName: entry.flavor?.name || null,
+    pricingRule: entry.pricingRule,
+    amount: Number(entry.amount || 0),
+  })),
+  modifierRules: (slot.modifierRules || []).map((entry) => ({
+    optionId: entry.optionId,
+    optionName: entry.option?.name || null,
+    groupName: entry.option?.group?.name || null,
+    pricingRule: entry.pricingRule,
+    amount: Number(entry.amount || 0),
+  })),
 });
 const serializePublicPromotion = (promotion) => {
   const serialized = serializePromotion(promotion);
@@ -829,6 +979,12 @@ const serializePublicProduct = (product) => {
     allowFlavorSplit: Boolean(product.allowFlavorSplit),
     isFlavorOption: Boolean(product.isFlavorOption),
     isCombo: Boolean(product.isCombo),
+    comboMode: product.comboSlots?.length
+      ? product.comboSlots.some((slot) => slot.type !== "FIXED_PRODUCT")
+        ? "CONFIGURABLE"
+        : "FIXED"
+      : "LEGACY_FIXED",
+    comboSlots: (product.comboSlots || []).map(serializeComboSlot),
     maxFlavors: Math.min(4, Number(product.maxFlavors || 1)),
     flavorPricingMode: product.flavorPricingMode,
     pausedUntil: product.pausedUntil,
@@ -895,6 +1051,21 @@ const serializeFlavorProduct = (product) => {
 };
 const attachProductFlavorOptions = (serialized, flavorProducts) => {
   if (!serialized.allowFlavorSplit) return serialized;
+  const centralFlavors = (serialized.availableFlavors || []).filter(
+    (flavor) => flavor.active !== false && flavor.stockAvailable !== false,
+  );
+  if (centralFlavors.length) {
+    const defaultFlavor =
+      centralFlavors.find(
+        (flavor) => flavor.sourceProductId === serialized.id,
+      ) || centralFlavors[0];
+    return {
+      ...serialized,
+      flavorCatalogMode: "CENTRAL",
+      defaultFlavorId: defaultFlavor?.id || null,
+      availableFlavors: centralFlavors,
+    };
+  }
   const baseFlavor = {
     id: serialized.id,
     name: serialized.name,
@@ -914,7 +1085,12 @@ const attachProductFlavorOptions = (serialized, flavorProducts) => {
         product.categoryId === serialized.categoryId,
     )
     .map(serializeFlavorProduct);
-  return { ...serialized, availableFlavors: [baseFlavor, ...others] };
+  return {
+    ...serialized,
+    flavorCatalogMode: "LEGACY",
+    defaultFlavorId: serialized.id,
+    availableFlavors: [baseFlavor, ...others],
+  };
 };
 const serializeTableSession = (session) => {
   if (!session) return null;
@@ -2543,12 +2719,86 @@ async function refundMercadoPagoOrder(order) {
   );
 }
 
+const comboChoiceProductSelect = {
+  id: true,
+  name: true,
+  image: true,
+  price: true,
+  available: true,
+  deletedAt: true,
+  stockTracked: true,
+  stockQuantity: true,
+  pausedUntil: true,
+  availableDays: true,
+  availableStartTime: true,
+  availableEndTime: true,
+  productSizes: { include: { size: true } },
+};
+const comboBaseProductSelect = {
+  ...comboChoiceProductSelect,
+  categoryId: true,
+  allowFlavorSplit: true,
+  maxFlavors: true,
+  flavorPricingMode: true,
+  promotion: true,
+  productFlavors: {
+    include: {
+      flavor: {
+        include: {
+          group: true,
+          sizes: { include: { size: true }, orderBy: { sortOrder: "asc" } },
+        },
+      },
+    },
+    orderBy: { sortOrder: "asc" },
+  },
+  modifierGroups: {
+    include: {
+      group: {
+        include: {
+          options: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }] },
+        },
+      },
+    },
+    orderBy: { sortOrder: "asc" },
+  },
+};
+const comboSlotInclude = {
+  size: true,
+  baseProduct: { select: comboBaseProductSelect },
+  products: {
+    include: { size: true, product: { select: comboChoiceProductSelect } },
+    orderBy: { sortOrder: "asc" },
+  },
+  flavorGroupRules: { include: { flavorGroup: true } },
+  flavorRules: {
+    include: {
+      flavor: {
+        include: { group: true, sizes: { include: { size: true } } },
+      },
+    },
+  },
+  modifierRules: { include: { option: { include: { group: true } } } },
+};
 const productInclude = {
   category: true,
   subcategory: true,
   promotion: true,
   recipeItems: { include: { inventoryItem: true } },
-  productFlavors: { include: { flavor: true }, orderBy: { sortOrder: "asc" } },
+  productFlavors: {
+    include: {
+      flavor: {
+        include: {
+          group: true,
+          sizes: {
+            include: { size: true },
+            orderBy: { sortOrder: "asc" },
+          },
+        },
+      },
+    },
+    orderBy: { sortOrder: "asc" },
+  },
   productSizes: { include: { size: true }, orderBy: { sortOrder: "asc" } },
   modifierGroups: {
     include: {
@@ -2586,6 +2836,10 @@ const productInclude = {
     },
     orderBy: { sortOrder: "asc" },
   },
+  comboSlots: {
+    include: comboSlotInclude,
+    orderBy: { sortOrder: "asc" },
+  },
 };
 const orderInclude = {
   deliveryArea: true,
@@ -2610,9 +2864,15 @@ const orderInclude = {
   items: {
     include: {
       product: { include: productInclude },
+      size: true,
       flavors: {
         include: {
-          flavor: true,
+          flavor: {
+            include: {
+              sizes: { include: { size: true }, orderBy: { sortOrder: "asc" } },
+              group: true,
+            },
+          },
           product: {
             include: {
               productSizes: { include: { size: true } },
@@ -2689,6 +2949,10 @@ app.get("/api/subcategories", async (req, res) => {
 app.get("/api/flavors", async (req, res) => {
   const rows = await prisma.flavor.findMany({
     where: { active: true },
+    include: {
+      group: true,
+      sizes: { include: { size: true }, orderBy: { sortOrder: "asc" } },
+    },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
   res.json(rows.map(serializePublicFlavor));
@@ -2751,6 +3015,66 @@ app.get("/api/products", async (req, res) => {
         ),
       ),
   );
+});
+
+app.post("/api/combos/:id/quote", trackingRateLimit, async (req, res) => {
+  const quantity = boundedInteger(req.body?.quantity ?? 1, 1, 20);
+  if (quantity == null)
+    return res.status(400).json({ message: "Quantidade do combo inválida." });
+  const combo = await prisma.product.findFirst({
+    where: {
+      id: req.params.id,
+      isCombo: true,
+      available: true,
+      deletedAt: null,
+      category: { active: true },
+    },
+    include: productInclude,
+  });
+  if (!combo)
+    return res.status(404).json({ message: "Combo não encontrado." });
+  const settings = await getSettings();
+  const timezone = settings.timezone || "America/Maceio";
+  const now = new Date();
+  if (!isProductAvailableAt(combo, now, timezone))
+    return res.status(409).json({
+      code: "PRODUCT_UNAVAILABLE",
+      message: "Este combo não está disponível no momento.",
+    });
+  try {
+    const quote = resolveComboSelection(
+      combo,
+      req.body?.comboSelections,
+      now,
+      timezone,
+      quantity,
+    );
+    const basePrice = effectiveProductPrice(combo);
+    res.json({
+      comboId: combo.id,
+      quantity,
+      basePrice,
+      adjustment: quote.adjustment,
+      unitPrice: roundMoney(Math.max(0, basePrice + quote.adjustment)),
+      comboItems: quote.snapshots,
+      comboSelections: quote.snapshots.map((item) => ({
+        slotId: item.slotId,
+        choiceId: item.choiceId || null,
+        productId: item.productId,
+        sizeId: item.sizeId || null,
+        flavorIds: (item.flavors || []).map((flavor) => flavor.flavorId),
+        optionIds: (item.options || []).map((option) => option.optionId),
+      })),
+    });
+  } catch (error) {
+    if (error instanceof ComboConfigurationError)
+      return res.status(error.httpStatus).json({
+        code: error.code,
+        message: error.message,
+        details: error.details,
+      });
+    throw error;
+  }
 });
 
 app.get("/api/promotions", async (req, res) => {
@@ -3241,13 +3565,94 @@ app.get("/api/me/orders/:id/reorder", auth, async (req, res) => {
     return res.status(404).json({ message: "Pedido não encontrado." });
   const items = [];
   const unavailable = [];
+  const reorderSettings = await getSettings();
+  const reorderTimezone = reorderSettings.timezone || "America/Maceio";
+  const reorderDate = new Date();
   for (const item of order.items) {
     if (!item.product?.available || item.product.deletedAt) {
       unavailable.push(item.name);
       continue;
     }
+    if (item.product.isCombo) {
+      if (!comboIsAvailableAt(item.product, reorderDate, reorderTimezone)) {
+        unavailable.push(item.name);
+        continue;
+      }
+      if (item.product.comboSlots?.length) {
+        const previous = Array.isArray(item.comboItems) ? item.comboItems : [];
+        const selections = previous
+          .filter((entry) => entry?.slotId)
+          .map((entry) => ({
+            slotId: entry.slotId,
+            choiceId: entry.choiceId || null,
+            productId: entry.productId,
+            sizeId: entry.sizeId || null,
+            flavorIds: (entry.flavors || []).map((flavor) => flavor.flavorId),
+            optionIds: (entry.options || []).map((option) => option.optionId),
+          }));
+        try {
+          const quoted = resolveComboSelection(
+            item.product,
+            selections,
+            reorderDate,
+            reorderTimezone,
+            item.quantity,
+          );
+          items.push({
+            cartKey: `reorder-${Date.now()}-${item.id}`,
+            productId: item.product.id,
+            name: item.product.name,
+            price: roundMoney(
+              Math.max(
+                0,
+                effectiveProductPrice(item.product) + quoted.adjustment,
+              ),
+            ),
+            image: item.product.image,
+            quantity: item.quantity,
+            notes: item.notes || "",
+            sizeId: null,
+            sizeName: null,
+            flavorIds: [],
+            flavors: [],
+            optionIds: [],
+            options: [],
+            comboSelections: selections,
+            comboItems: quoted.snapshots,
+          });
+          continue;
+        } catch (error) {
+          if (error instanceof ComboConfigurationError) {
+            unavailable.push(item.name);
+            continue;
+          }
+          throw error;
+        }
+      }
+      items.push({
+        cartKey: `reorder-${Date.now()}-${item.id}`,
+        productId: item.product.id,
+        name: item.product.name,
+        price: effectiveProductPrice(item.product),
+        image: item.product.image,
+        quantity: item.quantity,
+        notes: item.notes || "",
+        sizeId: null,
+        sizeName: null,
+        flavorIds: [],
+        flavors: [],
+        optionIds: [],
+        options: [],
+        comboSelections: [],
+        comboItems: snapshotComboItems(item.product),
+      });
+      continue;
+    }
+    const usesCentralFlavors =
+      item.flavors.length > 0 &&
+      item.flavors.every((entry) => Boolean(entry.flavor));
     const availableFlavors = item.flavors
-      .map((entry) => entry.product || entry.flavor)
+      .map((entry) => entry.flavor || entry.product)
       .filter((f) => f?.available !== false && f?.active !== false);
     if (
       item.flavors.length &&
@@ -3257,34 +3662,83 @@ app.get("/api/me/orders/:id/reorder", auth, async (req, res) => {
       continue;
     }
     const savedSize = (item.product.productSizes || []).find(
-      (entry) => entry.size?.name === item.sizeName,
+      (entry) =>
+        (item.sizeId && entry.sizeId === item.sizeId) ||
+        (!item.sizeId && entry.size?.name === item.sizeName),
     );
     const currentBasePrice = savedSize
-      ? Number(savedSize.price)
+      ? effectiveProductSizePrice(item.product, savedSize)
       : effectiveProductPrice(item.product);
-    const reorderFlavorPrices = availableFlavors.map((f) => {
-      const same = savedSize
-        ? (f.productSizes || []).find(
-            (entry) => entry.size?.slug === savedSize.size.slug,
-          )
-        : null;
-      return same ? Number(same.price) : effectiveProductPrice(f);
-    });
-    const currentPrice = availableFlavors.length
-      ? item.product.flavorPricingMode === "SUM"
+    let currentPrice = currentBasePrice;
+    let reorderFlavorPrices = new Map();
+    if (availableFlavors.length && usesCentralFlavors) {
+      const linkedIds = new Set(
+        (item.product.productFlavors || []).map((entry) => entry.flavorId),
+      );
+      if (
+        !savedSize ||
+        availableFlavors.some((flavor) => !linkedIds.has(flavor.id))
+      ) {
+        unavailable.push(item.name);
+        continue;
+      }
+      try {
+        const quoted = quoteFlavorSelection({
+          basePrice: effectiveProductSizePrice(item.product, savedSize),
+          sizeId: savedSize.sizeId,
+          flavorIds: availableFlavors.map((flavor) => flavor.id),
+          flavors: availableFlavors,
+          maxFlavors: Math.min(
+            4,
+            Math.max(1, Number(item.product.maxFlavors || 1)),
+            Math.max(1, Number(savedSize.size?.maxFlavors || 4)),
+          ),
+          allowFlavorSplit: item.product.allowFlavorSplit,
+          pricingMode: item.product.flavorPricingMode,
+        });
+        currentPrice = quoted.price;
+        reorderFlavorPrices = new Map(
+          quoted.breakdown.map((entry) => [
+            entry.flavorId,
+            entry.effectivePrice,
+          ]),
+        );
+      } catch (error) {
+        if (error instanceof FlavorPricingError) {
+          unavailable.push(item.name);
+          continue;
+        }
+        throw error;
+      }
+    } else if (availableFlavors.length) {
+      const prices = availableFlavors.map((flavor) => {
+        const same = savedSize
+          ? (flavor.productSizes || []).find(
+              (entry) => entry.size?.slug === savedSize.size.slug,
+            )
+          : null;
+        const price = same
+          ? effectiveProductSizePrice(flavor, same)
+          : effectiveProductPrice(flavor);
+        reorderFlavorPrices.set(flavor.id, price);
+        return price;
+      });
+      currentPrice = ["SUM", "AVERAGE", "PROPORTIONAL"].includes(
+        item.product.flavorPricingMode,
+      )
         ? roundMoney(
-            reorderFlavorPrices.reduce((sum, value) => sum + value, 0) /
-              Math.max(1, reorderFlavorPrices.length),
+            prices.reduce((sum, value) => sum + value, 0) /
+              Math.max(1, prices.length),
           )
-        : Math.max(currentBasePrice, ...reorderFlavorPrices)
-      : currentBasePrice;
+        : Math.max(currentBasePrice, ...prices);
+    }
     const currentOptions = (item.options || [])
       .filter((entry) => entry.option?.active)
       .map((entry) => ({
         id: entry.option.id,
         groupName: entry.groupName,
         name: entry.option.name,
-        price: Number(entry.option.price),
+        price: effectiveSimplePrice(entry.option),
         image: entry.option.image,
       }));
     const optionsTotal = currentOptions.reduce(
@@ -3307,7 +3761,7 @@ app.get("/api/me/orders/:id/reorder", auth, async (req, res) => {
       flavors: availableFlavors.map((f) => ({
         id: f.id,
         name: f.name,
-        price: Number(f.price),
+        price: Number(reorderFlavorPrices.get(f.id) ?? f.price),
         image: f.image,
       })),
       optionIds: currentOptions.map((o) => o.id),
@@ -3617,6 +4071,22 @@ app.post(
     include: { productSizes: { include: { size: true } }, promotion: true },
   });
   const flavorMap = new Map(flavorProducts.map((f) => [f.id, f]));
+  const centralFlavors = await prisma.flavor.findMany({
+    where: { id: { in: allFlavorIds } },
+    include: {
+      group: true,
+      sizes: { include: { size: true }, orderBy: { sortOrder: "asc" } },
+      sourceProduct: {
+        include: {
+          productSizes: { include: { size: true } },
+          promotion: true,
+        },
+      },
+    },
+  });
+  const centralFlavorMap = new Map(
+    centralFlavors.map((flavor) => [flavor.id, flavor]),
+  );
   const allOptionIds = [
     ...new Set(
       items
@@ -3654,6 +4124,7 @@ app.post(
         code: "OUT_OF_STOCK",
         message: `${base.name} não possui estoque suficiente. Restam ${Number(base.stockQuantity || 0)} unidade(s).`,
       });
+    let resolvedComboSelection = null;
     if (base.isCombo) {
       const invalidCustomization =
         cleanText(item?.sizeId, 80) ||
@@ -3663,14 +4134,40 @@ app.post(
         return res.status(400).json({
           message: `${base.name} já possui itens definidos e não aceita tamanhos, sabores ou adicionais avulsos.`,
         });
-      const unavailableComponent = (base.comboItems || []).find(
-        (entry) => !comboComponentIsAvailable(entry, availabilityTarget, timezone, quantity),
-      );
-      if (unavailableComponent || base.comboItems.length < 2)
-        return res.status(409).json({
-          code: "OUT_OF_STOCK",
-          message: `${base.name} está temporariamente indisponível porque um de seus itens acabou ou foi pausado.`,
-        });
+      if (base.comboSlots?.length) {
+        try {
+          resolvedComboSelection = resolveComboSelection(
+            base,
+            item?.comboSelections,
+            availabilityTarget,
+            timezone,
+            quantity,
+          );
+        } catch (error) {
+          if (error instanceof ComboConfigurationError)
+            return res.status(error.httpStatus).json({
+              code: error.code,
+              message: error.message,
+              details: error.details,
+            });
+          throw error;
+        }
+      } else {
+        const unavailableComponent = (base.comboItems || []).find(
+          (entry) =>
+            !comboComponentIsAvailable(
+              entry,
+              availabilityTarget,
+              timezone,
+              quantity,
+            ),
+        );
+        if (unavailableComponent || base.comboItems.length < 2)
+          return res.status(409).json({
+            code: "OUT_OF_STOCK",
+            message: `${base.name} está temporariamente indisponível porque um de seus itens acabou ou foi pausado.`,
+          });
+      }
     }
     const requestedSizeId = cleanText(item?.sizeId, 80);
     const availableSizes = (base.productSizes || []).filter(
@@ -3698,77 +4195,176 @@ app.post(
     ];
     let flavorPrice = basePrice;
     let chosenFlavors = [];
+    let flavorSnapshots = [];
+    let flavorPriceBreakdown = null;
     if (base.allowFlavorSplit) {
       if (!flavorIds.length)
         return res
           .status(400)
           .json({ message: `Escolha pelo menos um sabor para ${base.name}.` });
-      if (!flavorIds.includes(base.id))
-        return res.status(400).json({
-          message: `O sabor base ${base.name} deve permanecer selecionado.`,
-        });
-      if (
-        flavorIds.length >
-        Math.min(4, Math.max(1, Number(base.maxFlavors || 1)))
-      )
-        return res.status(400).json({
-          message: `${base.name} permite no máximo ${base.maxFlavors} sabores.`,
-        });
-      if (flavorIds.some((id) => !flavorMap.has(id)))
-        return res.status(400).json({
-          message: `Um dos sabores escolhidos não está disponível para ${base.name}.`,
-        });
-      chosenFlavors = flavorIds.map((id) => flavorMap.get(id));
-      if (
-        chosenFlavors.some(
-          (flavor) => flavor.id !== base.id && !flavor.isFlavorOption,
-        )
-      )
-        return res.status(400).json({
-          message: `Um dos produtos escolhidos não está habilitado como sabor.`,
-        });
-      if (chosenFlavors.some((flavor) => flavor.categoryId !== base.categoryId))
-        return res.status(400).json({
-          message: `Um dos sabores escolhidos não pertence à categoria de ${base.name}.`,
-        });
-      const unavailableAtTarget = chosenFlavors.find(
-        (flavor) => !isProductAvailableAt(flavor, availabilityTarget, timezone),
+      const centralLinks = (base.productFlavors || []).filter(
+        (entry) => entry.flavor,
       );
-      if (unavailableAtTarget)
-        return res.status(409).json({
-          code: "PRODUCT_UNAVAILABLE",
-          message: `O sabor ${unavailableAtTarget.name} não está disponível no horário escolhido.`,
-        });
-      const unavailableFlavor = chosenFlavors.find(
-        (flavor) =>
-          flavor.stockTracked && Number(flavor.stockQuantity || 0) < quantity,
-      );
-      if (unavailableFlavor)
-        return res.status(409).json({
-          code: "OUT_OF_STOCK",
-          message: `O sabor ${unavailableFlavor.name} não possui estoque suficiente.`,
-        });
-      const chosenPrices = chosenFlavors.map((flavor) => {
-        if (flavor.id === base.id) return basePrice;
-        if (chosenSize) {
-          const sameSize = (flavor.productSizes || []).find(
-            (entry) =>
-              entry.size?.slug === chosenSize.size.slug &&
-              entry.size?.active !== false,
-          );
-          if (sameSize) {
-            return effectiveProductSizePrice(flavor, sameSize);
-          }
+      if (centralLinks.length) {
+        const allowedFlavorIds = new Set(
+          centralLinks.map((entry) => entry.flavorId),
+        );
+        if (flavorIds.some((id) => !allowedFlavorIds.has(id)))
+          return res.status(400).json({
+            code: "FLAVOR_NOT_ALLOWED",
+            message: `Um dos sabores escolhidos não está disponível para ${base.name}.`,
+          });
+        if (flavorIds.some((id) => !centralFlavorMap.has(id)))
+          return res.status(400).json({
+            code: "FLAVOR_NOT_FOUND",
+            message: `Um dos sabores escolhidos não existe no catálogo.`,
+          });
+        chosenFlavors = flavorIds.map((id) => centralFlavorMap.get(id));
+        const unavailableFlavor = chosenFlavors.find(
+          (flavor) =>
+            flavor.stockTracked && Number(flavor.stockQuantity || 0) < quantity,
+        );
+        if (unavailableFlavor)
+          return res.status(409).json({
+            code: "OUT_OF_STOCK",
+            message: `O sabor ${unavailableFlavor.name} não possui estoque suficiente.`,
+          });
+        const maxFlavors = Math.min(
+          4,
+          Math.max(1, Number(base.maxFlavors || 1)),
+          Math.max(1, Number(chosenSize?.size?.maxFlavors || 4)),
+        );
+        let flavorQuote;
+        try {
+          flavorQuote = quoteFlavorSelection({
+            basePrice,
+            sizeId: chosenSize?.sizeId,
+            flavorIds,
+            flavors: chosenFlavors,
+            maxFlavors,
+            allowFlavorSplit: base.allowFlavorSplit,
+            pricingMode: base.flavorPricingMode,
+          });
+        } catch (error) {
+          if (error instanceof FlavorPricingError)
+            return res.status(error.httpStatus).json({
+              code: error.code,
+              message: error.message,
+              details: error.details,
+            });
+          throw error;
         }
-        return effectiveProductPrice(flavor);
-      });
-      flavorPrice =
-        base.flavorPricingMode === "SUM"
+        flavorPrice = flavorQuote.price;
+        flavorPriceBreakdown = {
+          version: 1,
+          catalog: "CENTRAL",
+          ...flavorQuote,
+        };
+        const quotedById = new Map(
+          flavorQuote.breakdown.map((entry) => [entry.flavorId, entry]),
+        );
+        flavorSnapshots = chosenFlavors.map((flavor) => ({
+          flavorId: flavor.id,
+          productId: flavor.sourceProductId || null,
+          name: flavor.name,
+          unitPrice: quotedById.get(flavor.id)?.effectivePrice ?? basePrice,
+        }));
+      } else {
+        // Compatibilidade temporária com instalações que ainda não aplicaram a
+        // migração expansiva do catálogo central.
+        if (!flavorIds.includes(base.id))
+          return res.status(400).json({
+            message: `O sabor base ${base.name} deve permanecer selecionado.`,
+          });
+        if (
+          flavorIds.length >
+          Math.min(4, Math.max(1, Number(base.maxFlavors || 1)))
+        )
+          return res.status(400).json({
+            message: `${base.name} permite no máximo ${base.maxFlavors} sabores.`,
+          });
+        if (flavorIds.some((id) => !flavorMap.has(id)))
+          return res.status(400).json({
+            message: `Um dos sabores escolhidos não está disponível para ${base.name}.`,
+          });
+        chosenFlavors = flavorIds.map((id) => flavorMap.get(id));
+        if (
+          chosenFlavors.some(
+            (flavor) => flavor.id !== base.id && !flavor.isFlavorOption,
+          )
+        )
+          return res.status(400).json({
+            message: `Um dos produtos escolhidos não está habilitado como sabor.`,
+          });
+        if (
+          chosenFlavors.some((flavor) => flavor.categoryId !== base.categoryId)
+        )
+          return res.status(400).json({
+            message: `Um dos sabores escolhidos não pertence à categoria de ${base.name}.`,
+          });
+        const unavailableAtTarget = chosenFlavors.find(
+          (flavor) =>
+            !isProductAvailableAt(flavor, availabilityTarget, timezone),
+        );
+        if (unavailableAtTarget)
+          return res.status(409).json({
+            code: "PRODUCT_UNAVAILABLE",
+            message: `O sabor ${unavailableAtTarget.name} não está disponível no horário escolhido.`,
+          });
+        const unavailableFlavor = chosenFlavors.find(
+          (flavor) =>
+            flavor.stockTracked && Number(flavor.stockQuantity || 0) < quantity,
+        );
+        if (unavailableFlavor)
+          return res.status(409).json({
+            code: "OUT_OF_STOCK",
+            message: `O sabor ${unavailableFlavor.name} não possui estoque suficiente.`,
+          });
+        const chosenPrices = chosenFlavors.map((flavor) => {
+          if (flavor.id === base.id) return basePrice;
+          if (chosenSize) {
+            const sameSize = (flavor.productSizes || []).find(
+              (entry) =>
+                entry.size?.slug === chosenSize.size.slug &&
+                entry.size?.active !== false,
+            );
+            if (sameSize)
+              return effectiveProductSizePrice(flavor, sameSize);
+          }
+          return effectiveProductPrice(flavor);
+        });
+        flavorPrice = ["SUM", "AVERAGE", "PROPORTIONAL"].includes(
+          base.flavorPricingMode,
+        )
           ? roundMoney(
               chosenPrices.reduce((sum, value) => sum + value, 0) /
                 Math.max(1, chosenPrices.length),
             )
           : Math.max(basePrice, ...chosenPrices);
+        flavorPriceBreakdown = {
+          version: 1,
+          catalog: "LEGACY_PRODUCT",
+          basePrice,
+          pricingMode: base.flavorPricingMode,
+          flavorIds,
+          flavorPrices: chosenPrices,
+          price: flavorPrice,
+        };
+        flavorSnapshots = chosenFlavors.map((flavor) => ({
+          productId: flavor.id,
+          name: flavor.name,
+          unitPrice: chosenSize
+            ? (() => {
+                const matchingSize = (flavor.productSizes || []).find(
+                  (entry) => entry.size?.slug === chosenSize.size.slug,
+                );
+                return matchingSize
+                  ? effectiveProductSizePrice(flavor, matchingSize)
+                  : effectiveProductPrice(flavor);
+              })()
+            : effectiveProductPrice(flavor),
+        }));
+      }
     }
     const optionIds = [
       ...new Set(
@@ -3836,25 +4432,35 @@ app.post(
       productId: base.id,
       name: displayName,
       quantity,
-      unitPrice: roundMoney(flavorPrice + optionsTotal),
+      unitPrice: roundMoney(
+        Math.max(
+          0,
+          flavorPrice +
+            optionsTotal +
+            Number(resolvedComboSelection?.adjustment || 0),
+        ),
+      ),
       notes: itemNote,
+      sizeId: chosenSize?.sizeId || null,
       sizeName: chosenSize?.size?.name || null,
-      comboItems: snapshotComboItems(base),
+      comboItems:
+        resolvedComboSelection?.snapshots || snapshotComboItems(base),
       sizePrice: chosenSize ? Number(chosenSize.price) : null,
-      flavors: chosenFlavors.map((f) => ({
-        productId: f.id,
-        name: f.name,
-        unitPrice: chosenSize
-          ? (() => {
-              const matchingSize = (f.productSizes || []).find(
-                (entry) => entry.size?.slug === chosenSize.size.slug,
-              );
-              return matchingSize
-                ? effectiveProductSizePrice(f, matchingSize)
-                : effectiveProductPrice(f);
-            })()
-          : effectiveProductPrice(f),
-      })),
+      priceBreakdown: resolvedComboSelection
+        ? {
+            version: 2,
+            catalog: "CONFIGURABLE_COMBO",
+            basePrice,
+            adjustment: resolvedComboSelection.adjustment,
+            price: roundMoney(
+              Math.max(
+                0,
+                basePrice + Number(resolvedComboSelection.adjustment || 0),
+              ),
+            ),
+          }
+        : flavorPriceBreakdown,
+      flavors: flavorSnapshots,
       options: chosenOptions.map((o) => ({
         optionId: o.id,
         groupName: o.group.name,
@@ -3868,14 +4474,45 @@ app.post(
   // mesmo produto/adicional. Confere a necessidade total do carrinho usando
   // exatamente a mesma agregação aplicada na baixa de estoque.
   const aggregateStockNeeds = collectOrderStockNeeds(normalizedItems);
+  const [stockProductRows, stockFlavorRows, stockOptionRows] =
+    await Promise.all([
+      prisma.product.findMany({
+        where: { id: { in: [...aggregateStockNeeds.products.keys()] } },
+        select: {
+          id: true,
+          name: true,
+          stockTracked: true,
+          stockQuantity: true,
+        },
+      }),
+      prisma.flavor.findMany({
+        where: { id: { in: [...aggregateStockNeeds.flavors.keys()] } },
+        select: {
+          id: true,
+          name: true,
+          stockTracked: true,
+          stockQuantity: true,
+        },
+      }),
+      prisma.modifierOption.findMany({
+        where: { id: { in: [...aggregateStockNeeds.options.keys()] } },
+        select: {
+          id: true,
+          name: true,
+          stockTracked: true,
+          stockQuantity: true,
+        },
+      }),
+    ]);
   const stockProducts = new Map(
-    products.map((product) => [product.id, product]),
+    stockProductRows.map((product) => [product.id, product]),
   );
-  for (const product of products)
-    for (const entry of product.comboItems || [])
-      if (entry.product) stockProducts.set(entry.product.id, entry.product);
-  for (const product of flavorProducts)
-    stockProducts.set(product.id, product);
+  const stockFlavors = new Map(
+    stockFlavorRows.map((flavor) => [flavor.id, flavor]),
+  );
+  const stockOptions = new Map(
+    stockOptionRows.map((option) => [option.id, option]),
+  );
   for (const [productId, needed] of aggregateStockNeeds.products) {
     const product = stockProducts.get(productId);
     if (product?.stockTracked && Number(product.stockQuantity || 0) < needed)
@@ -3884,8 +4521,16 @@ app.post(
         message: `${product.name} não possui estoque suficiente para todos os itens do carrinho.`,
       });
   }
+  for (const [flavorId, needed] of aggregateStockNeeds.flavors) {
+    const flavor = stockFlavors.get(flavorId);
+    if (flavor?.stockTracked && Number(flavor.stockQuantity || 0) < needed)
+      return res.status(409).json({
+        code: "OUT_OF_STOCK",
+        message: `O sabor ${flavor.name} não possui estoque suficiente para todos os itens do carrinho.`,
+      });
+  }
   for (const [optionId, needed] of aggregateStockNeeds.options) {
-    const option = optionMap.get(optionId);
+    const option = stockOptions.get(optionId);
     if (option?.stockTracked && Number(option.stockQuantity || 0) < needed)
       return res.status(409).json({
         code: "OUT_OF_STOCK",
@@ -4189,9 +4834,11 @@ app.post(
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             notes: item.notes,
+            sizeId: item.sizeId,
             sizeName: item.sizeName,
             comboItems: item.comboItems,
             sizePrice: item.sizePrice,
+            priceBreakdown: item.priceBreakdown,
             flavors: item.flavors.length ? { create: item.flavors } : undefined,
             options: item.options.length ? { create: item.options } : undefined,
           })),
@@ -4774,10 +5421,18 @@ app.use("/api/admin", auth, admin, adminRateLimit, (req, res, next) => {
   } else if (needed === "__CATEGORY_READ__") {
     if (
       req.adminPermissions == null ||
-      ["categories", "products"].some((key) => hasAdminPermission(req, key))
+      ["categories", "products", "alterations"].some((key) =>
+        hasAdminPermission(req, key),
+      )
     )
       return next();
   } else if (needed === "__ALTERATION_READ__") {
+    if (
+      req.adminPermissions == null ||
+      ["alterations", "products"].some((key) => hasAdminPermission(req, key))
+    )
+      return next();
+  } else if (needed === "__FLAVOR_WRITE__") {
     if (
       req.adminPermissions == null ||
       ["alterations", "products"].some((key) => hasAdminPermission(req, key))
@@ -5227,10 +5882,14 @@ app.post("/api/admin/table-sessions/:id/close", auth, admin, async (req, res) =>
       });
     paymentMethodLabel = TABLE_PAYMENT_METHOD_LABELS[paymentMethod] || null;
   }
+  const submittedAmountPaid = req.body?.amountPaid;
   const rawAmountPaid =
-    typeof req.body?.amountPaid === "string"
-      ? Number(req.body.amountPaid.replace(/[^0-9,.-]/g, "").replace(",", "."))
-      : Number(req.body?.amountPaid);
+    submittedAmountPaid == null ||
+    (typeof submittedAmountPaid === "string" && submittedAmountPaid.trim() === "")
+      ? undefined
+      : typeof submittedAmountPaid === "string"
+        ? Number(submittedAmountPaid.replace(/[^0-9,.-]/g, "").replace(",", "."))
+        : Number(submittedAmountPaid);
   const row = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('master-pizza-table-session'), hashtext(${req.params.id}))`;
     const current = await tx.tableSession.findFirst({
@@ -6339,152 +6998,373 @@ app.delete("/api/admin/subcategories/:id", auth, admin, async (req, res) => {
   res.status(204).end();
 });
 
+const flavorAdminInclude = {
+  group: { include: { category: true } },
+  sourceProduct: {
+    select: { id: true, name: true, slug: true, available: true, deletedAt: true },
+  },
+  sizes: {
+    include: { size: true },
+    orderBy: [{ sortOrder: "asc" }, { size: { sortOrder: "asc" } }],
+  },
+  _count: { select: { products: true, orderItems: true } },
+};
+const cleanFlavorIngredients = (raw) =>
+  (Array.isArray(raw) ? raw : String(raw || "").split(","))
+    .map((value) => cleanText(value, 80))
+    .filter(Boolean)
+    .filter((value, index, rows) => rows.indexOf(value) === index)
+    .slice(0, 40);
+function normalizeFlavorSizes(raw) {
+  if (!Array.isArray(raw)) return null;
+  const rows = raw.map((entry, index) => ({
+    sizeId: cleanText(entry?.sizeId, 80),
+    pricingMode: entry?.pricingMode === "SURCHARGE" ? "SURCHARGE" : "FIXED",
+    price: Number(entry?.price),
+    available:
+      entry?.available === undefined ? true : booleanValue(entry.available),
+    sortOrder: boundedInteger(entry?.sortOrder ?? index),
+  }));
+  const ids = rows.map((row) => row.sizeId);
+  if (
+    rows.some(
+      (row) =>
+        !row.sizeId ||
+        !Number.isFinite(row.price) ||
+        row.price < 0 ||
+        row.sortOrder == null,
+    ) ||
+    new Set(ids).size !== ids.length
+  )
+    return undefined;
+  return rows;
+}
+async function validateFlavorRelations(tx, { groupId, sizes }) {
+  if (groupId) {
+    const group = await tx.flavorGroup.findFirst({
+      where: { id: groupId, active: true },
+    });
+    if (!group)
+      throw Object.assign(new Error("O grupo de sabores selecionado não existe."), {
+        code: "INVALID_FLAVOR_GROUP",
+      });
+  }
+  if (Array.isArray(sizes)) {
+    const ids = sizes.map((row) => row.sizeId);
+    const count = await tx.pizzaSize.count({ where: { id: { in: ids } } });
+    if (count !== ids.length)
+      throw Object.assign(new Error("A lista contém um tamanho inválido."), {
+        code: "INVALID_FLAVOR_SIZE",
+      });
+  }
+}
+async function syncFlavorSizes(tx, flavorId, sizes) {
+  await tx.flavorSize.deleteMany({ where: { flavorId } });
+  if (sizes.length)
+    await tx.flavorSize.createMany({
+      data: sizes.map((row) => ({ ...row, flavorId })),
+    });
+}
+
+app.get("/api/admin/flavor-groups", auth, admin, async (req, res) => {
+  const rows = await prisma.flavorGroup.findMany({
+    include: { category: true, _count: { select: { flavors: true } } },
+    orderBy: [
+      { category: { sortOrder: "asc" } },
+      { sortOrder: "asc" },
+      { name: "asc" },
+    ],
+  });
+  res.json(
+    rows.map((row) => ({ ...row, flavorsCount: row._count.flavors })),
+  );
+});
+app.post("/api/admin/flavor-groups", auth, admin, async (req, res) => {
+  const name = cleanText(req.body?.name, 80),
+    slug = cleanText(req.body?.slug, 80).toLowerCase(),
+    description = cleanText(req.body?.description, 240) || null,
+    categoryId = cleanText(req.body?.categoryId, 80),
+    sortOrder = boundedInteger(req.body?.sortOrder ?? 0);
+  if (!name || !validSlug(slug) || !categoryId || sortOrder == null)
+    return res.status(400).json({ message: "Preencha corretamente o grupo de sabores." });
+  const category = await prisma.category.findUnique({ where: { id: categoryId } });
+  if (!category)
+    return res.status(400).json({ message: "A categoria selecionada não existe." });
+  const duplicate = await prisma.flavorGroup.findFirst({
+    where: {
+      categoryId,
+      OR: [{ slug }, { name: { equals: name, mode: "insensitive" } }],
+    },
+  });
+  if (duplicate)
+    return res.status(409).json({ message: "Já existe um grupo com esse nome ou identificador." });
+  res.status(201).json(
+    await prisma.flavorGroup.create({
+      data: {
+        name,
+        slug,
+        description,
+        categoryId,
+        sortOrder,
+        active: req.body?.active === undefined ? true : booleanValue(req.body.active),
+      },
+      include: { category: true },
+    }),
+  );
+});
+app.patch("/api/admin/flavor-groups/:id", auth, admin, async (req, res) => {
+  const current = await prisma.flavorGroup.findUnique({ where: { id: req.params.id } });
+  if (!current)
+    return res.status(404).json({ message: "Grupo de sabores não encontrado." });
+  const data = {};
+  if (req.body?.name !== undefined) data.name = cleanText(req.body.name, 80);
+  if (req.body?.slug !== undefined) data.slug = cleanText(req.body.slug, 80).toLowerCase();
+  if (req.body?.description !== undefined)
+    data.description = cleanText(req.body.description, 240) || null;
+  if (req.body?.categoryId !== undefined)
+    data.categoryId = cleanText(req.body.categoryId, 80);
+  if (req.body?.active !== undefined) data.active = booleanValue(req.body.active);
+  if (req.body?.sortOrder !== undefined) data.sortOrder = boundedInteger(req.body.sortOrder);
+  if (
+    (data.name !== undefined && !data.name) ||
+    (data.slug !== undefined && !validSlug(data.slug)) ||
+    (data.categoryId !== undefined && !data.categoryId) ||
+    data.sortOrder === null
+  )
+    return res.status(400).json({ message: "Dados inválidos para o grupo de sabores." });
+  const categoryId = data.categoryId || current.categoryId;
+  if (data.categoryId && !(await prisma.category.findUnique({ where: { id: categoryId } })))
+    return res.status(400).json({ message: "A categoria selecionada não existe." });
+  if (data.name !== undefined || data.slug !== undefined || data.categoryId !== undefined) {
+    const duplicate = await prisma.flavorGroup.findFirst({
+      where: {
+        id: { not: current.id },
+        categoryId,
+        OR: [
+          { slug: data.slug || current.slug },
+          { name: { equals: data.name || current.name, mode: "insensitive" } },
+        ],
+      },
+    });
+    if (duplicate)
+      return res.status(409).json({ message: "Já existe um grupo com esse nome ou identificador." });
+  }
+  res.json(
+    await prisma.flavorGroup.update({
+      where: { id: current.id },
+      data,
+      include: { category: true },
+    }),
+  );
+});
+app.delete("/api/admin/flavor-groups/:id", auth, admin, async (req, res) => {
+  const used = await prisma.flavor.count({ where: { groupId: req.params.id } });
+  if (used) {
+    const group = await prisma.flavorGroup.update({
+      where: { id: req.params.id },
+      data: { active: false },
+      include: { category: true },
+    });
+    return res.json({ ok: true, archived: true, group });
+  }
+  await prisma.flavorGroup.delete({ where: { id: req.params.id } });
+  res.status(204).end();
+});
+
 app.get("/api/admin/flavors", auth, admin, async (req, res) => {
   const rows = await prisma.flavor.findMany({
-    include: { _count: { select: { products: true } } },
+    include: flavorAdminInclude,
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
   res.json(
-    rows.map((f) => ({
-      ...serializeFlavor(f),
-      productsCount: f._count.products,
+    rows.map((row) => ({
+      ...serializeFlavor(row),
+      productsCount: row._count.products,
+      ordersCount: row._count.orderItems,
     })),
   );
 });
 app.post("/api/admin/flavors", auth, admin, async (req, res) => {
-  const name = cleanText(req.body?.name, 100);
-  const price = Number(req.body?.price);
-  const image = safeMediaUrl(req.body?.image) || null;
-  const promoPrice =
-    req.body?.promoPrice === "" || req.body?.promoPrice == null
-      ? null
-      : Number(req.body.promoPrice);
-  const promoStartAt = optionalDate(req.body?.promoStartAt);
-  const promoEndAt = optionalDate(req.body?.promoEndAt);
-  const sortOrder = boundedInteger(req.body?.sortOrder ?? 0);
+  const name = cleanText(req.body?.name, 100),
+    slug = cleanText(req.body?.slug, 100).toLowerCase(),
+    description = cleanText(req.body?.description, 500),
+    groupId = cleanText(req.body?.groupId, 80) || null,
+    image = safeMediaUrl(req.body?.image) || null,
+    price = Number(req.body?.price),
+    promoPrice =
+      req.body?.promoPrice === "" || req.body?.promoPrice == null
+        ? null
+        : Number(req.body.promoPrice),
+    promoStartAt = optionalDate(req.body?.promoStartAt),
+    promoEndAt = optionalDate(req.body?.promoEndAt),
+    sortOrder = boundedInteger(req.body?.sortOrder ?? 0),
+    stockQuantity = Number(req.body?.stockQuantity ?? 0),
+    stockLowThreshold = Number(req.body?.stockLowThreshold ?? 5),
+    sizes = normalizeFlavorSizes(req.body?.sizes ?? req.body?.sizePrices ?? []);
   if (
     !name ||
+    !validSlug(slug) ||
+    !description ||
+    !groupId ||
     (req.body?.image && !image) ||
     !Number.isFinite(price) ||
     price < 0 ||
-    (promoPrice != null &&
-      (!Number.isFinite(promoPrice) ||
-        promoPrice < 0 ||
-        promoPrice >= price)) ||
+    (promoPrice != null && (!Number.isFinite(promoPrice) || promoPrice < 0 || promoPrice >= price)) ||
     promoStartAt === undefined ||
     promoEndAt === undefined ||
     sortOrder == null ||
+    !Number.isInteger(stockQuantity) ||
+    stockQuantity < 0 ||
+    !Number.isInteger(stockLowThreshold) ||
+    stockLowThreshold < 0 ||
+    sizes === undefined ||
+    !sizes.length ||
     (promoStartAt && promoEndAt && promoEndAt <= promoStartAt)
   )
-    return res
-      .status(400)
-      .json({ message: "Informe nome, preço e promoção válidos do sabor." });
-  const row = await prisma.flavor.create({
-    data: {
-      name,
-      price,
-      promoPrice,
-      promoActive: booleanValue(req.body?.promoActive) && promoPrice != null,
-      promoStartAt,
-      promoEndAt,
-      image,
-      active:
-        req.body?.active === undefined ? true : booleanValue(req.body.active),
-      sortOrder,
-    },
+    return res.status(400).json({
+      message: "Informe nome, descrição, grupo, preço e ao menos um tamanho válido para o sabor.",
+    });
+  const duplicate = await prisma.flavor.findFirst({
+    where: { OR: [{ slug }, { name: { equals: name, mode: "insensitive" } }] },
+  });
+  if (duplicate)
+    return res.status(409).json({ message: "Já existe um sabor com esse nome ou identificador." });
+  const row = await prisma.$transaction(async (tx) => {
+    await validateFlavorRelations(tx, { groupId, sizes });
+    const created = await tx.flavor.create({
+      data: {
+        name,
+        slug,
+        description,
+        ingredients: cleanFlavorIngredients(req.body?.ingredients),
+        groupId,
+        price,
+        promoPrice,
+        promoActive: booleanValue(req.body?.promoActive) && promoPrice != null,
+        promoStartAt,
+        promoEndAt,
+        image,
+        active: req.body?.active === undefined ? true : booleanValue(req.body.active),
+        featured: booleanValue(req.body?.featured),
+        allowHalfAndHalf:
+          req.body?.allowHalfAndHalf === undefined
+            ? true
+            : booleanValue(req.body.allowHalfAndHalf),
+        sortOrder,
+        stockTracked: booleanValue(req.body?.stockTracked),
+        stockQuantity,
+        stockLowThreshold,
+      },
+    });
+    await syncFlavorSizes(tx, created.id, sizes);
+    return tx.flavor.findUnique({ where: { id: created.id }, include: flavorAdminInclude });
   });
   res.status(201).json(serializeFlavor(row));
 });
 app.patch("/api/admin/flavors/:id", auth, admin, async (req, res) => {
-  const data = {};
-  if (req.body?.name !== undefined) data.name = cleanText(req.body.name, 100);
-  if (req.body?.image !== undefined)
-    data.image = safeMediaUrl(req.body.image) || null;
-  if (req.body?.image && !data.image)
-    return res.status(400).json({ message: "URL de imagem inválida." });
-  if (req.body?.price !== undefined) {
-    const v = Number(req.body.price);
-    if (!Number.isFinite(v) || v < 0)
-      return res.status(400).json({ message: "Preço inválido." });
-    data.price = v;
-  }
-  if (req.body?.promoPrice !== undefined) {
-    if (req.body.promoPrice === "" || req.body.promoPrice == null)
-      data.promoPrice = null;
-    else {
-      const v = Number(req.body.promoPrice);
-      if (!Number.isFinite(v) || v < 0)
-        return res.status(400).json({ message: "Preço promocional inválido." });
-      data.promoPrice = v;
-    }
-  }
-  if (req.body?.promoActive !== undefined)
-    data.promoActive = booleanValue(req.body.promoActive);
-  for (const f of ["promoStartAt", "promoEndAt"])
-    if (req.body?.[f] !== undefined) {
-      const value = optionalDate(req.body[f]);
-      if (value === undefined)
-        return res
-          .status(400)
-          .json({ message: "Período promocional inválido." });
-      data[f] = value;
-    }
-  if (req.body?.active !== undefined)
-    data.active = booleanValue(req.body.active);
-  if (req.body?.sortOrder !== undefined) {
-    const sortOrder = boundedInteger(req.body.sortOrder);
-    if (sortOrder == null)
-      return res.status(400).json({ message: "Ordem do sabor inválida." });
-    data.sortOrder = sortOrder;
-  }
-  const current = await prisma.flavor.findUnique({
-    where: { id: req.params.id },
-  });
+  const current = await prisma.flavor.findUnique({ where: { id: req.params.id } });
   if (!current)
     return res.status(404).json({ message: "Sabor não encontrado." });
-  const finalBase = Number(data.price ?? current?.price ?? 0),
-    finalPromo =
-      data.promoPrice === null
-        ? null
-        : Number(data.promoPrice ?? current?.promoPrice);
-  const finalStart = Object.hasOwn(data, "promoStartAt")
-    ? data.promoStartAt
-    : current.promoStartAt;
-  const finalEnd = Object.hasOwn(data, "promoEndAt")
-    ? data.promoEndAt
-    : current.promoEndAt;
-  if (finalStart && finalEnd && finalEnd <= finalStart)
-    return res
-      .status(400)
-      .json({ message: "O fim da promoção deve ser posterior ao início." });
+  const data = {};
+  if (req.body?.name !== undefined) data.name = cleanText(req.body.name, 100);
+  if (req.body?.slug !== undefined) data.slug = cleanText(req.body.slug, 100).toLowerCase();
+  if (req.body?.description !== undefined)
+    data.description = cleanText(req.body.description, 500);
+  if (req.body?.ingredients !== undefined)
+    data.ingredients = cleanFlavorIngredients(req.body.ingredients);
+  if (req.body?.groupId !== undefined)
+    data.groupId = cleanText(req.body.groupId, 80) || null;
+  if (req.body?.image !== undefined) data.image = safeMediaUrl(req.body.image) || null;
+  if (req.body?.image && !data.image)
+    return res.status(400).json({ message: "URL de imagem inválida." });
+  for (const field of ["price", "promoPrice"]) {
+    if (req.body?.[field] === undefined) continue;
+    if (field === "promoPrice" && (req.body[field] === "" || req.body[field] == null)) {
+      data[field] = null;
+      continue;
+    }
+    const value = Number(req.body[field]);
+    if (!Number.isFinite(value) || value < 0)
+      return res.status(400).json({ message: "Preço inválido." });
+    data[field] = value;
+  }
+  for (const field of ["promoActive", "active", "featured", "allowHalfAndHalf", "stockTracked"])
+    if (req.body?.[field] !== undefined) data[field] = booleanValue(req.body[field]);
+  for (const field of ["promoStartAt", "promoEndAt"])
+    if (req.body?.[field] !== undefined) {
+      const value = optionalDate(req.body[field]);
+      if (value === undefined)
+        return res.status(400).json({ message: "Período promocional inválido." });
+      data[field] = value;
+    }
+  for (const field of ["sortOrder", "stockQuantity", "stockLowThreshold"])
+    if (req.body?.[field] !== undefined) {
+      const value = boundedInteger(req.body[field]);
+      if (value == null || value < 0)
+        return res.status(400).json({ message: "Quantidade ou ordem inválida." });
+      data[field] = value;
+    }
+  const sizes =
+    req.body?.sizes !== undefined || req.body?.sizePrices !== undefined
+      ? normalizeFlavorSizes(req.body?.sizes ?? req.body?.sizePrices)
+      : null;
   if (
-    data.promoActive !== false &&
-    finalPromo != null &&
-    finalPromo >= finalBase
+    (data.name !== undefined && !data.name) ||
+    (data.slug !== undefined && !validSlug(data.slug)) ||
+    (data.description !== undefined && !data.description) ||
+    data.groupId === null ||
+    sizes === undefined ||
+    (Array.isArray(sizes) && !sizes.length)
   )
-    return res.status(400).json({
-      message: "A promoção do sabor precisa ser menor que o preço base.",
+    return res.status(400).json({ message: "Os dados do sabor são inválidos." });
+  const finalBase = Number(data.price ?? current.price),
+    finalPromo = data.promoPrice === null ? null : Number(data.promoPrice ?? current.promoPrice),
+    finalStart = Object.hasOwn(data, "promoStartAt") ? data.promoStartAt : current.promoStartAt,
+    finalEnd = Object.hasOwn(data, "promoEndAt") ? data.promoEndAt : current.promoEndAt;
+  if ((finalStart && finalEnd && finalEnd <= finalStart) || (data.promoActive !== false && finalPromo != null && finalPromo >= finalBase))
+    return res.status(400).json({ message: "A promoção precisa ser menor que o preço base e ter um período válido." });
+  if (data.name !== undefined || data.slug !== undefined) {
+    const duplicate = await prisma.flavor.findFirst({
+      where: {
+        id: { not: current.id },
+        OR: [
+          { slug: data.slug || current.slug },
+          { name: { equals: data.name || current.name, mode: "insensitive" } },
+        ],
+      },
     });
-  res.json(
-    serializeFlavor(
-      await prisma.flavor.update({ where: { id: req.params.id }, data }),
-    ),
-  );
+    if (duplicate)
+      return res.status(409).json({ message: "Já existe um sabor com esse nome ou identificador." });
+  }
+  const row = await prisma.$transaction(async (tx) => {
+    await validateFlavorRelations(tx, { groupId: data.groupId || current.groupId, sizes });
+    await tx.flavor.update({ where: { id: current.id }, data });
+    if (Array.isArray(sizes)) await syncFlavorSizes(tx, current.id, sizes);
+    return tx.flavor.findUnique({ where: { id: current.id }, include: flavorAdminInclude });
+  });
+  res.json(serializeFlavor(row));
 });
 app.delete("/api/admin/flavors/:id", auth, admin, async (req, res) => {
-  const used = await prisma.productFlavor.count({
-    where: { flavorId: req.params.id },
+  const row = await prisma.flavor.findUnique({
+    where: { id: req.params.id },
+    select: { sourceProductId: true },
   });
-  if (used > 0) {
-    const row = await prisma.flavor.update({
+  if (!row) return res.status(404).json({ message: "Sabor não encontrado." });
+  const [products, orders] = await Promise.all([
+    prisma.productFlavor.count({ where: { flavorId: req.params.id } }),
+    prisma.orderItemFlavor.count({ where: { flavorId: req.params.id } }),
+  ]);
+  if (products > 0 || orders > 0 || row.sourceProductId) {
+    const flavor = await prisma.flavor.update({
       where: { id: req.params.id },
       data: { active: false },
+      include: flavorAdminInclude,
     });
     return res.json({
       ok: true,
       archived: true,
-      flavor: serializeFlavor(row),
-      message: "Sabor pausado porque está vinculado a produtos.",
+      flavor: serializeFlavor(flavor),
+      message: "Sabor pausado para preservar produtos e pedidos já existentes.",
     });
   }
   await prisma.flavor.delete({ where: { id: req.params.id } });
@@ -6780,6 +7660,7 @@ app.post("/api/admin/sizes", auth, admin, async (req, res) => {
       req.body?.diameterCm == null || req.body?.diameterCm === ""
         ? null
         : boundedInteger(req.body.diameterCm, 1, 200),
+    maxFlavors = boundedInteger(req.body?.maxFlavors ?? 4, 1, 4),
     sortOrder = boundedInteger(req.body?.sortOrder ?? 0);
   if (
     !name ||
@@ -6787,6 +7668,7 @@ app.post("/api/admin/sizes", auth, admin, async (req, res) => {
     (req.body?.diameterCm !== "" &&
       req.body?.diameterCm != null &&
       diameterCm == null) ||
+    maxFlavors == null ||
     sortOrder == null
   )
     return res
@@ -6798,6 +7680,7 @@ app.post("/api/admin/sizes", auth, admin, async (req, res) => {
         name,
         slug,
         diameterCm,
+        maxFlavors,
         sortOrder,
         active:
           req.body?.active === undefined ? true : booleanValue(req.body.active),
@@ -6828,6 +7711,13 @@ app.patch("/api/admin/sizes/:id", auth, admin, async (req, res) => {
       data.diameterCm == null
     )
       return res.status(400).json({ message: "Diâmetro inválido." });
+  }
+  if (req.body?.maxFlavors !== undefined) {
+    data.maxFlavors = boundedInteger(req.body.maxFlavors, 1, 4);
+    if (data.maxFlavors == null)
+      return res
+        .status(400)
+        .json({ message: "O máximo deve ficar entre 1 e 4 sabores." });
   }
   if (req.body?.sortOrder !== undefined) {
     const sortOrder = boundedInteger(req.body.sortOrder);
@@ -7099,7 +7989,9 @@ app.post("/api/admin/products", auth, admin, async (req, res) => {
   const price = Number(req.body?.price);
   const maxFlavors = Number(req.body?.maxFlavors ?? 1);
   const sortOrder = boundedInteger(req.body?.sortOrder ?? 0);
-  const flavorPricingMode = ["MAX", "SUM"].includes(req.body?.flavorPricingMode)
+  const flavorPricingMode = ["MAX", "SUM", "AVERAGE", "PROPORTIONAL"].includes(
+    req.body?.flavorPricingMode,
+  )
     ? req.body.flavorPricingMode
     : "MAX";
   const flavorIds = Array.isArray(req.body?.flavorIds)
@@ -7243,7 +8135,11 @@ app.patch("/api/admin/products/:id", auth, admin, async (req, res) => {
     data.maxFlavors = maxFlavors;
   }
   if (req.body?.flavorPricingMode !== undefined) {
-    if (!["MAX", "SUM"].includes(req.body.flavorPricingMode))
+    if (
+      !["MAX", "SUM", "AVERAGE", "PROPORTIONAL"].includes(
+        req.body.flavorPricingMode,
+      )
+    )
       return res
         .status(400)
         .json({ message: "Regra de preço dos sabores inválida." });

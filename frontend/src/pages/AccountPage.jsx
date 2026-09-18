@@ -48,6 +48,7 @@ export default function AccountPage({
   onLogoutAll,
   onReorder,
   ordersOnly = false,
+  settings = {},
 }) {
   const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
@@ -247,7 +248,11 @@ export default function AccountPage({
           </div>
           <div className="account-session-actions">
             {ordersOnly && (
-              <CustomerOrderNotifications orders={orders} ready={!loading} />
+              <CustomerOrderNotifications
+                orders={orders}
+                ready={!loading}
+                settings={settings}
+              />
             )}
             <button className="outline-btn" onClick={() => onLogout()}>
               <LogOut size={16} /> Sair

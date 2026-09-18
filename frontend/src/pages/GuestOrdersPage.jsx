@@ -38,7 +38,7 @@ function readCodes() {
   return readStoredStringArray(localStorage, "master-pizza-guest-orders", 12);
 }
 
-export default function GuestOrdersPage() {
+export default function GuestOrdersPage({ settings = {} }) {
   const navigate = useNavigate();
   const [input, setInput] = useState("");
   const [orders, setOrders] = useState([]);
@@ -110,7 +110,11 @@ export default function GuestOrdersPage() {
             />
             <button className="primary-btn">Acompanhar</button>
           </form>
-          <CustomerOrderNotifications orders={orders} ready={!loading} />
+          <CustomerOrderNotifications
+            orders={orders}
+            ready={!loading}
+            settings={settings}
+          />
         </section>
         {error && <div className="form-error">{error}</div>}
         {loading ? (

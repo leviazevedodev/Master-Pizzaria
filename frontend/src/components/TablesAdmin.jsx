@@ -304,6 +304,9 @@ export default function TablesAdmin({
             sizeId: item.sizeId,
             flavorIds: item.flavorIds,
             optionIds: item.optionIds,
+            ...(Array.isArray(item.comboSelections) && item.comboSelections.length
+              ? { comboSelections: item.comboSelections }
+              : {}),
           })),
         },
         headers,
@@ -666,7 +669,7 @@ export default function TablesAdmin({
             <strong className="table-payment-total">{money(selected.currentSession.summary.subtotal)}</strong>
             <label>Forma de pagamento<select value={paymentOptions.length ? closeForm.paymentMethod : ""} disabled={!paymentOptions.length} onChange={(event) => setCloseForm((form) => ({ ...form, paymentMethod: event.target.value }))}>{paymentOptions.length ? paymentOptions.map(({ value, label }) => <option key={value} value={value}>{label}</option>) : <option value="">Nenhuma forma habilitada</option>}</select></label>
             {closeForm.paymentMethod === "CASH" && (
-              <label>Valor recebido<input type="number" min={selected.currentSession.summary.subtotal} step="0.01" required value={closeForm.amountPaid} onChange={(event) => setCloseForm((form) => ({ ...form, amountPaid: event.target.value }))} placeholder={selected.currentSession.summary.subtotal.toFixed(2)} /></label>
+              <label>Valor recebido (opcional)<input type="number" min={selected.currentSession.summary.subtotal} step="0.01" value={closeForm.amountPaid} onChange={(event) => setCloseForm((form) => ({ ...form, amountPaid: event.target.value }))} placeholder={selected.currentSession.summary.subtotal.toFixed(2)} /><small>Vazio considera o valor exato da comanda.</small></label>
             )}
             {hasKitchenPending && <p className="table-payment-warning"><Clock3 size={15} /> Todas as rodadas precisam estar servidas antes de receber o pagamento.</p>}
             {!paymentOptions.length && <p className="table-payment-warning"><CreditCard size={15} /> Habilite uma forma de pagamento em Loja antes de fechar a mesa.</p>}

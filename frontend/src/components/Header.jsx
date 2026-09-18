@@ -29,6 +29,7 @@ export default function Header({
       : `${today.label}: ${today.openTime}–${today.closeTime}`
     : settings?.openingHours;
   const isOpen = Boolean(settings?.isOpen);
+  const storeName = settings?.storeName || "Pizzaria";
 
   return (
     <header className="topbar">
@@ -38,13 +39,13 @@ export default function Header({
             className="brand"
             to="/"
             onClick={close}
-            aria-label="Master Pizzaria - início"
+            aria-label={`${storeName} - início`}
           >
             <img
               src={
-                mediaUrl(settings?.logoImage) || "/images/master-pizzaria-logo.png"
+                mediaUrl(settings?.logoImage) || "/images/store-placeholder.svg"
               }
-              alt="Master Pizzaria"
+              alt={storeName}
             />
           </Link>
           <div

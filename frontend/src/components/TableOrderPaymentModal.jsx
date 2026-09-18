@@ -117,9 +117,8 @@ export default function TableOrderPaymentModal({
             </label>
             {paymentMethod === "CASH" && (
               <label>
-                Valor recebido (R$)
+                Valor recebido (R$) — opcional
                 <input
-                  required
                   type="number"
                   min={total}
                   step="0.01"
@@ -127,6 +126,7 @@ export default function TableOrderPaymentModal({
                   onChange={(event) => setAmountPaid(event.target.value)}
                   placeholder={total.toFixed(2)}
                 />
+                <small>Se deixar vazio, será considerado o valor exato da comanda.</small>
               </label>
             )}
             <p className="table-payment-warning">

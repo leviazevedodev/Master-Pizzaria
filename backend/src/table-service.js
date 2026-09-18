@@ -57,7 +57,11 @@ export function calculateTablePayment(totalValue, method, rawAmountPaid) {
   if (method !== "CASH")
     return { ok: true, total, amountPaid: total, changeAmount: 0 };
 
-  const amountPaid = money(rawAmountPaid);
+  const amountPaid =
+    rawAmountPaid == null ||
+    (typeof rawAmountPaid === "string" && rawAmountPaid.trim() === "")
+      ? total
+      : money(rawAmountPaid);
   if (!Number.isFinite(amountPaid) || amountPaid < total)
     return {
       ok: false,

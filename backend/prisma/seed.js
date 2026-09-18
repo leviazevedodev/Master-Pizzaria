@@ -123,6 +123,7 @@ const products = [
       "Pizza Calabresa + Guaraná 2L + Brownie Master em uma oferta completa.",
     price: 74.8,
     category: "combos",
+    isCombo: true,
     badge: "Combo",
     sortOrder: 11,
     image: "/images/products/combo-calabresa-guarana-brownie.webp",
@@ -134,14 +135,23 @@ const sizes = [
     name: "Pequena",
     slug: "pequena",
     diameterCm: 25,
+    maxFlavors: 1,
     sortOrder: 1,
     active: true,
   },
-  { name: "Média", slug: "media", diameterCm: 30, sortOrder: 2, active: true },
+  {
+    name: "Média",
+    slug: "media",
+    diameterCm: 30,
+    maxFlavors: 2,
+    sortOrder: 2,
+    active: true,
+  },
   {
     name: "Grande",
     slug: "grande",
     diameterCm: 35,
+    maxFlavors: 3,
     sortOrder: 3,
     active: true,
   },
@@ -149,6 +159,7 @@ const sizes = [
     name: "Família",
     slug: "familia",
     diameterCm: 40,
+    maxFlavors: 4,
     sortOrder: 4,
     active: true,
   },
@@ -297,6 +308,7 @@ async function main() {
       subcategoryId: isPizza ? pizzaSub.id : null,
       allowFlavorSplit: isPizza,
       isFlavorOption: Boolean(product.isFlavorOption),
+      isCombo: Boolean(product.isCombo),
       maxFlavors: isPizza ? 4 : 1,
       flavorPricingMode: "MAX",
       deletedAt: null,
@@ -332,12 +344,6 @@ async function main() {
       where: { id: { not: calabresa.id } },
       data: { featured: false },
     });
-
-  if (catalogWasEmpty || forceDefaults) {
-    // Sabores agora são produtos do próprio catálogo. Registros legados só são desativados na carga inicial ou sob confirmação.
-    await prisma.flavor.updateMany({ data: { active: false } });
-    await prisma.productFlavor.deleteMany({});
-  }
 
   const sizeMap = {};
   for (const size of sizes) {
@@ -377,6 +383,109 @@ async function main() {
           price: priceBySize[size.slug],
           sortOrder: size.sortOrder,
         },
+      });
+    }
+  }
+
+  // O catálogo central é a identidade estável dos sabores. sourceProductId
+  // mantém compatibilidade com estoque, promoções e pedidos de versões antigas.
+  const traditionalFlavorGroup = await prisma.flavorGroup.upsert({
+    where: {
+      categoryId_slug: {
+        categoryId: categoryMap.pizzas,
+        slug: "tradicionais",
+      },
+    },
+    update: forceDefaults
+      ? {
+          name: "Tradicionais",
+          description: "Sabores tradicionais da casa.",
+          active: true,
+          sortOrder: 1,
+        }
+      : {},
+    create: {
+      name: "Tradicionais",
+      slug: "tradicionais",
+      description: "Sabores tradicionais da casa.",
+      categoryId: categoryMap.pizzas,
+      active: true,
+      sortOrder: 1,
+    },
+  });
+  const flavorByProductId = new Map();
+  for (const product of savedProducts.filter(
+    (row) => row.categoryId === categoryMap.pizzas,
+  )) {
+    const defaults = {
+      name: product.name,
+      slug: product.slug,
+      description: product.description,
+      ingredients: [],
+      groupId: traditionalFlavorGroup.id,
+      price: Number(product.price),
+      image: product.image,
+      active: product.available && !product.deletedAt,
+      featured: Boolean(product.featured),
+      allowHalfAndHalf: true,
+      sortOrder: product.sortOrder,
+      stockTracked: product.stockTracked,
+      stockQuantity: product.stockQuantity,
+      stockLowThreshold: product.stockLowThreshold,
+    };
+    const flavor = await prisma.flavor.upsert({
+      where: { sourceProductId: product.id },
+      update: forceDefaults ? defaults : { groupId: traditionalFlavorGroup.id },
+      create: { ...defaults, sourceProductId: product.id },
+    });
+    flavorByProductId.set(product.id, flavor);
+    const productSizes = await prisma.productSize.findMany({
+      where: { productId: product.id },
+      include: { size: true },
+    });
+    for (const row of productSizes)
+      await prisma.flavorSize.upsert({
+        where: {
+          flavorId_sizeId: { flavorId: flavor.id, sizeId: row.sizeId },
+        },
+        update: forceDefaults
+          ? {
+              pricingMode: "FIXED",
+              price: row.price,
+              available: row.size.active,
+              sortOrder: row.sortOrder,
+            }
+          : {},
+        create: {
+          flavorId: flavor.id,
+          sizeId: row.sizeId,
+          pricingMode: "FIXED",
+          price: row.price,
+          available: row.size.active,
+          sortOrder: row.sortOrder,
+        },
+      });
+  }
+  const selectableFlavorProducts = savedProducts.filter(
+    (row, index) =>
+      row.categoryId === categoryMap.pizzas &&
+      (products[index]?.isFlavorOption || row.isFlavorOption),
+  );
+  for (const base of savedProducts.filter(
+    (row) => row.categoryId === categoryMap.pizzas && row.allowFlavorSplit,
+  )) {
+    const eligible = [base, ...selectableFlavorProducts].filter(
+      (row, index, rows) => rows.findIndex((item) => item.id === row.id) === index,
+    );
+    for (const [index, source] of eligible.entries()) {
+      const flavor = flavorByProductId.get(source.id);
+      if (!flavor) continue;
+      await prisma.productFlavor.upsert({
+        where: {
+          productId_flavorId: { productId: base.id, flavorId: flavor.id },
+        },
+        update: forceDefaults ? { sortOrder: index } : {},
+        create: { productId: base.id, flavorId: flavor.id, sortOrder: index },
       });
     }
   }
@@ -460,6 +569,47 @@ async function main() {
       savedProducts[index],
     ]),
   );
+  const defaultCombo = bySlug["combo-master"];
+  if (createdProductIds.has(defaultCombo.id)) {
+    const defaultComboItems = [
+      {
+        product: bySlug.calabresa,
+        sizeId: sizeMap.media.id,
+        quantity: 1,
+      },
+      { product: bySlug["guarana-2l"], sizeId: null, quantity: 1 },
+      { product: bySlug["brownie-master"], sizeId: null, quantity: 1 },
+    ];
+    await prisma.$transaction(async (tx) => {
+      await tx.comboItem.createMany({
+        data: defaultComboItems.map((entry, sortOrder) => ({
+          comboId: defaultCombo.id,
+          productId: entry.product.id,
+          sizeId: entry.sizeId,
+          quantity: entry.quantity,
+          sortOrder,
+        })),
+      });
+      for (const [sortOrder, entry] of defaultComboItems.entries())
+        await tx.comboSlot.create({
+          data: {
+            comboId: defaultCombo.id,
+            type: "FIXED_PRODUCT",
+            name: entry.product.name,
+            quantity: entry.quantity,
+            sortOrder,
+            products: {
+              create: {
+                productId: entry.product.id,
+                sizeId: entry.sizeId,
+                priceAdjustment: 0,
+                sortOrder: 0,
+              },
+            },
+          },
+        });
+    });
+  }
   const desiredPromotions = [
     {
       productId: bySlug["combo-master"].id,

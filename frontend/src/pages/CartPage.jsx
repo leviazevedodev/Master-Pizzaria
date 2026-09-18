@@ -10,6 +10,7 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import { money } from "../lib/format";
 import { api, mediaUrl } from "../lib/api";
+import ComboContents from "../components/ComboContents";
 
 export default function CartPage({
   cart,
@@ -72,6 +73,10 @@ export default function CartPage({
                   <img src={mediaUrl(item.image)} alt="" />
                   <div className="cart-info">
                     <b>{item.name}</b>
+                    <ComboContents
+                      items={item.comboItems}
+                      multiplier={item.quantity}
+                    />
                     {item.flavors?.length > 0 && (
                       <small className="cart-flavors">
                         <strong>Sabores:</strong>{" "}

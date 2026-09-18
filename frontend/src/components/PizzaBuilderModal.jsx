@@ -10,12 +10,29 @@ import {
 import { money } from "../lib/format";
 import { mediaUrl } from "../lib/api";
 import ComboContents from "./ComboContents";
+import ConfigurableComboFlow from "./ConfigurableComboFlow";
 import {
   customizerBlockReason,
   initialModifierSelections,
 } from "../lib/productCustomizer";
 
-export default function PizzaBuilderModal({
+function hasConfigurableComboSlots(product) {
+  return Boolean(
+    product?.isCombo &&
+      Array.isArray(product.comboSlots) &&
+      product.comboSlots.some((slot) => slot?.type !== "FIXED_PRODUCT"),
+  );
+}
+
+export default function PizzaBuilderModal(props) {
+  return hasConfigurableComboSlots(props.baseProduct) ? (
+    <ConfigurableComboFlow {...props} />
+  ) : (
+    <LegacyPizzaBuilderModal {...props} />
+  );
+}
+
+function LegacyPizzaBuilderModal({
   baseProduct,
   onClose,
   onAdd,
@@ -28,14 +45,15 @@ export default function PizzaBuilderModal({
       ),
     [baseProduct],
   );
-  const eligible = useMemo(() => {
+  const allEligible = useMemo(() => {
     const rows = (baseProduct.availableFlavors || []).filter(
       (flavor) => flavor.active !== false && flavor.stockAvailable !== false,
     );
+    const preferredId = baseProduct.defaultFlavorId || baseProduct.id;
     return [...rows].sort((a, b) =>
-      a.id === baseProduct.id
+      a.id === preferredId
         ? -1
-        : b.id === baseProduct.id
+        : b.id === preferredId
           ? 1
           : Number(a.sortOrder || 0) - Number(b.sortOrder || 0),
     );
@@ -49,26 +67,52 @@ export default function PizzaBuilderModal({
       ),
     [baseProduct],
   );
+  const defaultSize =
+    sizes.find((size) => size.slug === "media") || sizes[0] || null;
+  const [selectedSizeId, setSelectedSizeId] = useState(defaultSize?.id || "");
+  const selectedSize =
+    sizes.find((size) => size.id === selectedSizeId) || defaultSize;
+  const eligible = useMemo(
+    () =>
+      allEligible.filter((flavor) => {
+        if (!selectedSize || baseProduct.flavorCatalogMode !== "CENTRAL")
+          return true;
+        return (flavor.availableSizes || flavor.sizes || []).some(
+          (size) =>
+            size.available !== false &&
+            (size.sizeId === selectedSize.id || size.slug === selectedSize.slug),
+        );
+      }),
+    [allEligible, baseProduct.flavorCatalogMode, selectedSize],
+  );
   const maxFlavors = Math.max(
     1,
-    Math.min(4, Number(baseProduct.maxFlavors || 1), eligible.length || 1),
+    Math.min(
+      4,
+      Number(baseProduct.maxFlavors || 1),
+      Number(selectedSize?.maxFlavors || 4),
+      eligible.length || 1,
+    ),
   );
   const hasFlavorChoice = Boolean(
     baseProduct.allowFlavorSplit && eligible.length,
   );
-  const defaultSize =
-    sizes.find((size) => size.slug === "media") || sizes[0] || null;
-  const [selectedSizeId, setSelectedSizeId] = useState(defaultSize?.id || "");
+  const defaultFlavorId =
+    (baseProduct.defaultFlavorId &&
+      eligible.some((flavor) => flavor.id === baseProduct.defaultFlavorId) &&
+      baseProduct.defaultFlavorId) ||
+    eligible[0]?.id ||
+    "";
+  const centralFlavorCatalog = baseProduct.flavorCatalogMode === "CENTRAL";
+  const lockedFlavorId = centralFlavorCatalog ? null : baseProduct.id;
   const [targetCount, setTargetCount] = useState(hasFlavorChoice ? 1 : 0);
   const [selected, setSelected] = useState(
-    hasFlavorChoice ? [baseProduct.id] : [],
+    hasFlavorChoice && defaultFlavorId ? [defaultFlavorId] : [],
   );
   const [selectedOptions, setSelectedOptions] = useState(() =>
     initialModifierSelections(modifierGroups),
   );
   const [notes, setNotes] = useState("");
-  const selectedSize =
-    sizes.find((size) => size.id === selectedSizeId) || defaultSize;
   const chosen = eligible.filter((flavor) => selected.includes(flavor.id));
 
   const baseDiscount = baseProduct.compareAtPrice
@@ -90,13 +134,26 @@ export default function PizzaBuilderModal({
       ? Number(selectedSize.promoPrice)
       : Math.max(0, baseOriginalPrice - baseDiscount)
     : Number(baseProduct.price);
+  function flavorSizeRule(flavor) {
+    if (!selectedSize) return null;
+    return (flavor.availableSizes || flavor.sizes || []).find(
+      (size) =>
+        size.available !== false &&
+        (size.sizeId === selectedSize.id || size.slug === selectedSize.slug),
+    );
+  }
   function flavorOriginalPrice(flavor) {
-    if (flavor.id === baseProduct.id) return baseOriginalPrice;
+    if (
+      baseProduct.flavorCatalogMode !== "CENTRAL" &&
+      flavor.id === baseProduct.id
+    )
+      return baseOriginalPrice;
     if (selectedSize) {
-      const same = (flavor.availableSizes || []).find(
-        (size) => size.slug === selectedSize.slug,
-      );
-      if (same) return Number(same.price);
+      const same = flavorSizeRule(flavor);
+      if (same)
+        return same.pricingMode === "SURCHARGE"
+          ? baseOriginalPrice + Number(same.price || 0)
+          : Number(same.price);
     }
     return Number(
       flavor.basePrice ??
@@ -106,17 +163,17 @@ export default function PizzaBuilderModal({
     );
   }
   function flavorPrice(flavor) {
-    if (flavor.id === baseProduct.id) return basePrice;
+    if (
+      baseProduct.flavorCatalogMode !== "CENTRAL" &&
+      flavor.id === baseProduct.id
+    )
+      return basePrice;
     const original = flavorOriginalPrice(flavor);
     if (selectedSize) {
-      const same = (flavor.availableSizes || []).find(
-        (size) => size.slug === selectedSize.slug,
-      );
-      if (
-        same?.promoPrice != null &&
-        Number.isFinite(Number(same.promoPrice))
-      )
-        return Number(same.promoPrice);
+      const same = flavorSizeRule(flavor);
+      if (same?.pricingMode === "SURCHARGE")
+        return basePrice + Number(same.price || 0);
+      if (same) return Number(same.price);
     }
     const discount = flavor.compareAtPrice
       ? Math.max(0, Number(flavor.compareAtPrice) - Number(flavor.price))
@@ -125,7 +182,9 @@ export default function PizzaBuilderModal({
   }
   const chosenPrices = chosen.map(flavorPrice);
   const chosenOriginalPrices = chosen.map(flavorOriginalPrice);
-  const proportionalFlavorPricing = baseProduct.flavorPricingMode === "SUM";
+  const proportionalFlavorPricing = ["SUM", "AVERAGE", "PROPORTIONAL"].includes(
+    baseProduct.flavorPricingMode,
+  );
   const sumDivisor = Math.max(1, targetCount || chosen.length || 1);
   const flavoredPrice = chosen.length
     ? proportionalFlavorPricing
@@ -166,17 +225,43 @@ export default function PizzaBuilderModal({
   const hasCurrentDiscount = originalTotal > total + 0.005;
 
   useEffect(() => {
+    if (!hasFlavorChoice) {
+      setTargetCount(0);
+      setSelected([]);
+      return;
+    }
+    setTargetCount((current) =>
+      Math.max(1, Math.min(Number(current) || 1, maxFlavors)),
+    );
+  }, [hasFlavorChoice, maxFlavors]);
+
+  useEffect(() => {
     if (!hasFlavorChoice) return;
     setSelected((current) => {
-      const extras = current
-        .filter((id) => id !== baseProduct.id)
-        .slice(0, Math.max(0, targetCount - 1));
-      return [baseProduct.id, ...extras];
+      const allowed = new Set(eligible.map((flavor) => flavor.id));
+      const limit = Math.max(1, Math.min(targetCount || 1, maxFlavors));
+      let next = current.filter((id) => allowed.has(id));
+      if (lockedFlavorId && allowed.has(lockedFlavorId)) {
+        next = [lockedFlavorId, ...next.filter((id) => id !== lockedFlavorId)];
+      }
+      if (!next.length && defaultFlavorId) next = [defaultFlavorId];
+      next = next.slice(0, limit);
+      return next.length === current.length &&
+        next.every((id, index) => id === current[index])
+        ? current
+        : next;
     });
-  }, [targetCount, hasFlavorChoice, baseProduct.id]);
+  }, [
+    defaultFlavorId,
+    eligible,
+    hasFlavorChoice,
+    lockedFlavorId,
+    maxFlavors,
+    targetCount,
+  ]);
 
   function toggleFlavor(id) {
-    if (id === baseProduct.id) return;
+    if (id === lockedFlavorId) return;
     setSelected((current) => {
       if (current.includes(id)) return current.filter((value) => value !== id);
       if (current.length >= targetCount) return current;
@@ -346,8 +431,9 @@ export default function PizzaBuilderModal({
               <div>
                 <b>Escolha seus sabores</b>
                 <small>
-                  O sabor do produto escolhido fica fixo. Aumente a quantidade
-                  para combinar outros sabores.
+                  {lockedFlavorId
+                    ? "O sabor do produto escolhido fica fixo. Aumente a quantidade para combinar outros sabores."
+                    : "Escolha livremente os sabores disponíveis para este tamanho."}
                 </small>
               </div>
               <span>
@@ -380,7 +466,7 @@ export default function PizzaBuilderModal({
             <div className="flavor-grid flavor-image-grid">
               {eligible.map((flavor) => {
                 const active = selected.includes(flavor.id),
-                  locked = flavor.id === baseProduct.id,
+                  locked = flavor.id === lockedFlavorId,
                   blocked = !active && selected.length >= targetCount;
                 return (
                   <button

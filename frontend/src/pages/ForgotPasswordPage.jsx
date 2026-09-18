@@ -11,7 +11,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
-import { api } from "../lib/api";
+import { api, mediaUrl } from "../lib/api";
 
 export default function ForgotPasswordPage({ settings }) {
   const location = useLocation();
@@ -37,8 +37,9 @@ export default function ForgotPasswordPage({ settings }) {
   const [showPassword, setShowPassword] = useState(false);
   const supportNumber = String(settings?.whatsappPrimary || "").trim();
   const supportPhone = String(settings?.phone || "").trim();
+  const storeName = settings?.storeName || "pizzaria";
   const supportText = encodeURIComponent(
-    "Olá! Preciso de ajuda para recuperar o acesso à minha conta da Master Pizzaria.",
+    `Olá! Preciso de ajuda para recuperar o acesso à minha conta da ${storeName}.`,
   );
 
   async function requestReset(event) {
@@ -95,7 +96,10 @@ export default function ForgotPasswordPage({ settings }) {
           <Link className="back-link light-link" to="/entrar">
             <ArrowLeft size={15} /> Voltar ao login
           </Link>
-          <img src="/images/master-pizzaria-logo.png" alt="Master Pizzaria" />
+          <img
+            src={mediaUrl(settings?.logoImage) || "/images/store-placeholder.svg"}
+            alt={settings?.storeName || "Pizzaria"}
+          />
           <span className="eyebrow">Recuperação de acesso</span>
           <h1>Volte para sua conta com segurança.</h1>
           <p>

@@ -22,6 +22,7 @@ import { api, authHeaders } from "../lib/api";
 import { formatCep, formatPhone, money } from "../lib/format";
 import { readStoredStringArray, writeStoredJson } from "../lib/storage";
 import MotoIcon from "../components/MotoIcon";
+import ComboContents from "../components/ComboContents";
 
 function saveGuestOrder(code) {
   if (!code) return;
@@ -677,6 +678,9 @@ export default function CheckoutPage({
             flavorIds: item.flavorIds || [],
             optionIds: item.optionIds || [],
             notes: item.notes || "",
+            ...(Array.isArray(item.comboSelections) && item.comboSelections.length
+              ? { comboSelections: item.comboSelections }
+              : {}),
           })),
         },
         authHeaders(session?.token),
@@ -1422,12 +1426,18 @@ export default function CheckoutPage({
             </h3>
             <div className="summary-items">
               {cart.map((item) => (
-                <p key={item.cartKey || item.productId}>
-                  <span>
-                    {item.quantity}× {item.name}
-                  </span>
-                  <b>{money(item.price * item.quantity)}</b>
-                </p>
+                <React.Fragment key={item.cartKey || item.productId}>
+                  <p>
+                    <span>
+                      {item.quantity}× {item.name}
+                    </span>
+                    <b>{money(item.price * item.quantity)}</b>
+                  </p>
+                  <ComboContents
+                    items={item.comboItems}
+                    multiplier={item.quantity}
+                  />
+                </React.Fragment>
               ))}
             </div>
             <hr />

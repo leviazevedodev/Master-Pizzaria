@@ -24,6 +24,12 @@ export default function ProductCard({ product, onAdd }) {
       )
     : Number(product.price);
   const soldOut = product.stockAvailable === false;
+  const configurableCombo = Boolean(
+    product.isCombo &&
+      (product.comboMode === "CONFIGURABLE" ||
+        product.comboSlots?.some((slot) => slot?.type !== "FIXED_PRODUCT")),
+  );
+  const actionLabel = configurableCombo ? "Montar combo" : "Adicionar";
   return (
     <article className="product-card">
       <div className={`product-photo ${soldOut ? "sold-out" : ""}`}>
@@ -74,11 +80,13 @@ export default function ProductCard({ product, onAdd }) {
             aria-label={
               soldOut
                 ? `${product.name} esgotado`
-                : `Adicionar ${product.name} à sacola`
+                : configurableCombo
+                  ? `Montar ${product.name}`
+                  : `Adicionar ${product.name} à sacola`
             }
           >
             <Plus size={20} />
-            <span>{soldOut ? "Esgotado" : "Adicionar"}</span>
+            <span>{soldOut ? "Esgotado" : actionLabel}</span>
           </button>
         </div>
       </div>

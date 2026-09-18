@@ -11,6 +11,7 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { money } from "../lib/format";
+import ComboContents from "../components/ComboContents";
 import {
   readStoredJson,
   readStoredStringArray,
@@ -89,6 +90,9 @@ export default function DigitalTableCheckoutPage({
           flavorIds: item.flavorIds || [],
           optionIds: item.optionIds || [],
           notes: item.notes || "",
+          ...(Array.isArray(item.comboSelections) && item.comboSelections.length
+            ? { comboSelections: item.comboSelections }
+            : {}),
         })),
       });
       writeStoredJson(localStorage, GUEST_KEY, {
@@ -151,6 +155,10 @@ export default function DigitalTableCheckoutPage({
                 <article key={item.cartKey || item.productId}>
                   <div>
                     <b>{item.name}</b>
+                    <ComboContents
+                      items={item.comboItems}
+                      multiplier={item.quantity}
+                    />
                     {item.notes && <small>Detalhe: {item.notes}</small>}
                     <span>{money(Number(item.price) * item.quantity)}</span>
                   </div>

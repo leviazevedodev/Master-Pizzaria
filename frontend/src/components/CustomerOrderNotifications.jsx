@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Bell, BellRing, X } from "lucide-react";
+import { mediaUrl } from "../lib/api";
 
 const STORAGE_KEY = "master-pizzaria-customer-order-notifications";
 const STATUS_LABEL = {
@@ -46,7 +47,11 @@ async function showBrowserNotification(title, options) {
   }
 }
 
-export default function CustomerOrderNotifications({ orders = [], ready = true }) {
+export default function CustomerOrderNotifications({
+  orders = [],
+  ready = true,
+  settings = {},
+}) {
   const [enabled, setEnabled] = useState(initialEnabled);
   const [permission, setPermission] = useState(() =>
     typeof Notification === "undefined" ? "unsupported" : Notification.permission,
@@ -54,6 +59,10 @@ export default function CustomerOrderNotifications({ orders = [], ready = true }
   const [notice, setNotice] = useState(null);
   const previous = useRef(new Map());
   const primed = useRef(false);
+  const storeName = settings.storeName || "Pizzaria";
+  const notificationIcon =
+    mediaUrl(settings.faviconImage || settings.logoImage) ||
+    "/images/store-placeholder.svg";
 
   useEffect(() => {
     if (!ready) return;
@@ -82,8 +91,8 @@ export default function CustomerOrderNotifications({ orders = [], ready = true }
     if (typeof Notification !== "undefined" && Notification.permission === "granted")
       void showBrowserNotification(title, {
         body,
-        icon: "/images/master-pizzaria-logo.png",
-        badge: "/images/master-pizzaria-logo.png",
+        icon: notificationIcon,
+        badge: notificationIcon,
         tag: `master-pizzaria-customer-${order.trackingCode || order.id}`,
         renotify: true,
         requireInteraction: true,
@@ -92,7 +101,7 @@ export default function CustomerOrderNotifications({ orders = [], ready = true }
           url: order.trackingCode ? `/pedido/${order.trackingCode}` : "/seus-pedidos",
         },
       });
-  }, [orders, ready, enabled]);
+  }, [orders, ready, enabled, notificationIcon]);
 
   async function toggle() {
     if (enabled) {
@@ -118,11 +127,11 @@ export default function CustomerOrderNotifications({ orders = [], ready = true }
       localStorage.setItem(STORAGE_KEY, "true");
     } catch {}
     const delivered = await showBrowserNotification(
-      "Notificações da Master Pizzaria ativadas",
+      `Notificações da ${storeName} ativadas`,
       {
         body: "Você receberá um aviso quando o status do pedido mudar.",
-        icon: "/images/master-pizzaria-logo.png",
-        badge: "/images/master-pizzaria-logo.png",
+        icon: notificationIcon,
+        badge: notificationIcon,
         tag: "master-pizzaria-customer-test",
         requireInteraction: false,
         data: { url: "/seus-pedidos" },

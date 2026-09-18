@@ -20,7 +20,12 @@ import {
   DEMO_STORE_HOURS,
   DEMO_SUBCATEGORIES,
 } from "./data/demo";
-import { api, authHeaders } from "./lib/api";
+import { api, authHeaders, mediaUrl } from "./lib/api";
+import {
+  applyBrandingToDocument,
+  buildBranding,
+  buildDynamicManifest,
+} from "./lib/branding";
 import {
   readExpiringStoredJson,
   readStoredJson,
@@ -116,8 +121,29 @@ export default function App() {
   const publicLoadInProgress = useRef(false);
 
   useEffect(() => {
-    document.title = "Master Pizzaria";
-  }, []);
+    const branding = buildBranding(settings, {
+      origin: window.location.origin,
+      pathname: location.pathname,
+      logoUrl: mediaUrl(settings.logoImage),
+      faviconUrl: mediaUrl(settings.faviconImage || settings.logoImage),
+      shareImageUrl: mediaUrl(settings.shareImage || settings.logoImage),
+    });
+    applyBrandingToDocument(document, branding);
+
+    const manifestLink = document.head.querySelector('link[rel="manifest"]');
+    let manifestUrl = "";
+    if (manifestLink && window.URL?.createObjectURL) {
+      manifestUrl = window.URL.createObjectURL(
+        new Blob([JSON.stringify(buildDynamicManifest(branding))], {
+          type: "application/manifest+json",
+        }),
+      );
+      manifestLink.setAttribute("href", manifestUrl);
+    }
+    return () => {
+      if (manifestUrl) window.URL.revokeObjectURL(manifestUrl);
+    };
+  }, [location.pathname, settings]);
   useEffect(() => {
     if (!publicReady || !("serviceWorker" in navigator)) return undefined;
 
@@ -400,9 +426,12 @@ export default function App() {
     return (
       <div className="public-boot">
         <div className="public-boot-card">
-          <img src="/images/master-pizzaria-logo.png" alt="Master Pizzaria" />
+          <img
+            src={mediaUrl(settings.logoImage) || "/images/master-pizzaria-logo.png"}
+            alt={settings.storeName || "Pizzaria"}
+          />
           <span className="public-boot-spinner" />
-          <h1>Carregando a Master Pizzaria</h1>
+          <h1>Carregando {settings.storeName || "a pizzaria"}</h1>
           <p>
             {publicError ||
               "Buscando cardápio, horários e informações atualizadas da loja..."}

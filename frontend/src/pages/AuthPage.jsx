@@ -13,13 +13,14 @@ import {
   UserRound,
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { api } from "../lib/api";
+import { api, mediaUrl } from "../lib/api";
 import { formatPhone } from "../lib/format";
 
 export default function AuthPage({
   session,
   onSession,
   initialMode = "login",
+  settings = {},
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -131,8 +132,13 @@ export default function AuthPage({
           <Link className="back-link light-link" to="/">
             <ArrowLeft size={15} /> Voltar ao cardápio
           </Link>
-          <img src="/images/master-pizzaria-logo.png" alt="Master Pizzaria" />
-          <span className="eyebrow">Conta Master</span>
+          <img
+            src={mediaUrl(settings.logoImage) || "/images/store-placeholder.svg"}
+            alt={settings.storeName || "Pizzaria"}
+          />
+          <span className="eyebrow">
+            Conta {settings.shortName || settings.storeName || "da pizzaria"}
+          </span>
           <h1>Seu pedido fica ainda mais fácil na próxima vez.</h1>
           <p>
             Entre para guardar o histórico dos seus pedidos, acompanhar compras

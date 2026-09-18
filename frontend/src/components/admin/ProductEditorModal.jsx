@@ -9,6 +9,7 @@ export default function ProductEditorModal({
   categories,
   subcategories,
   sizes,
+  flavors,
   modifierGroups,
   onClose,
   onSave,
@@ -26,6 +27,15 @@ export default function ProductEditorModal({
       modifierGroupIds: productForm.modifierGroupIds.includes(id)
         ? productForm.modifierGroupIds.filter((x) => x !== id)
         : [...productForm.modifierGroupIds, id],
+    });
+  }
+  function toggleFlavor(id) {
+    const current = productForm.flavorIds || [];
+    setProductForm({
+      ...productForm,
+      flavorIds: current.includes(id)
+        ? current.filter((value) => value !== id)
+        : [...current, id],
     });
   }
   function sizeRow(id) {
@@ -307,17 +317,63 @@ export default function ProductEditorModal({
                       }
                     >
                       <option value="MAX">Cobrar o sabor mais caro</option>
-                      <option value="SUM">
-                        Dividir e somar proporcionalmente
+                      <option value="AVERAGE">Média dos sabores</option>
+                      <option value="PROPORTIONAL">
+                        Proporcional às partes escolhidas
                       </option>
+                      {productForm.flavorPricingMode === "SUM" && (
+                        <option value="SUM">Média (configuração antiga)</option>
+                      )}
                     </select>
                   </label>
                 </div>
                 <small className="field-note">
-                  O sabor deste produto fica selecionado e travado. Em “Dividir
-                  e somar”, cada sabor contribui com seu preço ÷ quantidade de
-                  sabores; as partes são somadas para formar o valor da pizza.
+                  O servidor sempre recalcula o preço final. Em “Dividir e
+                  somar”, cada sabor contribui proporcionalmente para o valor da
+                  pizza.
                 </small>
+                <div className="product-flavor-catalog-config">
+                  <div>
+                    <b>Sabores permitidos</b>
+                    <small>
+                      Selecione no catálogo central quais sabores podem ser
+                      escolhidos neste produto.
+                    </small>
+                  </div>
+                  <div className="modifier-group-checkboxes flavor-catalog-checkboxes">
+                    {(flavors || [])
+                      .filter((flavor) => flavor.active !== false)
+                      .map((flavor) => {
+                        const selected = (productForm.flavorIds || []).includes(
+                          flavor.id,
+                        );
+                        return (
+                          <label key={flavor.id} className={selected ? "selected" : ""}>
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={() => toggleFlavor(flavor.id)}
+                            />
+                            <span>
+                              <b>{flavor.name}</b>
+                              <small>
+                                {flavor.group?.name || "Sem grupo"} •{" "}
+                                {flavor.sizes?.filter((size) => size.available)
+                                  .length || 0}{" "}
+                                tamanho(s)
+                              </small>
+                            </span>
+                          </label>
+                        );
+                      })}
+                  </div>
+                  {(flavors || []).filter((flavor) => flavor.active !== false)
+                    .length === 0 && (
+                    <small className="field-note">
+                      Cadastre os sabores primeiro em Cardápio &gt; Sabores.
+                    </small>
+                  )}
+                </div>
               </div>
             )}
             {sizes.filter((size) => size.active).length > 0 && (
@@ -554,4 +610,3 @@ export default function ProductEditorModal({
     </div>
   );
 }
-
