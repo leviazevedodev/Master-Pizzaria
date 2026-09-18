@@ -1064,7 +1064,7 @@ export default function AdminPage({
     form.append("image", file);
     setImageUploading(true);
     try {
-      const { data } = await api.post("/admin/media", form, {
+      const { data } = await api.postForm("/admin/media", form, {
         headers: {
           Authorization: `Bearer ${session.token}`,
         },
