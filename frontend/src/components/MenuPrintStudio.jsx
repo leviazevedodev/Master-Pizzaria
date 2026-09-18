@@ -37,7 +37,7 @@ export default function MenuPrintStudio({
     () => ({
       ...settings,
       logoImage:
-        mediaUrl(settings.logoImage) || "/images/master-pizzaria-logo.png",
+        mediaUrl(settings.logoImage) || "/images/store-placeholder.svg",
     }),
     [settings],
   );

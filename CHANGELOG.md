@@ -1,5 +1,16 @@
 # Histórico de versões
 
+## 2.29.0 — Sabores configuráveis, white-label e relacionamento
+
+- catálogo central de sabores e grupos, disponibilidade e preço por tamanho, regras de meio a meio e compatibilidade com os produtos legados;
+- combos configuráveis reutilizam a montagem de pizza, aceitam grupos, exceções, ajustes comerciais e preservam preço, estoque e histórico no backend;
+- identidade visual, SEO, favicon, compartilhamento, cores, manifest PWA, notificações, `robots.txt`, `sitemap.xml` e dados estruturados passaram a acompanhar a configuração da loja;
+- avaliações pós-entrega com notas específicas, moderação e chave global para publicação na home;
+- favoritos de produtos, mais pedidos reais, selo de novidade e campanhas com período, imagem, cupom, ordem e edição;
+- fidelidade por pontos ou cashback, histórico, resgate seguro, benefício anual de aniversário e indicação creditada após o primeiro pedido entregue;
+- assistente inicial em seis etapas para novas instalações, sem reabrir em bancos já configurados;
+- migrations expansivas `20260915000000_central_flavor_catalog`, `20260916000000_configurable_combo_slots` e `20260917000000_growth_white_label` preservam os dados existentes.
+
 ## 2.28.0 — Combos, filas operacionais e diagnóstico do banco
 
 - criada a área **Cardápio → Combos**, com foto própria, produtos, quantidades e tamanhos; **Promoções** separa ofertas de produtos e combos;

@@ -17453,3 +17453,141 @@ html.dark-mode textarea {
     font-size: 16px !important;
   }
 }
+/* Recursos de marca, relacionamento e implantação */
+.favorite-product-button{position:absolute;right:14px;top:14px;z-index:4;width:40px;height:40px;border:1px solid rgba(255,255,255,.55);border-radius:999px;background:rgba(17,18,20,.78);color:#fff;display:grid;place-items:center;backdrop-filter:blur(8px);cursor:pointer}.favorite-product-button.active{background:var(--brand-primary,var(--red));border-color:transparent}.new-product-badge{position:absolute;left:14px;bottom:14px;z-index:3;display:flex;align-items:center;gap:5px;padding:7px 10px;border-radius:999px;background:#fff;color:#111;font-size:.72rem;font-weight:900;box-shadow:0 6px 20px rgba(0,0,0,.2)}.campaigns-section{display:grid;gap:18px;padding-top:56px}.campaign-public-card{min-height:230px;border-radius:28px;overflow:hidden;background:linear-gradient(120deg,var(--brand-secondary,#111214),#292d33);color:#fff;display:grid;grid-template-columns:minmax(260px,.8fr) 1fr;box-shadow:0 20px 50px rgba(17,18,20,.16)}.campaign-public-card>img{width:100%;height:100%;object-fit:cover}.campaign-public-card>div{padding:38px;display:flex;align-items:flex-start;flex-direction:column;justify-content:center}.campaign-public-card h2{font-size:clamp(1.8rem,3vw,3rem);margin:8px 0}.campaign-public-card p{color:#dfe2e7;max-width:620px}.campaign-public-card strong{margin:4px 0 18px;padding:8px 12px;border:1px dashed rgba(255,255,255,.5);border-radius:9px}.compact-product-section{padding-top:38px}.reviews-public-section{padding:70px 0}.reviews-public-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.reviews-public-grid article{padding:24px;border:1px solid #e4e0d9;border-radius:20px;background:#fff;box-shadow:0 12px 30px rgba(17,18,20,.07)}.review-stars{display:flex;gap:3px;color:#f0a500}.reviews-public-grid p{font-size:1.02rem;line-height:1.65}.checkout-benefit-option{display:flex;align-items:flex-start;gap:12px;padding:16px;margin:10px 0;border:1px solid #ded9d0;border-radius:14px;background:#faf8f4;cursor:pointer}.checkout-benefit-option.birthday{border-color:#f4c5c8;background:#fff6f6}.checkout-benefit-option input{margin-top:4px}.checkout-benefit-option span{display:flex;flex-direction:column;gap:3px}.order-review-form{margin-top:24px;padding:22px;border:1px solid #ded9d0;border-radius:18px;background:#faf8f4;display:grid;gap:16px}.order-review-form>div:first-child{display:flex;gap:12px;align-items:center}.order-review-form>div:first-child span{display:flex;flex-direction:column}.review-rating-grid{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px!important}.order-review-form label{display:grid;gap:6px;font-weight:700}.order-review-form select,.order-review-form textarea{width:100%;padding:11px;border:1px solid #cbc5bb;border-radius:10px;background:#fff}.review-status{margin:0;font-weight:700}.account-rewards-card{display:grid;grid-template-columns:1fr minmax(250px,.55fr);gap:20px;padding:26px;border-radius:22px;background:linear-gradient(135deg,#fff5f5,#fff);border:1px solid #f0d4d5;margin:22px 0}.account-rewards-card h2{margin:9px 0}.birthday-benefit{display:flex;align-items:center;gap:7px;color:var(--brand-primary,var(--red))}.invite-code-card{padding:18px;border-radius:16px;background:#fff;border:1px dashed #d9b8ba;display:flex;flex-direction:column;gap:8px}.invite-code-card>b{font-size:1.45rem;letter-spacing:.12em}.favorite-products-card{padding:24px;border:1px solid #e6e1d9;border-radius:20px;background:#fff;margin-bottom:24px}.favorite-products-list{display:flex;gap:12px;overflow:auto;padding-bottom:5px}.favorite-products-list a{min-width:220px;display:flex;align-items:center;gap:11px;padding:10px;border:1px solid #e7e2db;border-radius:14px;color:inherit;text-decoration:none}.favorite-products-list img{width:58px;height:58px;border-radius:10px;object-fit:cover}.favorite-products-list span{display:flex;flex-direction:column}.brand-assets-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:18px 0}.logo-admin-setting.compact{display:grid;grid-template-columns:1fr auto;gap:10px}.logo-admin-setting.compact>img{width:72px;height:56px;object-fit:contain;border-radius:8px}.logo-admin-setting.compact>input{grid-column:1/-1}.brand-seo-grid{margin:20px 0}.marketing-admin-grid{display:grid;gap:20px}.marketing-toggle-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:18px 0}.campaign-admin-list,.review-admin-list{display:grid;gap:10px;margin-top:20px}.campaign-admin-list article,.review-admin-list article{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px;border:1px solid #ded9d0;border-radius:14px}.campaign-admin-list img{width:84px;height:62px;object-fit:cover;border-radius:9px}.campaign-admin-list article>div,.review-admin-list article>div:first-child{display:flex;flex:1;flex-direction:column;gap:4px}.review-admin-list article>div:last-child{display:flex;gap:8px}.setup-wizard-backdrop{position:fixed;inset:0;z-index:10000;background:rgba(5,6,7,.82);backdrop-filter:blur(12px);display:grid;place-items:center;padding:20px}.setup-wizard-card{width:min(760px,100%);max-height:92vh;overflow:auto;padding:32px;border-radius:26px;background:#fff;color:#151719;box-shadow:0 30px 90px rgba(0,0,0,.42)}.setup-progress{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:28px}.setup-progress span{display:flex;align-items:center;justify-content:center;gap:7px;padding:10px;border-bottom:3px solid #ddd;color:#8a8d92}.setup-progress span.active{border-color:var(--brand-primary,var(--red));color:#151719}.setup-wizard-heading{margin-bottom:22px}.setup-wizard-heading h2{margin:8px 0}.setup-operation-options{display:grid;gap:12px}.setup-operation-options label{padding:16px;border:1px solid #ded9d0;border-radius:14px;font-weight:800}.setup-wizard-actions{display:flex;justify-content:space-between;gap:12px;margin-top:24px}
+@media(max-width:760px){.campaign-public-card{grid-template-columns:1fr}.campaign-public-card>img{height:180px}.campaign-public-card>div{padding:25px}.reviews-public-grid,.review-rating-grid,.account-rewards-card,.brand-assets-grid,.marketing-toggle-grid{grid-template-columns:1fr}.setup-wizard-card{padding:22px}.setup-progress small{display:none}.review-admin-list article{align-items:flex-start;flex-direction:column}.review-admin-list article>div:last-child{width:100%;flex-wrap:wrap}}
+
+.install-app-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--brand-primary, var(--red)) 35%, #ddd);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--brand-primary, var(--red));
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.favorite-products-list article {
+  min-width: 260px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  border: 1px solid #e7e2db;
+  border-radius: 14px;
+}
+
+.favorite-products-list article a {
+  min-width: 0;
+  border: 0;
+}
+
+.favorite-products-list article > button {
+  width: 36px;
+  height: 36px;
+  margin-right: 10px;
+  border: 0;
+  border-radius: 10px;
+  background: #f7eeee;
+  color: #a52329;
+  cursor: pointer;
+}
+
+.reward-history-card {
+  padding: 24px;
+  margin-bottom: 24px;
+  border: 1px solid #e6e1d9;
+  border-radius: 20px;
+  background: #fff;
+}
+
+.birthday-registration {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #efd9da;
+}
+
+.birthday-registration label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+}
+
+.birthday-registration input {
+  grid-column: 1 / -1;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid #d8d2ca;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.birthday-registration small {
+  flex-basis: 100%;
+  color: var(--muted);
+}
+
+.reward-history-list {
+  display: grid;
+  gap: 8px;
+}
+
+.reward-history-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 0;
+  border-top: 1px solid #eee9e2;
+}
+
+.reward-history-list article > span {
+  display: grid;
+  gap: 3px;
+}
+
+.reward-history-list small {
+  color: var(--muted);
+}
+
+.reward-history-list strong.positive {
+  color: #167347;
+}
+
+.reward-history-list strong.negative {
+  color: #ad2830;
+}
+
+.campaign-form-actions,
+.campaign-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.campaign-admin-list article > .campaign-row-actions {
+  flex: 0 0 auto;
+  flex-direction: row;
+}
+
+@media (max-width: 980px) {
+  .install-app-button span {
+    display: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .campaign-admin-list article {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}

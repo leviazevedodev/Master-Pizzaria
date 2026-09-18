@@ -258,7 +258,7 @@ function paintPage(doc, settings, logoData, page) {
     doc.setTextColor(...INK);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8.2);
-    const initials = (cleanLine(settings.storeName) || "Master Pizzaria")
+    const initials = (cleanLine(settings.storeName) || "Pizzaria")
       .split(" ")
       .filter(Boolean)
       .slice(0, 2)
@@ -578,7 +578,7 @@ export async function createMenuPdf({
   const sections = buildMenuSections(printable, categories, subcategories);
   const [configuredLogo, fallbackLogo, qrData] = await Promise.all([
     imageData(settings.logoImage, 700, 320),
-    imageData("/images/master-pizzaria-logo.png", 700, 320),
+    imageData("/images/store-placeholder.svg", 700, 320),
     QRCode.toDataURL(normalizedUrl, {
       errorCorrectionLevel: "H",
       margin: 1,
@@ -592,7 +592,7 @@ export async function createMenuPdf({
     title: `Cardápio - ${cleanLine(settings.storeName) || "Restaurante"}`,
     subject: "Cardápio de produtos e preços",
     author: cleanLine(settings.storeName) || "Restaurante",
-    creator: "Master Pizzaria",
+    creator: cleanLine(settings.storeName) || "Cardápio online",
   });
 
   const columnsPerPage =
@@ -642,7 +642,7 @@ export async function createQrCodePdf({
   ]);
   const [configuredLogo, fallbackLogo, qrData] = await Promise.all([
     imageData(settings.logoImage, 700, 320),
-    imageData("/images/master-pizzaria-logo.png", 700, 320),
+    imageData("/images/store-placeholder.svg", 700, 320),
     QRCode.toDataURL(normalizedUrl, {
       errorCorrectionLevel: "H",
       margin: 1,
@@ -656,7 +656,7 @@ export async function createQrCodePdf({
     title: `QR Code do cardápio - ${cleanLine(settings.storeName) || "Restaurante"}`,
     subject: "Acesso direto ao cardápio digital",
     author: cleanLine(settings.storeName) || "Restaurante",
-    creator: "Master Pizzaria",
+    creator: cleanLine(settings.storeName) || "Cardápio online",
   });
   doc.setFillColor(...NIGHT);
   doc.rect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, "F");

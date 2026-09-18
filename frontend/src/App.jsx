@@ -111,6 +111,16 @@ export default function App() {
   const [settings, setSettings] = useState(
     initialPublic?.settings || DEMO_SETTINGS,
   );
+  const [highlights, setHighlights] = useState(
+    initialPublic?.highlights || {
+      campaigns: [],
+      reviews: [],
+      reviewSummary: { average: 0, count: 0 },
+      bestSellers: [],
+      newProductIds: [],
+      favoriteProductIds: [],
+    },
+  );
   const [publicReady, setPublicReady] = useState(Boolean(initialPublic));
   const [publicError, setPublicError] = useState("");
   const [session, setSessionState] = useState(null);
@@ -216,7 +226,10 @@ export default function App() {
         api.get("/subcategories"),
       ]);
       const productsRes = await api.get("/products");
-      const promotionsRes = await api.get("/promotions");
+      const [promotionsRes, highlightsRes] = await Promise.all([
+        api.get("/promotions"),
+        api.get("/highlights", authHeaders(session?.token)),
+      ]);
       const snapshot = {
         products: productsRes.data || [],
         categories: categoriesRes.data || [],
@@ -224,6 +237,7 @@ export default function App() {
         promotions: promotionsRes.data || [],
         settings: settingsRes.data || DEMO_SETTINGS,
         storeHours: hoursRes.data || [],
+        highlights: highlightsRes.data || {},
         savedAt: Date.now(),
       };
       setProducts(snapshot.products);
@@ -232,6 +246,7 @@ export default function App() {
       setPromotions(snapshot.promotions);
       setSettings(snapshot.settings);
       setStoreHours(snapshot.storeHours);
+      setHighlights(snapshot.highlights);
       writePublicCache(snapshot);
       setPublicError("");
       setPublicReady(true);
@@ -243,7 +258,7 @@ export default function App() {
     } finally {
       publicLoadInProgress.current = false;
     }
-  }, [initialPublic]);
+  }, [initialPublic, session?.token]);
 
   useEffect(() => {
     if (!hidePublicHeader) loadPublicData();
@@ -412,6 +427,50 @@ export default function App() {
     } catch {}
   }, [loadPublicData]);
 
+  const toggleFavorite = useCallback(
+    async (productId) => {
+      if (!session?.token) {
+        notify("Entre na sua conta para salvar produtos favoritos.");
+        window.location.assign(
+          `/entrar?next=${encodeURIComponent(location.pathname)}`,
+        );
+        return;
+      }
+      const favoriteIds = highlights.favoriteProductIds || [];
+      const removing = favoriteIds.includes(productId);
+      try {
+        if (removing)
+          await api.delete(
+            `/me/product-favorites/${productId}`,
+            authHeaders(session.token),
+          );
+        else
+          await api.post(
+            `/me/product-favorites/${productId}`,
+            {},
+            authHeaders(session.token),
+          );
+        setHighlights((value) => ({
+          ...value,
+          favoriteProductIds: removing
+            ? (value.favoriteProductIds || []).filter((id) => id !== productId)
+            : [...new Set([...(value.favoriteProductIds || []), productId])],
+        }));
+        notify(
+          removing
+            ? "Produto removido dos favoritos."
+            : "Produto salvo nos favoritos.",
+        );
+      } catch (error) {
+        notify(
+          error.response?.data?.message ||
+            "Não foi possível atualizar o favorito.",
+        );
+      }
+    },
+    [highlights.favoriteProductIds, location.pathname, session?.token],
+  );
+
   const sharedCatalogProps = {
     products,
     categories,
@@ -419,6 +478,9 @@ export default function App() {
     promotions,
     settings,
     storeHours,
+    highlights,
+    session,
+    onToggleFavorite: toggleFavorite,
     onAdd: handleAddProduct,
   };
 
@@ -427,7 +489,7 @@ export default function App() {
       <div className="public-boot">
         <div className="public-boot-card">
           <img
-            src={mediaUrl(settings.logoImage) || "/images/master-pizzaria-logo.png"}
+            src={mediaUrl(settings.logoImage) || "/images/store-placeholder.svg"}
             alt={settings.storeName || "Pizzaria"}
           />
           <span className="public-boot-spinner" />
@@ -537,12 +599,18 @@ export default function App() {
           />
           <Route
             path="/pedido/:code"
-            element={<TrackOrderPage session={session} />}
+            element={<TrackOrderPage session={session} settings={settings} />}
           />
           <Route path="/pagamento" element={<PaymentReturnPage />} />
           <Route
             path="/entrar"
-            element={<AuthPage session={session} onSession={setSession} />}
+            element={
+              <AuthPage
+                session={session}
+                onSession={setSession}
+                settings={settings}
+              />
+            }
           />
           <Route
             path="/cadastro"
@@ -551,6 +619,7 @@ export default function App() {
                 session={session}
                 onSession={setSession}
                 initialMode="register"
+                settings={settings}
               />
             }
           />
@@ -571,6 +640,7 @@ export default function App() {
                   onLogout={logout}
                   onLogoutAll={logoutAll}
                   onReorder={replaceCart}
+                  settings={settings}
                 />
               ) : (
                 <Navigate to="/entrar" replace />
@@ -587,6 +657,7 @@ export default function App() {
                   onLogoutAll={logoutAll}
                   onReorder={replaceCart}
                   ordersOnly
+                  settings={settings}
                 />
               ) : (
                 <GuestOrdersPage />

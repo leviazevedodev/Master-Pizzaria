@@ -35,6 +35,18 @@ test("separa configurações operacionais, de entrega e da loja", () => {
     "delivery",
   );
   assert.equal(permission("/settings", "PATCH", { storeName: "Loja" }), "settings");
+  assert.equal(
+    permission("/settings", "PATCH", {
+      publicReviewsEnabled: true,
+      rewardsMode: "POINTS",
+    }),
+    "promotions",
+  );
+});
+
+test("marketing e moderação usam a permissão de promoções", () => {
+  assert.equal(permission("/campaigns"), "promotions");
+  assert.equal(permission("/reviews/review-1", "PATCH"), "promotions");
 });
 
 test("nega por padrão qualquer rota administrativa sem mapeamento", () => {

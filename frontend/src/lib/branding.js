@@ -46,7 +46,10 @@ export function buildBranding(settings = {}, context = {}) {
     origin,
   );
   const adminPage = /^\/(gestao|admin)(\/|$)/i.test(pathname);
-  const social = safePublicUrl(settings.instagramUrl);
+  const social = [
+    safePublicUrl(settings.instagramUrl),
+    safePublicUrl(settings.facebookUrl),
+  ].filter(Boolean);
   const title = clean(settings.seoTitle, storeName);
   const primaryColor = safeBrandColor(
     settings.primaryColor,
@@ -67,10 +70,13 @@ export function buildBranding(settings = {}, context = {}) {
     ...(canonical ? { url: canonical } : {}),
     ...(logo ? { logo, image: shareImage || logo } : {}),
     ...(clean(settings.phone) ? { telephone: clean(settings.phone) } : {}),
+    ...(clean(settings.openingHours)
+      ? { openingHours: clean(settings.openingHours) }
+      : {}),
     ...(clean(settings.address)
       ? { address: { "@type": "PostalAddress", streetAddress: clean(settings.address) } }
       : {}),
-    ...(social ? { sameAs: [social] } : {}),
+    ...(social.length ? { sameAs: social } : {}),
   };
 
   return {

@@ -1,6 +1,14 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Clock3, Menu, Phone, ShoppingBag, UserRound, X } from "lucide-react";
+import {
+  Clock3,
+  Download,
+  Menu,
+  Phone,
+  ShoppingBag,
+  UserRound,
+  X,
+} from "lucide-react";
 import { mediaUrl } from "../lib/api";
 
 export default function Header({
@@ -12,6 +20,7 @@ export default function Header({
   menuPath = "/cardapio",
 }) {
   const [open, setOpen] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState(null);
   const close = () => setOpen(false);
   const accountPath = session?.user?.isAdmin
     ? "/gestao"
@@ -30,6 +39,30 @@ export default function Header({
     : settings?.openingHours;
   const isOpen = Boolean(settings?.isOpen);
   const storeName = settings?.storeName || "Pizzaria";
+
+  useEffect(() => {
+    const captureInstall = (event) => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+    const installed = () => setInstallPrompt(null);
+    window.addEventListener("beforeinstallprompt", captureInstall);
+    window.addEventListener("appinstalled", installed);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", captureInstall);
+      window.removeEventListener("appinstalled", installed);
+    };
+  }, []);
+
+  async function installApp() {
+    if (!installPrompt) return;
+    try {
+      await installPrompt.prompt();
+      await installPrompt.userChoice;
+    } finally {
+      setInstallPrompt(null);
+    }
+  }
 
   return (
     <header className="topbar">
@@ -81,6 +114,17 @@ export default function Header({
           </Link>
         </nav>
         <div className="nav-actions">
+          {settings?.pwaEnabled !== false && installPrompt && (
+            <button
+              type="button"
+              className="install-app-button"
+              onClick={installApp}
+              title={`Instalar ${storeName}`}
+            >
+              <Download size={17} />
+              <span>Instalar aplicativo</span>
+            </button>
+          )}
           {String(settings?.phone || "").trim() && (
             <a
               className="phone-link"

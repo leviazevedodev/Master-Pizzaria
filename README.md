@@ -140,6 +140,8 @@ npm run prisma:status
 
 A migration adiciona a composição dos combos, seus registros nos pedidos, o registro de estoque e os novos padrões de entrega. Não apaga pedidos, contas ou produtos existentes. A Gestão 360° agora identifica a área que falhou e diferencia estrutura de banco desatualizada de indisponibilidade temporária; uma falha isolada não significa, por si só, erro de schema.
 
+Para atualizar para a v2.29.0, o mesmo `npm run prisma:migrate` aplica, em ordem, `20260915000000_central_flavor_catalog`, `20260916000000_configurable_combo_slots` e `20260917000000_growth_white_label`. Elas migram sabores legados para o catálogo central, adicionam os slots configuráveis de combos e incluem white-label, avaliações, favoritos, recompensas, campanhas e implantação inicial. São expansivas e preservam produtos, pedidos e contas existentes.
+
 Para o Neon, mantenha a conexão pooled e limite o pool por processo. Um exemplo de final da URL é `?sslmode=require&connection_limit=5&pool_timeout=30&connect_timeout=10` (use `&` no lugar de `?` se a URL já possuir parâmetros).
 
 Não use `prisma db push` neste projeto: há histórico de migrations e o comando pode criar divergência entre o banco e os arquivos versionados. Também não use `migrate reset` em banco com dados reais.

@@ -52,7 +52,7 @@ export default function CartPage({
         <section>
           <span className="eyebrow dark">Sua sacola</span>
           <h1 className="page-title">
-            Sacola <em>Master.</em>
+            Sacola <em>{settings?.shortName || settings?.storeName || "da pizzaria"}.</em>
           </h1>
           {cart.length === 0 ? (
             <div className="empty-cart">

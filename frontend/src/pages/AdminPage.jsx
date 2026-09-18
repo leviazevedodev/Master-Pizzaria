@@ -91,6 +91,8 @@ const StaffAdmin = lazy(() => import("../components/admin/StaffAdmin"));
 const TeamAnalytics = lazy(() => import("../components/admin/TeamAnalytics"));
 const DeliveryAdmin = lazy(() => import("../components/admin/DeliveryAdmin"));
 const StoreSettings = lazy(() => import("../components/admin/StoreSettings"));
+const MarketingAdmin = lazy(() => import("../components/admin/MarketingAdmin"));
+const SetupWizard = lazy(() => import("../components/admin/SetupWizard"));
 const TABS = [
   ["overview", Headset, "Atendimento", "overview"],
   ["analytics", Activity, "Desempenho", "analytics"],
@@ -102,6 +104,7 @@ const TABS = [
   ["inventory", Boxes, "Estoque", "inventory"],
   ["delivery", MotoIcon, "Entregas", "delivery"],
   ["customers", Users, "Clientes", "customers"],
+  ["marketing", Megaphone, "Marketing", "promotions"],
   ["reports", ClipboardList, "Relatórios", "reports"],
   ["settings", Settings, "Loja", "settings"],
   ["management", Gauge, "Gestão 360°", "__OWNER__"],
@@ -117,6 +120,7 @@ const EMPTY_PRODUCT = {
   image: "",
   badge: "",
   featured: false,
+  isNew: false,
   available: true,
   sortOrder: 0,
   allowFlavorSplit: false,
@@ -308,7 +312,7 @@ export default function AdminPage({
     };
     const installed = () => {
       setInstallPrompt(null);
-      setInstallHelp("Aplicativo instalado. Abra a Master Pizzaria pela tela inicial.");
+      setInstallHelp(`Aplicativo instalado. Abra ${settings?.storeName || "a loja"} pela tela inicial.`);
     };
     window.addEventListener("beforeinstallprompt", captureInstall);
     window.addEventListener("appinstalled", installed);
@@ -320,7 +324,7 @@ export default function AdminPage({
 
   async function installApp() {
     if (window.matchMedia("(display-mode: standalone)").matches || navigator.standalone) {
-      setInstallHelp("Você já está usando a Master Pizzaria como aplicativo.");
+      setInstallHelp(`Você já está usando ${settings?.storeName || "a loja"} como aplicativo.`);
       return;
     }
     if (installPrompt) {
@@ -701,6 +705,7 @@ export default function AdminPage({
       image: p.image || "",
       badge: p.badge || "",
       featured: Boolean(p.featured),
+      isNew: Boolean(p.isNew),
       available: Boolean(p.available),
       sortOrder: p.sortOrder || 0,
       allowFlavorSplit: Boolean(p.allowFlavorSplit),
@@ -1351,7 +1356,7 @@ export default function AdminPage({
 
   if (loading && !settings)
     return (
-      <div className="admin-loading">Carregando painel da Master Pizzaria...</div>
+      <div className="admin-loading">Carregando painel da loja...</div>
     );
   const currentTabLabel =
     availableTabs.find(([id]) => id === tab)?.[2] || "Painel";
@@ -1363,9 +1368,9 @@ export default function AdminPage({
         <Link className="admin-logo" to="/">
           <img
             src={
-              mediaUrl(settings?.logoImage) || "/images/master-pizzaria-logo.png"
+              mediaUrl(settings?.logoImage) || "/images/store-placeholder.svg"
             }
-            alt="Master Pizzaria"
+            alt={settings?.storeName || "Pizzaria"}
           />
         </Link>
         <nav>
@@ -1879,6 +1884,20 @@ export default function AdminPage({
             onDelete={deleteCustomer}
           />
         )}
+        {tab === "marketing" && can("promotions") && (
+          <MarketingAdmin
+            session={session}
+            settings={settings}
+            setSettings={setSettings}
+            notify={notify}
+            fail={fail}
+            onChanged={onCatalogChanged}
+            uploadMedia={(file, onDone) =>
+              requestCrop(file, onDone, "Banner da campanha", 16 / 7)
+            }
+            imageUploading={imageUploading}
+          />
+        )}
         {tab === "reports" && can("reports") && (
           <ReportsAdmin session={session} fail={fail} />
         )}
@@ -1984,6 +2003,17 @@ export default function AdminPage({
           imageUploading={imageUploading}
           isNew={productEditor === "new"}
           onArchive={archiveProduct}
+        />
+      )}
+      {isOwner && settings && settings.initialSetupCompleted === false && (
+        <SetupWizard
+          session={session}
+          settings={settings}
+          setSettings={setSettings}
+          onComplete={async () => {
+            notify("Configuração inicial concluída.");
+            await onCatalogChanged?.();
+          }}
         />
       )}
     </div>

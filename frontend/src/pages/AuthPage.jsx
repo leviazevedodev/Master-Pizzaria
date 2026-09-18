@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  CalendarDays,
   CheckCircle2,
   Eye,
   EyeOff,
@@ -11,6 +12,7 @@ import {
   ShieldCheck,
   UserPlus,
   UserRound,
+  Gift,
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api, mediaUrl } from "../lib/api";
@@ -32,6 +34,8 @@ export default function AuthPage({
     phone: "",
     password: "",
     confirmPassword: "",
+    birthday: "",
+    inviteCode: new URLSearchParams(location.search).get("convite") || "",
   });
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -109,6 +113,8 @@ export default function AuthPage({
         email: registerForm.email,
         phone: registerForm.phone,
         password: registerForm.password,
+        birthday: registerForm.birthday || null,
+        inviteCode: registerForm.inviteCode || "",
       });
       onSession({ token: data.token, user: data.user });
       navigate(next || "/minha-conta", { replace: true });
@@ -404,6 +410,41 @@ export default function AuthPage({
               <small className="password-hint">
                 Use pelo menos 8 caracteres, incluindo uma letra e um número.
               </small>
+              <div className="auth-form-grid">
+                <label className={error?.field === "birthday" ? "field-error" : ""}>
+                  Data de nascimento (opcional)
+                  <div className="input-with-icon">
+                    <CalendarDays size={18} />
+                    <input
+                      type="date"
+                      autoComplete="bday"
+                      max={new Date().toISOString().slice(0, 10)}
+                      value={registerForm.birthday}
+                      onChange={(e) =>
+                        setRegisterForm({ ...registerForm, birthday: e.target.value })
+                      }
+                    />
+                  </div>
+                </label>
+                {settings.referralEnabled && (
+                  <label className={error?.field === "inviteCode" ? "field-error" : ""}>
+                    Código de indicação (opcional)
+                    <div className="input-with-icon">
+                      <Gift size={18} />
+                      <input
+                        value={registerForm.inviteCode}
+                        onChange={(e) =>
+                          setRegisterForm({
+                            ...registerForm,
+                            inviteCode: e.target.value.toUpperCase(),
+                          })
+                        }
+                        placeholder="Código recebido"
+                      />
+                    </div>
+                  </label>
+                )}
+              </div>
               {error && (
                 <div className="auth-error">
                   <b>{error.message}</b>

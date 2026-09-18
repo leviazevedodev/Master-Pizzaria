@@ -5,12 +5,14 @@ import {
   Clock3,
   CreditCard,
   Flame,
+  Facebook,
   Instagram,
   MapPin,
   MessageCircle,
   Search,
   ShieldCheck,
   Sparkles,
+  Star,
   Store,
   Tag,
 } from "lucide-react";
@@ -28,6 +30,8 @@ export default function HomePage({
   promotions = [],
   settings,
   storeHours = [],
+  highlights = {},
+  onToggleFavorite,
   onAdd,
 }) {
   const [category, setCategory] = useState("todos");
@@ -83,8 +87,9 @@ export default function HomePage({
       : String(settings.whatsappSecondary || "").trim();
   const instagramUrl = String(settings.instagramUrl || "").trim();
   const instagramName = String(settings.instagram || "").trim();
+  const facebookUrl = String(settings.facebookUrl || "").trim();
   const hasSocial = Boolean(
-    whatsapp1 || whatsapp2 || instagramUrl || instagramName,
+    whatsapp1 || whatsapp2 || instagramUrl || instagramName || facebookUrl,
   );
   const payments = [
     settings.cashPaymentEnabled && "Dinheiro",
@@ -114,7 +119,7 @@ export default function HomePage({
                 Pedir agora <ArrowRight size={18} />
               </a>
               <a className="ghost-btn" href="#sobre">
-                Conhecer a Master
+                Conhecer {settings.shortName || settings.storeName || "a loja"}
               </a>
             </div>
             <div className="hero-perks">
@@ -195,6 +200,30 @@ export default function HomePage({
       </section>
 
       <main>
+        {(highlights.campaigns || []).length > 0 && (
+          <section className="campaigns-section container" aria-label="Campanhas">
+            {(highlights.campaigns || []).map((campaign) => (
+              <article className="campaign-public-card" key={campaign.id}>
+                {campaign.image && (
+                  <img src={mediaUrl(campaign.image)} alt="" loading="lazy" />
+                )}
+                <div>
+                  <span className="eyebrow dark">Novidade</span>
+                  <h2>{campaign.title}</h2>
+                  {campaign.description && <p>{campaign.description}</p>}
+                  {campaign.couponCode && (
+                    <strong>Cupom: {campaign.couponCode}</strong>
+                  )}
+                  {campaign.targetUrl && (
+                    <a className="primary-btn" href={campaign.targetUrl}>
+                      {campaign.buttonText || "Ver agora"} <ArrowRight size={16} />
+                    </a>
+                  )}
+                </div>
+              </article>
+            ))}
+          </section>
+        )}
         {promotions.length > 0 && (
           <section className="promotions-section container" id="promocoes">
             <div className="section-heading">
@@ -242,7 +271,9 @@ export default function HomePage({
         <section className="menu-section container" id="cardapio">
           <div className="section-heading">
             <div>
-              <span className="eyebrow dark">Cardápio Master</span>
+              <span className="eyebrow dark">
+                Cardápio {settings.shortName || settings.storeName || "da loja"}
+              </span>
               <h2>{settings.menuTitle || "Escolha o seu próximo favorito."}</h2>
               <p>{settings.menuSubtitle}</p>
             </div>
@@ -293,7 +324,14 @@ export default function HomePage({
           )}
           <div className="product-grid">
             {visibleProducts.map((product) => (
-              <ProductCard key={product.id} product={product} onAdd={onAdd} />
+              <ProductCard
+                key={product.id}
+                product={product}
+                onAdd={onAdd}
+                favorite={(highlights.favoriteProductIds || []).includes(product.id)}
+                isNew={(highlights.newProductIds || []).includes(product.id)}
+                onToggleFavorite={onToggleFavorite}
+              />
             ))}
           </div>
           {filtered.length === 0 && (
@@ -317,6 +355,57 @@ export default function HomePage({
             </div>
           )}
         </section>
+
+        {(highlights.bestSellers || []).length > 0 && (
+          <section className="menu-section container compact-product-section">
+            <div className="section-heading">
+              <div>
+                <span className="eyebrow dark">Mais pedidos</span>
+                <h2>Os favoritos dos clientes.</h2>
+                <p>Produtos que mais chegaram às mesas e casas da região.</p>
+              </div>
+            </div>
+            <div className="product-grid">
+              {highlights.bestSellers.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  onAdd={onAdd}
+                  favorite={(highlights.favoriteProductIds || []).includes(product.id)}
+                  isNew={(highlights.newProductIds || []).includes(product.id)}
+                  onToggleFavorite={onToggleFavorite}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {(highlights.reviews || []).length > 0 && (
+          <section className="reviews-public-section container">
+            <div className="section-heading">
+              <div>
+                <span className="eyebrow dark">Avaliações verificadas</span>
+                <h2>Quem pediu conta como foi.</h2>
+                <p>
+                  Nota {Number(highlights.reviewSummary?.average || 0).toFixed(1)} de 5 em {highlights.reviewSummary?.count || 0} avaliações.
+                </p>
+              </div>
+            </div>
+            <div className="reviews-public-grid">
+              {highlights.reviews.map((review) => (
+                <article key={review.id}>
+                  <div className="review-stars" aria-label={`${review.rating} de 5 estrelas`}>
+                    {Array.from({ length: 5 }, (_, index) => (
+                      <Star key={index} size={17} fill={index < review.rating ? "currentColor" : "none"} />
+                    ))}
+                  </div>
+                  {review.comment && <p>“{review.comment}”</p>}
+                  <b>{review.customerName || "Cliente"}</b>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="about-section container" id="sobre">
           <div className="about-visual">
@@ -470,6 +559,11 @@ export default function HomePage({
                       >
                         <Instagram /> Instagram{" "}
                         {instagramName && <span>{instagramName}</span>}
+                      </a>
+                    )}
+                    {facebookUrl && (
+                      <a href={facebookUrl} target="_blank" rel="noreferrer">
+                        <Facebook /> Facebook
                       </a>
                     )}
                   </div>

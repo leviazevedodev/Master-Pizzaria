@@ -39,6 +39,8 @@ A migration `20260911000000_payment_methods_and_data_retention` é obrigatória 
 
 Na v2.28.0, aplique também `20260912000000_operational_orders_and_combos`. Ela adiciona `Product.isCombo`, a tabela `ComboItem`, os registros de composição e estoque nos pedidos e altera somente os padrões de novas configurações de entrega. Valores já cadastrados em `BusinessSettings` são preservados.
 
+Na v2.29.0, aplique `20260915000000_central_flavor_catalog`, `20260916000000_configurable_combo_slots` e `20260917000000_growth_white_label`. As migrations criam o catálogo central de sabores, convertem os sabores legados quando possível, adicionam pizzas configuráveis aos combos e incluem identidade, SEO, avaliações, favoritos, recompensas, campanhas e o wizard inicial. Instalações já configuradas são marcadas como concluídas e não voltam ao wizard.
+
 Para atualização sem Docker, com `backend/.env` configurado:
 
 ```bash

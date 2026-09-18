@@ -9,6 +9,8 @@ import {
   Banknote,
   PackageCheck,
   Search,
+  Star,
+  MessageSquare,
 } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
@@ -24,6 +26,13 @@ export default function TrackOrderPage({ session, settings = {} }) {
   const [order, setOrder] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [review, setReview] = useState({
+    rating: 5,
+    foodRating: 5,
+    deliveryRating: 5,
+    comment: "",
+  });
+  const [reviewStatus, setReviewStatus] = useState("");
   const steps = useMemo(() => {
     const base =
       order?.fulfillmentType === "DINE_IN"
@@ -80,6 +89,28 @@ export default function TrackOrderPage({ session, settings = {} }) {
     if (clean) {
       navigate(`/pedido/${clean}`);
       if (clean === code) load(clean);
+    }
+  }
+  async function submitReview(event) {
+    event.preventDefault();
+    setReviewStatus("Enviando...");
+    try {
+      await api.post(
+        `/orders/${encodeURIComponent(order.trackingCode)}/review`,
+        {
+          ...review,
+          deliveryRating:
+            order.fulfillmentType === "DELIVERY"
+              ? review.deliveryRating
+              : null,
+        },
+      );
+      setReviewStatus("Obrigado! Sua avaliação foi enviada para moderação.");
+    } catch (reviewError) {
+      setReviewStatus(
+        reviewError.response?.data?.message ||
+          "Não foi possível enviar a avaliação.",
+      );
     }
   }
   const currentIndex =
@@ -265,6 +296,54 @@ export default function TrackOrderPage({ session, settings = {} }) {
                 </div>
               ))}
             </div>
+            {order.status === "DELIVERED" &&
+              settings.reviewCollectionEnabled !== false && (
+                <form className="order-review-form" onSubmit={submitReview}>
+                  <div>
+                    <MessageSquare />
+                    <span>
+                      <b>Como foi seu pedido?</b>
+                      <small>A avaliação só aparece no site depois de aprovada.</small>
+                    </span>
+                  </div>
+                  <div className="review-rating-grid">
+                    {[
+                      ["rating", "Nota geral"],
+                      ["foodRating", "Comida"],
+                      ...(order.fulfillmentType === "DELIVERY"
+                        ? [["deliveryRating", "Entrega"]]
+                        : []),
+                    ].map(([field, label]) => (
+                      <label key={field}>
+                        {label}
+                        <select
+                          value={review[field]}
+                          onChange={(event) =>
+                            setReview({ ...review, [field]: Number(event.target.value) })
+                          }
+                        >
+                          {[5, 4, 3, 2, 1].map((value) => (
+                            <option value={value} key={value}>{value} estrela{value > 1 ? "s" : ""}</option>
+                          ))}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                  <label>
+                    Comentário (opcional)
+                    <textarea
+                      maxLength={500}
+                      value={review.comment}
+                      onChange={(event) => setReview({ ...review, comment: event.target.value })}
+                      placeholder="Conte o que você mais gostou"
+                    />
+                  </label>
+                  <button className="primary-btn" disabled={reviewStatus === "Enviando..."}>
+                    <Star size={16} /> Enviar avaliação
+                  </button>
+                  {reviewStatus && <p className="review-status">{reviewStatus}</p>}
+                </form>
+              )}
           </section>
         )}
       </main>

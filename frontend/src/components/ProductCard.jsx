@@ -1,12 +1,18 @@
 import React from "react";
-import { Plus, Star } from "lucide-react";
+import { Heart, Plus, Sparkles, Star } from "lucide-react";
 import { money } from "../lib/format";
 import { mediaUrl } from "../lib/api";
 
 const FALLBACK =
   "https://images.unsplash.com/photo-1574071318508-1cdbab80d002?auto=format&fit=crop&w=1200&q=82";
 
-export default function ProductCard({ product, onAdd }) {
+export default function ProductCard({
+  product,
+  onAdd,
+  favorite = false,
+  isNew = false,
+  onToggleFavorite,
+}) {
   const hasFlavors =
     product.allowFlavorSplit && product.availableFlavors?.length > 0;
   const hasSizes = (product.availableSizes?.length || 0) > 0;
@@ -42,12 +48,31 @@ export default function ProductCard({ product, onAdd }) {
           }}
         />
         <div className="product-overlay" />
+        {onToggleFavorite && (
+          <button
+            type="button"
+            className={`favorite-product-button ${favorite ? "active" : ""}`}
+            onClick={() => onToggleFavorite(product.id)}
+            aria-label={
+              favorite
+                ? `Remover ${product.name} dos favoritos`
+                : `Salvar ${product.name} nos favoritos`
+            }
+          >
+            <Heart size={18} fill={favorite ? "currentColor" : "none"} />
+          </button>
+        )}
         {product.badge && (
           <span className="product-badge">
             <Star size={13} fill="currentColor" /> {product.badge}
           </span>
         )}
         {product.compareAtPrice && <span className="sale-badge">Oferta</span>}
+        {(isNew || product.isNew) && (
+          <span className="new-product-badge">
+            <Sparkles size={13} /> Novidade
+          </span>
+        )}
         {soldOut && <span className="stock-out-badge">Esgotado</span>}
       </div>
       <div className="product-content">

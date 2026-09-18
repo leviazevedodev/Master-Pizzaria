@@ -20,6 +20,30 @@ const DELIVERY_SETTING_FIELDS = new Set([
   "defaultMinimumOrder",
 ]);
 
+const MARKETING_SETTING_FIELDS = new Set([
+  "publicReviewsEnabled",
+  "reviewCollectionEnabled",
+  "bestSellersEnabled",
+  "newProductsEnabled",
+  "newProductDays",
+  "rewardsMode",
+  "loyaltyEnabled",
+  "loyaltyPointsPerReal",
+  "loyaltyRewardPoints",
+  "loyaltyRewardValue",
+  "cashbackEnabled",
+  "cashbackPercent",
+  "birthdayCampaignEnabled",
+  "birthdayDiscountType",
+  "birthdayDiscountValue",
+  "birthdayMinimumOrder",
+  "birthdayValidityDays",
+  "referralEnabled",
+  "referralReferrerReward",
+  "referralNewCustomerReward",
+  "referralMinimumOrder",
+]);
+
 export function permissionNeededForAdminRequest(req) {
   const path = req.path || "/";
   const method = String(req.method || "GET").toUpperCase();
@@ -41,6 +65,8 @@ export function permissionNeededForAdminRequest(req) {
   if (path.startsWith("/customers") || path.startsWith("/customer-segments"))
     return "customers";
   if (path.startsWith("/promotions") || path.startsWith("/coupons"))
+    return "promotions";
+  if (path.startsWith("/campaigns") || path.startsWith("/reviews"))
     return "promotions";
   if (path.startsWith("/delivery-areas")) return "delivery";
   if (path.startsWith("/map/deliveries")) return "orders";
@@ -77,6 +103,8 @@ export function permissionNeededForAdminRequest(req) {
       return "operations";
     if (keys.length && keys.every((key) => DELIVERY_SETTING_FIELDS.has(key)))
       return "delivery";
+    if (keys.length && keys.every((key) => MARKETING_SETTING_FIELDS.has(key)))
+      return "promotions";
     return "settings";
   }
   return null;

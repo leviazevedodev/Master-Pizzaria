@@ -66,6 +66,17 @@ import {
   FlavorPricingError,
   quoteFlavorSelection,
 } from "./flavor-pricing.js";
+import {
+  birthdayBenefitState,
+  calculateBirthdayDiscount,
+  calculateReferralReward,
+  calculateRewardEarning,
+  calculateRewardRedemption,
+  campaignIsActive,
+  productIsNew,
+  publicReviewSummary,
+  rewardsMode,
+} from "./growth.js";
 
 dotenv.config({ quiet: true });
 
@@ -362,6 +373,18 @@ const normalizePhone = (value) => {
 };
 const validPhone = (phone) => /^\d{10,11}$/.test(phone);
 const validEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
+const parseBirthday = (value) => {
+  const raw = cleanText(value, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return undefined;
+  const date = new Date(`${raw}T12:00:00.000Z`);
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.toISOString().slice(0, 10) !== raw ||
+    date > new Date()
+  )
+    return undefined;
+  return date;
+};
 const validCustomerPassword = (password) =>
   typeof password === "string" &&
   password.length >= 8 &&
@@ -397,12 +420,16 @@ const publicUser = (user) => ({
   city: user.city || "",
   state: user.state || "",
   referencePoint: user.referencePoint || "",
+  birthday: user.birthday || null,
+  loyaltyPoints: Number(user.loyaltyPoints || 0),
+  cashbackBalance: Number(user.cashbackBalance || 0),
+  inviteCode: user.inviteCode || "",
   createdAt: user.createdAt,
 });
 const roundMoney = (value) =>
   Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 const numberOrNull = (value) => (value == null ? null : Number(value));
-const optionalDate = (value) => {
+const campaignOptionalDate = (value) => {
   if (value === "" || value == null) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? undefined : date;
@@ -434,7 +461,11 @@ const serializeSettings = (settings) => ({
     settings.storeGoogleMapsUrl,
   ),
   instagramUrl: safeExternalUrl(settings.instagramUrl, 600),
+  facebookUrl: safeExternalUrl(settings.facebookUrl, 600),
+  seoCanonicalUrl: safeExternalUrl(settings.seoCanonicalUrl, 600),
   logoImage: safeMediaUrl(settings.logoImage),
+  faviconImage: safeMediaUrl(settings.faviconImage),
+  shareImage: safeMediaUrl(settings.shareImage),
   heroImage: safeMediaUrl(settings.heroImage),
   aboutImage: safeMediaUrl(settings.aboutImage),
   deliveryFee: Number(settings.deliveryFee),
@@ -445,6 +476,14 @@ const serializeSettings = (settings) => ({
   deliveryMaxDistanceKm: Number(settings.deliveryMaxDistanceKm),
   defaultMinimumOrder: Number(settings.defaultMinimumOrder || 0),
   vipMinSpend: Number(settings.vipMinSpend || 0),
+  loyaltyPointsPerReal: Number(settings.loyaltyPointsPerReal || 0),
+  loyaltyRewardValue: Number(settings.loyaltyRewardValue || 0),
+  cashbackPercent: Number(settings.cashbackPercent || 0),
+  birthdayDiscountValue: Number(settings.birthdayDiscountValue || 0),
+  birthdayMinimumOrder: Number(settings.birthdayMinimumOrder || 0),
+  referralReferrerReward: Number(settings.referralReferrerReward || 0),
+  referralNewCustomerReward: Number(settings.referralNewCustomerReward || 0),
+  referralMinimumOrder: Number(settings.referralMinimumOrder || 0),
   storeLatitude: numberOrNull(settings.storeLatitude),
   storeLongitude: numberOrNull(settings.storeLongitude),
   onlinePaymentConfigured: MERCADOPAGO_PUBLIC_READY,
@@ -460,12 +499,15 @@ const serializePublicSettings = (settings) => {
   const fields = [
     "id",
     "storeName",
+    "shortName",
+    "slogan",
     "timezone",
     "phone",
     "whatsappPrimary",
     "whatsappSecondaryVisible",
     "instagram",
     "instagramUrl",
+    "facebookUrl",
     "address",
     "openingHours",
     "deliveryFee",
@@ -498,6 +540,14 @@ const serializePublicSettings = (settings) => {
     "publicMenuUrl",
     "digitalMenuEnabled",
     "logoImage",
+    "faviconImage",
+    "shareImage",
+    "primaryColor",
+    "secondaryColor",
+    "accentColor",
+    "seoTitle",
+    "seoDescription",
+    "seoCanonicalUrl",
     "heroEyebrow",
     "heroImage",
     "aboutEyebrow",
@@ -509,6 +559,25 @@ const serializePublicSettings = (settings) => {
     "footerText",
     "cartRecommendationsEnabled",
     "pwaEnabled",
+    "publicReviewsEnabled",
+    "reviewCollectionEnabled",
+    "bestSellersEnabled",
+    "newProductsEnabled",
+    "newProductDays",
+    "rewardsMode",
+    "loyaltyPointsPerReal",
+    "loyaltyRewardPoints",
+    "loyaltyRewardValue",
+    "cashbackPercent",
+    "birthdayCampaignEnabled",
+    "birthdayDiscountType",
+    "birthdayDiscountValue",
+    "birthdayMinimumOrder",
+    "birthdayValidityDays",
+    "referralEnabled",
+    "referralReferrerReward",
+    "referralNewCustomerReward",
+    "referralMinimumOrder",
   ];
   const publicRow = Object.fromEntries(
     fields.map((field) => [field, row[field]]),
@@ -541,6 +610,193 @@ const getSettings = async () => {
     return await request;
   } finally {
     if (settingsRequest === request) settingsRequest = null;
+  }
+};
+const ensureUserInviteCode = async (client, user) => {
+  if (user?.inviteCode) return user.inviteCode;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const inviteCode = crypto.randomBytes(5).toString("hex").toUpperCase();
+    const updated = await client.user.updateMany({
+      where: { id: user.id, inviteCode: null },
+      data: { inviteCode },
+    });
+    if (updated.count) return inviteCode;
+    const current = await client.user.findUnique({
+      where: { id: user.id },
+      select: { inviteCode: true },
+    });
+    if (current?.inviteCode) return current.inviteCode;
+  }
+  throw new Error("Não foi possível gerar o código de indicação.");
+};
+const creditReward = async (
+  tx,
+  { externalKey, userId, orderId = null, type, points = 0, amount = 0, description },
+) => {
+  const created = await tx.rewardTransaction.createMany({
+    data: [
+      {
+        externalKey,
+        userId,
+        orderId,
+        type,
+        points,
+        amount,
+        description,
+      },
+    ],
+    skipDuplicates: true,
+  });
+  if (!created.count) return false;
+  await tx.user.update({
+    where: { id: userId },
+    data: {
+      ...(points ? { loyaltyPoints: { increment: points } } : {}),
+      ...(amount ? { cashbackBalance: { increment: amount } } : {}),
+    },
+  });
+  return true;
+};
+const applyOrderRewards = async (tx, orderId) => {
+  const order = await tx.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      userId: true,
+      total: true,
+      status: true,
+      rewardsProcessedAt: true,
+      user: {
+        select: {
+          id: true,
+          referredByUserId: true,
+        },
+      },
+    },
+  });
+  if (
+    !order?.userId ||
+    order.status !== "DELIVERED" ||
+    order.rewardsProcessedAt
+  )
+    return;
+  const settings =
+    (await tx.businessSettings.findUnique({ where: { id: "default" } })) || {};
+  const earning = calculateRewardEarning(order.total, settings);
+  let cashbackEarned = 0;
+  if (earning.points > 0)
+    await creditReward(tx, {
+      externalKey: `${order.id}:LOYALTY_EARN`,
+      userId: order.userId,
+      orderId: order.id,
+      type: "LOYALTY_EARN",
+      points: earning.points,
+      description: `Pontos do pedido ${order.id.slice(-8).toUpperCase()}`,
+    });
+  if (earning.amount > 0) {
+    const credited = await creditReward(tx, {
+      externalKey: `${order.id}:CASHBACK_EARN`,
+      userId: order.userId,
+      orderId: order.id,
+      type: "CASHBACK_EARN",
+      amount: earning.amount,
+      description: `Cashback do pedido ${order.id.slice(-8).toUpperCase()}`,
+    });
+    if (credited) cashbackEarned += earning.amount;
+  }
+  if (
+    settings.referralEnabled &&
+    order.user?.referredByUserId &&
+    Number(order.total) >= Number(settings.referralMinimumOrder || 0)
+  ) {
+    const deliveredCount = await tx.order.count({
+      where: { userId: order.userId, status: "DELIVERED" },
+    });
+    if (deliveredCount === 1) {
+      const newCustomerReward = Math.max(
+        0,
+        Number(settings.referralNewCustomerReward || 0),
+      );
+      const referrerReward = Math.max(
+        0,
+        Number(settings.referralReferrerReward || 0),
+      );
+      const newCustomerCredit = calculateReferralReward(
+        newCustomerReward,
+        settings,
+      );
+      const referrerCredit = calculateReferralReward(referrerReward, settings);
+      if (newCustomerCredit.points || newCustomerCredit.amount)
+        await creditReward(tx, {
+          externalKey: `${order.id}:REFERRAL_NEW_CUSTOMER`,
+          userId: order.userId,
+          orderId: order.id,
+          type: "REFERRAL_NEW_CUSTOMER",
+          points: newCustomerCredit.points,
+          amount: newCustomerCredit.amount,
+          description: "Benefício pelo primeiro pedido indicado",
+        });
+      if (referrerCredit.points || referrerCredit.amount)
+        await creditReward(tx, {
+          externalKey: `${order.id}:REFERRAL_REFERRER`,
+          userId: order.user.referredByUserId,
+          orderId: order.id,
+          type: "REFERRAL_REFERRER",
+          points: referrerCredit.points,
+          amount: referrerCredit.amount,
+          description: "Recompensa por indicação concluída",
+        });
+    }
+  }
+  await tx.order.update({
+    where: { id: order.id },
+    data: {
+      rewardsProcessedAt: new Date(),
+      cashbackEarned,
+    },
+  });
+};
+const restoreOrderBenefits = async (tx, orderId) => {
+  const order = await tx.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      userId: true,
+      birthdayBenefitApplied: true,
+      rewardTransactions: {
+        where: { type: { in: ["LOYALTY_REDEEM", "CASHBACK_REDEEM"] } },
+        select: { type: true, points: true, amount: true },
+      },
+    },
+  });
+  if (!order?.userId) return;
+  for (const debit of order.rewardTransactions) {
+    await creditReward(tx, {
+      externalKey: `${order.id}:${debit.type}_RESTORE`,
+      userId: order.userId,
+      orderId: order.id,
+      type: `${debit.type}_RESTORE`,
+      points: Math.abs(Number(debit.points || 0)),
+      amount: Math.abs(Number(debit.amount || 0)),
+      description: "Benefício devolvido após cancelamento do pedido",
+    });
+  }
+  if (order.birthdayBenefitApplied) {
+    const activeBirthdayOrder = await tx.order.findFirst({
+      where: {
+        userId: order.userId,
+        id: { not: order.id },
+        birthdayBenefitApplied: true,
+        status: { not: "CANCELED" },
+        paymentStatus: { notIn: ["REJECTED", "CANCELED", "REFUNDED"] },
+      },
+      select: { id: true },
+    });
+    if (!activeBirthdayOrder)
+      await tx.user.update({
+        where: { id: order.userId },
+        data: { birthdayBenefitYear: null },
+      });
   }
 };
 const simplePromotionIsActive = (row, now = new Date()) =>
@@ -974,6 +1230,8 @@ const serializePublicProduct = (product) => {
         }
       : undefined,
     featured: Boolean(product.featured),
+    isNew: Boolean(product.isNew),
+    createdAt: product.createdAt,
     available: Boolean(product.available),
     sortOrder: Number(product.sortOrder || 0),
     allowFlavorSplit: Boolean(product.allowFlavorSplit),
@@ -1127,6 +1385,9 @@ const serializeOrder = (order) => {
     subtotal: Number(order.subtotal),
     deliveryFee: Number(order.deliveryFee),
     total: Number(order.total),
+    discountAmount: Number(order.discountAmount || 0),
+    cashbackUsed: Number(order.cashbackUsed || 0),
+    cashbackEarned: Number(order.cashbackEarned || 0),
     changeFor: numberOrNull(order.changeFor),
     distanceKm: numberOrNull(order.distanceKm),
     latitude: numberOrNull(order.latitude),
@@ -1545,6 +1806,11 @@ async function findUserByIdentifier(identifier) {
 
 async function sendResetEmail(user, token) {
   if (!RESEND_READY || !validEmail(user?.email)) return false;
+  const settings = await getSettings();
+  const storeName = cleanText(settings.storeName, 100) || "Pizzaria";
+  const primaryColor = /^#[0-9a-f]{6}$/i.test(settings.primaryColor || "")
+    ? settings.primaryColor
+    : "#e31b23";
   const resetUrl = `${FRONTEND_URL.replace(/\/$/, "")}/redefinir-senha#token=${encodeURIComponent(token)}`;
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -1560,9 +1826,9 @@ async function sendResetEmail(user, token) {
     body: JSON.stringify({
       from: process.env.EMAIL_FROM,
       to: [user.email],
-      subject: "Redefinição de senha • Master Pizzaria",
+      subject: `Redefinição de senha • ${storeName}`,
       text: `Olá, ${user.name}. Use este link para criar uma nova senha: ${resetUrl}\n\nO link expira em 30 minutos. Se você não pediu a alteração, ignore este e-mail.`,
-      html: `<div style="background:#111214;padding:32px 16px;font-family:Arial,sans-serif;color:#f7f5f1"><div style="max-width:560px;margin:auto;background:#1d2025;border:1px solid #343941;border-radius:18px;padding:28px"><div style="height:5px;background:#e31b23;border-radius:5px;margin-bottom:24px"></div><h2 style="margin:0 0 14px">Redefinição de senha</h2><p>Olá, ${escapeHtml(user.name)}.</p><p style="color:#c8cbd0;line-height:1.6">Recebemos uma solicitação para redefinir a senha da sua conta Master Pizzaria.</p><p style="margin:24px 0"><a href="${escapeHtml(resetUrl)}" style="display:inline-block;background:#e31b23;color:#fff;text-decoration:none;padding:13px 19px;border-radius:10px;font-weight:700">Criar nova senha</a></p><p style="color:#9fa4ac;font-size:13px;line-height:1.5">Este link é de uso único e expira em 30 minutos. Se você não pediu a alteração, ignore este e-mail.</p></div></div>`,
+      html: `<div style="background:#111214;padding:32px 16px;font-family:Arial,sans-serif;color:#f7f5f1"><div style="max-width:560px;margin:auto;background:#1d2025;border:1px solid #343941;border-radius:18px;padding:28px"><div style="height:5px;background:${escapeHtml(primaryColor)};border-radius:5px;margin-bottom:24px"></div><h2 style="margin:0 0 14px">Redefinição de senha</h2><p>Olá, ${escapeHtml(user.name)}.</p><p style="color:#c8cbd0;line-height:1.6">Recebemos uma solicitação para redefinir a senha da sua conta ${escapeHtml(storeName)}.</p><p style="margin:24px 0"><a href="${escapeHtml(resetUrl)}" style="display:inline-block;background:${escapeHtml(primaryColor)};color:#fff;text-decoration:none;padding:13px 19px;border-radius:10px;font-weight:700">Criar nova senha</a></p><p style="color:#9fa4ac;font-size:13px;line-height:1.5">Este link é de uso único e expira em 30 minutos. Se você não pediu a alteração, ignore este e-mail.</p></div></div>`,
     }),
   });
   if (!response.ok) {
@@ -2650,6 +2916,7 @@ async function syncMercadoPagoPayment(paymentId, expectedTrackingCode = null) {
       return tx.order.findUnique({ where: { id: order.id }, include: orderInclude });
     if (releasesReservedBenefits(previousStatus, nextState.status)) {
       await restoreOrderStock(tx, order.id);
+      await restoreOrderBenefits(tx, order.id);
       if (current.couponCode && current.status !== "CANCELED")
         await tx.coupon.updateMany({
           where: { code: current.couponCode, uses: { gt: 0 } },
@@ -2898,6 +3165,24 @@ app.get("/health", async (req, res) => {
       database: "unavailable",
     });
   }
+});
+app.get("/robots.txt", (req, res) => {
+  const siteUrl = FRONTEND_URL.replace(/\/$/, "");
+  res
+    .type("text/plain")
+    .send(
+      `User-agent: *\nAllow: /\nDisallow: /gestao\nDisallow: /admin\nSitemap: ${siteUrl}/sitemap.xml\n`,
+    );
+});
+app.get("/sitemap.xml", (req, res) => {
+  const siteUrl = FRONTEND_URL.replace(/\/$/, "");
+  const pages = ["/", "/cardapio", "/cadastro"].map(
+    (path) =>
+      `<url><loc>${escapeHtml(`${siteUrl}${path}`)}</loc><changefreq>${path === "/" ? "daily" : "weekly"}</changefreq></url>`,
+  );
+  res
+    .type("application/xml")
+    .send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${pages.join("")}</urlset>`);
 });
 
 app.get("/api/media/:id", async (req, res) => {
@@ -3311,12 +3596,42 @@ app.post("/api/auth/register", authRateLimit, async (req, res) => {
       field: "phone",
       message: "Este telefone já está cadastrado. Tente entrar na conta.",
     });
+  const settings = await getSettings();
+  const requestedInviteCode = cleanText(req.body?.inviteCode, 32).toUpperCase();
+  const referrer =
+    settings.referralEnabled && requestedInviteCode
+      ? await prisma.user.findFirst({
+          where: {
+            inviteCode: requestedInviteCode,
+            isAdmin: false,
+            customerBlocked: false,
+          },
+          select: { id: true },
+        })
+      : null;
+  if (settings.referralEnabled && requestedInviteCode && !referrer)
+    return res.status(400).json({
+      code: "INVALID_INVITE_CODE",
+      field: "inviteCode",
+      message: "O código de indicação não é válido.",
+    });
+  const birthdayRaw = cleanText(req.body?.birthday, 20);
+  const birthday = birthdayRaw ? parseBirthday(birthdayRaw) : null;
+  if (birthdayRaw && !birthday)
+    return res.status(400).json({
+      code: "INVALID_BIRTHDAY",
+      field: "birthday",
+      message: "Informe uma data de nascimento válida.",
+    });
   const user = await prisma.user.create({
     data: {
       name,
       email,
       phone,
       passwordHash: await bcrypt.hash(password, 12),
+      birthday,
+      inviteCode: crypto.randomBytes(5).toString("hex").toUpperCase(),
+      referredByUserId: referrer?.id || null,
       postalCode: cleanText(req.body?.postalCode, 12) || null,
       street: cleanText(req.body?.street, 120) || null,
       addressNumber: cleanText(req.body?.addressNumber, 16) || null,
@@ -3543,6 +3858,27 @@ app.patch("/api/me/address", auth, async (req, res) => {
   };
   const user = await prisma.user.update({ where: { id: req.user.id }, data });
   res.json({ user: publicUser(user) });
+});
+
+app.patch("/api/me/birthday", auth, async (req, res) => {
+  const birthday = parseBirthday(req.body?.birthday);
+  if (!birthday)
+    return res.status(400).json({
+      code: "INVALID_BIRTHDAY",
+      field: "birthday",
+      message: "Informe uma data de nascimento válida.",
+    });
+  const updated = await prisma.user.updateMany({
+    where: { id: req.user.id, birthday: null },
+    data: { birthday },
+  });
+  if (!updated.count)
+    return res.status(409).json({
+      code: "BIRTHDAY_ALREADY_SET",
+      message:
+        "A data de nascimento já foi cadastrada. Fale com a loja se precisar corrigi-la.",
+    });
+  res.json({ birthday: birthday.toISOString().slice(0, 10) });
 });
 
 app.get("/api/me/orders", auth, async (req, res) => {
@@ -4618,6 +4954,64 @@ app.post(
     couponCode = c.code;
     couponRecord = c;
   }
+  const couponDiscountAmount = discountAmount;
+  const useRewards =
+    !isDineIn && Boolean(req.user?.id) && booleanValue(req.body?.useRewards);
+  const useBirthdayReward =
+    !isDineIn &&
+    Boolean(req.user?.id) &&
+    booleanValue(req.body?.useBirthdayReward);
+  let rewardRedemption = { mode: "DISABLED", amount: 0, pointsUsed: 0 };
+  let birthdayDiscount = 0;
+  let birthdayBenefitYear = null;
+  if (useRewards || useBirthdayReward) {
+    const benefitUser = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        birthday: true,
+        birthdayBenefitYear: true,
+        loyaltyPoints: true,
+        cashbackBalance: true,
+      },
+    });
+    if (useBirthdayReward) {
+      const birthdayState = birthdayBenefitState(benefitUser, settings);
+      if (!birthdayState.eligible)
+        return res.status(409).json({
+          code: "BIRTHDAY_BENEFIT_UNAVAILABLE",
+          message: "O benefício de aniversário não está disponível para esta conta.",
+        });
+      birthdayBenefitYear = birthdayState.year;
+      birthdayDiscount = calculateBirthdayDiscount(
+        Math.max(0, subtotal - couponDiscountAmount),
+        settings,
+      );
+      if (birthdayDiscount <= 0)
+        return res.status(409).json({
+          code: "BIRTHDAY_BENEFIT_UNAVAILABLE",
+          message: `O benefício de aniversário exige pedido mínimo de R$ ${Number(settings.birthdayMinimumOrder || 0).toFixed(2).replace(".", ",")}.`,
+        });
+    }
+    if (useRewards)
+      rewardRedemption = calculateRewardRedemption({
+        subtotal: Math.max(
+          0,
+          subtotal - couponDiscountAmount - birthdayDiscount,
+        ),
+        points: benefitUser?.loyaltyPoints,
+        cashback: benefitUser?.cashbackBalance,
+        settings,
+      });
+    if (useRewards && rewardRedemption.amount <= 0)
+      return res.status(409).json({
+        code: "REWARD_UNAVAILABLE",
+        message: "Você ainda não possui saldo suficiente para resgatar.",
+      });
+    discountAmount = roundMoney(
+      couponDiscountAmount + birthdayDiscount + rewardRedemption.amount,
+    );
+  }
+  const cashbackUsed = roundMoney(rewardRedemption.amount);
   const total = roundMoney(
     Math.max(0, subtotal + deliveryFee - discountAmount),
   );
@@ -4643,6 +5037,47 @@ app.post(
   }
   const resolved = quote.address || null;
   let order = await prisma.$transaction(async (tx) => {
+    let lockedBenefitUser = null;
+    if (useRewards || useBirthdayReward) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('customer-benefits'), hashtext(${req.user.id}))`;
+      lockedBenefitUser = await tx.user.findUnique({
+        where: { id: req.user.id },
+        select: {
+          birthday: true,
+          birthdayBenefitYear: true,
+          loyaltyPoints: true,
+          cashbackBalance: true,
+        },
+      });
+      if (useBirthdayReward) {
+        const state = birthdayBenefitState(lockedBenefitUser, settings);
+        if (!state.eligible || state.year !== birthdayBenefitYear)
+          throw Object.assign(
+            new Error("O benefício de aniversário acabou de ser utilizado."),
+            { code: "BIRTHDAY_BENEFIT_UNAVAILABLE" },
+          );
+      }
+      if (useRewards) {
+        const currentRedemption = calculateRewardRedemption({
+          subtotal: Math.max(
+            0,
+            subtotal - couponDiscountAmount - birthdayDiscount,
+          ),
+          points: lockedBenefitUser?.loyaltyPoints,
+          cashback: lockedBenefitUser?.cashbackBalance,
+          settings,
+        });
+        if (
+          currentRedemption.mode !== rewardRedemption.mode ||
+          currentRedemption.pointsUsed < rewardRedemption.pointsUsed ||
+          currentRedemption.amount < rewardRedemption.amount
+        )
+          throw Object.assign(
+            new Error("Seu saldo de benefícios foi alterado. Atualize o pedido."),
+            { code: "REWARD_UNAVAILABLE" },
+          );
+      }
+    }
     let sessionForOrder = tableSession;
     if (isDineIn) {
       if (isDigitalTableOrder) {
@@ -4775,7 +5210,7 @@ app.post(
           code: "COUPON_UNAVAILABLE",
         });
     }
-    return tx.order.create({
+    const createdOrder = await tx.order.create({
       data: {
         customerName,
         customerPhone,
@@ -4815,6 +5250,8 @@ app.post(
         total,
         discountAmount,
         couponCode,
+        cashbackUsed,
+        birthdayBenefitApplied: birthdayDiscount > 0,
         orderOrigin: isDigitalTableOrder ? "DIGITAL_TABLE" : isDineIn ? "TABLE" : "SITE",
         tableId: isDineIn ? sessionForOrder.tableId : null,
         tableSessionId: isDineIn ? sessionForOrder.id : null,
@@ -4860,6 +5297,42 @@ app.post(
       },
       include: orderInclude,
     });
+    if (useRewards) {
+      const pointsUsed = Math.max(0, Number(rewardRedemption.pointsUsed || 0));
+      const amountUsed = Math.max(0, Number(rewardRedemption.amount || 0));
+      await tx.user.update({
+        where: { id: req.user.id },
+        data: {
+          ...(pointsUsed
+            ? { loyaltyPoints: { decrement: pointsUsed } }
+            : {}),
+          ...(rewardRedemption.mode === "CASHBACK" && amountUsed
+            ? { cashbackBalance: { decrement: amountUsed } }
+            : {}),
+        },
+      });
+      await tx.rewardTransaction.create({
+        data: {
+          externalKey: `${createdOrder.id}:${rewardRedemption.mode}_REDEEM`,
+          userId: req.user.id,
+          orderId: createdOrder.id,
+          type:
+            rewardRedemption.mode === "POINTS"
+              ? "LOYALTY_REDEEM"
+              : "CASHBACK_REDEEM",
+          points: -pointsUsed,
+          amount:
+            rewardRedemption.mode === "CASHBACK" ? -amountUsed : 0,
+          description: `Benefício usado no pedido ${createdOrder.id.slice(-8).toUpperCase()}`,
+        },
+      });
+    }
+    if (birthdayDiscount > 0)
+      await tx.user.update({
+        where: { id: req.user.id },
+        data: { birthdayBenefitYear },
+      });
+    return createdOrder;
   });
   if (req.user?.id && fulfillmentType === "DELIVERY") {
     await prisma.user
@@ -4942,6 +5415,7 @@ app.post(
       // para reconciliação e para impedir uma segunda cobrança.
       await prisma
         .$transaction(async (tx) => {
+          await restoreOrderBenefits(tx, order.id);
           await tx.order.delete({ where: { id: order.id } });
           if (couponRecord)
             await tx.coupon.updateMany({
@@ -5287,6 +5761,7 @@ app.post(
         },
       });
       await restoreOrderStock(tx, current.id);
+      await restoreOrderBenefits(tx, current.id);
       if (current.couponCode)
         await tx.coupon.updateMany({
           where: { code: current.couponCode, uses: { gt: 0 } },
@@ -6626,7 +7101,10 @@ app.patch("/api/admin/orders/:id/status", auth, admin, async (req, res) => {
       return { order: latest, changed: false };
     }
     if (status === "PREPARING") await applyOrderStock(tx, req.params.id);
-    if (status === "CANCELED") await restoreOrderStock(tx, req.params.id);
+    if (status === "CANCELED") {
+      await restoreOrderStock(tx, req.params.id);
+      await restoreOrderBenefits(tx, req.params.id);
+    }
     const acceptedNow =
       !current.acceptedAt && ["RECEIVED", "PREPARING"].includes(status)
         ? new Date()
@@ -6713,6 +7191,7 @@ app.patch("/api/admin/orders/:id/status", auth, admin, async (req, res) => {
             : "FUNCIONÁRIO",
       },
     });
+    if (status === "DELIVERED") await applyOrderRewards(tx, req.params.id);
     const order = await tx.order.findUnique({
       where: { id: req.params.id },
       include: orderInclude,
@@ -8063,6 +8542,7 @@ app.post("/api/admin/products", auth, admin, async (req, res) => {
         badge,
         price,
         featured: booleanValue(req.body?.featured),
+        isNew: booleanValue(req.body?.isNew),
         available:
           req.body?.available === undefined
             ? true
@@ -8116,6 +8596,8 @@ app.patch("/api/admin/products/:id", auth, admin, async (req, res) => {
     data.available = booleanValue(req.body.available);
   if (req.body?.featured !== undefined)
     data.featured = booleanValue(req.body.featured);
+  if (req.body?.isNew !== undefined)
+    data.isNew = booleanValue(req.body.isNew);
   if (req.body?.sortOrder !== undefined) {
     const sortOrder = boundedInteger(req.body.sortOrder);
     if (sortOrder == null)
@@ -9671,6 +10153,8 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
   const data = {};
   for (const f of [
     "storeName",
+    "shortName",
+    "slogan",
     "timezone",
     "phone",
     "whatsappPrimary",
@@ -9692,6 +10176,8 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
     "promotionsTitle",
     "promotionsSubtitle",
     "footerText",
+    "seoTitle",
+    "seoDescription",
   ]) {
     if (req.body?.[f] !== undefined)
       data[f] = cleanText(
@@ -9707,6 +10193,18 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
         .json({ message: "A URL do Instagram deve usar HTTPS." });
     data.instagramUrl = value;
   }
+  for (const f of ["facebookUrl", "seoCanonicalUrl"]) {
+    if (req.body?.[f] === undefined) continue;
+    const value = safeExternalUrl(req.body[f], 600);
+    if (req.body[f] && !value)
+      return res.status(400).json({
+        message:
+          f === "seoCanonicalUrl"
+            ? "A URL canônica deve usar HTTP ou HTTPS."
+            : "A URL da rede social deve usar HTTP ou HTTPS.",
+      });
+    data[f] = value || null;
+  }
   if (req.body?.storeGoogleMapsUrl !== undefined) {
     const value = normalizeTrustedGoogleMapsUrl(req.body.storeGoogleMapsUrl);
     if (req.body.storeGoogleMapsUrl && !value)
@@ -9715,7 +10213,13 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
       });
     data.storeGoogleMapsUrl = value || null;
   }
-  for (const f of ["logoImage", "heroImage", "aboutImage"]) {
+  for (const f of [
+    "logoImage",
+    "faviconImage",
+    "shareImage",
+    "heroImage",
+    "aboutImage",
+  ]) {
     if (req.body?.[f] !== undefined) {
       const value = safeMediaUrl(req.body[f]);
       if (req.body[f] && !value)
@@ -9724,6 +10228,15 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
         });
       data[f] = value || null;
     }
+  }
+  for (const f of ["primaryColor", "secondaryColor", "accentColor"]) {
+    if (req.body?.[f] === undefined) continue;
+    const value = String(req.body[f] || "").trim().toLowerCase();
+    if (!/^#[0-9a-f]{6}$/.test(value))
+      return res.status(400).json({
+        message: "As cores da identidade devem usar o formato hexadecimal #RRGGBB.",
+      });
+    data[f] = value;
   }
   if (data.timezone !== undefined) {
     try {
@@ -9741,6 +10254,14 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
     "deliveryMinimumFee",
     "deliveryMaxDistanceKm",
     "vipMinSpend",
+    "loyaltyPointsPerReal",
+    "loyaltyRewardValue",
+    "cashbackPercent",
+    "birthdayDiscountValue",
+    "birthdayMinimumOrder",
+    "referralReferrerReward",
+    "referralNewCustomerReward",
+    "referralMinimumOrder",
   ]) {
     if (req.body?.[f] !== undefined) {
       const v = Number(req.body[f]);
@@ -9791,6 +10312,37 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
         .status(400)
         .json({ message: "Período de inatividade inválido." });
     data.inactiveCustomerDays = v;
+  }
+  for (const f of [
+    "loyaltyRewardPoints",
+    "newProductDays",
+    "birthdayValidityDays",
+  ]) {
+    if (req.body?.[f] === undefined) continue;
+    const value = Number(req.body[f]);
+    const max =
+      f === "loyaltyRewardPoints"
+        ? 1_000_000
+        : f === "birthdayValidityDays"
+          ? 31
+          : 365;
+    if (!Number.isInteger(value) || value < 1 || value > max)
+      return res.status(400).json({ message: "Configuração numérica inválida." });
+    data[f] = value;
+  }
+  if (req.body?.rewardsMode !== undefined) {
+    const value = String(req.body.rewardsMode || "").toUpperCase();
+    if (!["DISABLED", "POINTS", "CASHBACK"].includes(value))
+      return res.status(400).json({ message: "Modo de fidelidade inválido." });
+    data.rewardsMode = value;
+    data.loyaltyEnabled = value === "POINTS";
+    data.cashbackEnabled = value === "CASHBACK";
+  }
+  if (req.body?.birthdayDiscountType !== undefined) {
+    const value = String(req.body.birthdayDiscountType || "").toUpperCase();
+    if (!["PERCENT", "FIXED"].includes(value))
+      return res.status(400).json({ message: "Tipo de benefício de aniversário inválido." });
+    data.birthdayDiscountType = value;
   }
   if (req.body?.lateWarningMinutes !== undefined) {
     const v = Number(req.body.lateWarningMinutes);
@@ -9870,10 +10422,26 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
     "cartRecommendationsEnabled",
     "whatsappSecondaryVisible",
     "digitalMenuEnabled",
+    "publicReviewsEnabled",
+    "reviewCollectionEnabled",
+    "bestSellersEnabled",
+    "newProductsEnabled",
+    "birthdayCampaignEnabled",
+    "referralEnabled",
+    "initialSetupCompleted",
   ])
     if (req.body?.[f] !== undefined) data[f] = booleanValue(req.body[f]);
   for (const f of ["whatsappOrderCreatedTemplate", "whatsappStatusTemplate"])
     if (req.body?.[f] !== undefined) data[f] = cleanText(req.body[f], 500);
+
+  const nextRewardsMode = data.rewardsMode ?? current.rewardsMode;
+  const nextReferralEnabled =
+    data.referralEnabled ?? current.referralEnabled;
+  if (nextReferralEnabled && nextRewardsMode === "DISABLED")
+    return res.status(400).json({
+      message:
+        "Escolha pontos ou cashback antes de ativar o programa de indicação.",
+    });
 
   const nextCep = cleanCep(data.storePostalCode ?? current.storePostalCode);
   const oldCep = cleanCep(current.storePostalCode);
@@ -10492,6 +11060,353 @@ app.get("/api/admin/map/deliveries", auth, admin, async (req, res) => {
     })),
   );
 });
+
+const serializeCampaign = (campaign) => ({
+  id: campaign.id,
+  name: campaign.name,
+  segment: campaign.segment,
+  message: campaign.message,
+  title: campaign.title || campaign.name,
+  description: campaign.description || campaign.message,
+  image: safeMediaUrl(campaign.image),
+  buttonText: campaign.buttonText || null,
+  targetUrl: campaign.targetUrl || null,
+  couponCode: campaign.couponCode || null,
+  startsAt: campaign.startsAt,
+  endsAt: campaign.endsAt,
+  sortOrder: Number(campaign.sortOrder || 0),
+  active: Boolean(campaign.active),
+  createdAt: campaign.createdAt,
+  updatedAt: campaign.updatedAt,
+});
+const campaignTargetUrl = (value) => {
+  const cleaned = cleanText(value, 600);
+  if (!cleaned) return null;
+  if (/^\/(?!\/)/.test(cleaned)) return cleaned;
+  return safeExternalUrl(cleaned, 600);
+};
+const optionalDate = (value) => {
+  if (value == null || value === "") return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+};
+
+app.get("/api/highlights", optionalAuth, async (req, res) => {
+  const settings = await getSettings();
+  const now = new Date();
+  const [campaignRows, reviewRows, reviewAggregate, bestSellerRows, favoriteRows, newRows] =
+    await Promise.all([
+      prisma.campaign.findMany({
+        where: {
+          active: true,
+          AND: [
+            { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+            { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+          ],
+        },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+        take: 12,
+      }),
+      settings.publicReviewsEnabled
+        ? prisma.review.findMany({
+            where: { status: "APPROVED" },
+            orderBy: { approvedAt: "desc" },
+            take: 12,
+          })
+        : [],
+      settings.publicReviewsEnabled
+        ? prisma.review.aggregate({
+            where: { status: "APPROVED" },
+            _avg: { rating: true },
+            _count: { _all: true },
+          })
+        : null,
+      settings.bestSellersEnabled
+        ? prisma.orderItem.groupBy({
+            by: ["productId"],
+            where: { order: { status: "DELIVERED" } },
+            _sum: { quantity: true },
+            orderBy: { _sum: { quantity: "desc" } },
+            take: 8,
+          })
+        : [],
+      req.user?.id
+        ? prisma.productFavorite.findMany({
+            where: { userId: req.user.id },
+            select: { productId: true },
+          })
+        : [],
+      settings.newProductsEnabled
+        ? prisma.product.findMany({
+            where: { available: true, deletedAt: null },
+            select: { id: true, isNew: true, createdAt: true },
+            orderBy: { createdAt: "desc" },
+            take: 100,
+          })
+        : [],
+    ]);
+  const bestIds = bestSellerRows.map((row) => row.productId);
+  const bestProducts = bestIds.length
+    ? await prisma.product.findMany({
+        where: { id: { in: bestIds }, available: true, deletedAt: null },
+        include: productInclude,
+      })
+    : [];
+  const productById = new Map(bestProducts.map((product) => [product.id, product]));
+  res.json({
+    campaigns: campaignRows.filter((row) => campaignIsActive(row, now)).map(serializeCampaign),
+    reviews: settings.publicReviewsEnabled
+      ? reviewRows.map((row) => ({
+          id: row.id,
+          customerName: row.customerName || "Cliente",
+          rating: row.rating,
+          foodRating: row.foodRating,
+          deliveryRating: row.deliveryRating,
+          comment: row.comment,
+          createdAt: row.createdAt,
+        }))
+      : [],
+    reviewSummary: reviewAggregate
+      ? {
+          average: Math.round(Number(reviewAggregate._avg.rating || 0) * 10) / 10,
+          count: Number(reviewAggregate._count._all || 0),
+        }
+      : publicReviewSummary([]),
+    bestSellers: bestIds
+      .map((id) => productById.get(id))
+      .filter(Boolean)
+      .map(serializePublicProduct),
+    newProductIds: newRows
+      .filter((product) => productIsNew(product, settings, now))
+      .map((product) => product.id),
+    favoriteProductIds: favoriteRows.map((row) => row.productId),
+  });
+});
+
+app.get("/api/me/rewards", auth, async (req, res) => {
+  let user = await prisma.user.findUnique({
+    where: { id: req.user.id },
+    select: {
+      id: true,
+      birthday: true,
+      birthdayBenefitYear: true,
+      loyaltyPoints: true,
+      cashbackBalance: true,
+      inviteCode: true,
+    },
+  });
+  const inviteCode = await ensureUserInviteCode(prisma, user);
+  if (!user.inviteCode) user = { ...user, inviteCode };
+  const [settings, transactions, referrals] = await Promise.all([
+    getSettings(),
+    prisma.rewardTransaction.findMany({
+      where: { userId: req.user.id },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    }),
+    prisma.user.count({ where: { referredByUserId: req.user.id } }),
+  ]);
+  res.json({
+    mode: rewardsMode(settings),
+    loyaltyPoints: Number(user.loyaltyPoints || 0),
+    cashbackBalance: Number(user.cashbackBalance || 0),
+    inviteCode: user.inviteCode,
+    referrals,
+    birthdayDate: user.birthday
+      ? new Date(user.birthday).toISOString().slice(0, 10)
+      : null,
+    birthday: birthdayBenefitState(user, settings),
+    settings: {
+      loyaltyPointsPerReal: Number(settings.loyaltyPointsPerReal || 0),
+      loyaltyRewardPoints: Number(settings.loyaltyRewardPoints || 0),
+      loyaltyRewardValue: Number(settings.loyaltyRewardValue || 0),
+      cashbackPercent: Number(settings.cashbackPercent || 0),
+      referralEnabled: Boolean(settings.referralEnabled),
+      referralReferrerReward: Number(settings.referralReferrerReward || 0),
+      referralNewCustomerReward: Number(settings.referralNewCustomerReward || 0),
+      birthdayCampaignEnabled: Boolean(settings.birthdayCampaignEnabled),
+      birthdayDiscountType: settings.birthdayDiscountType,
+      birthdayDiscountValue: Number(settings.birthdayDiscountValue || 0),
+      birthdayMinimumOrder: Number(settings.birthdayMinimumOrder || 0),
+    },
+    transactions: transactions.map((row) => ({
+      ...row,
+      amount: Number(row.amount || 0),
+    })),
+  });
+});
+
+app.get("/api/me/product-favorites", auth, async (req, res) => {
+  const rows = await prisma.productFavorite.findMany({
+    where: { userId: req.user.id },
+    include: { product: { include: productInclude } },
+    orderBy: { createdAt: "desc" },
+  });
+  res.json(
+    rows
+      .filter((row) => row.product.available && !row.product.deletedAt)
+      .map((row) => serializePublicProduct(row.product)),
+  );
+});
+app.post("/api/me/product-favorites/:productId", auth, async (req, res) => {
+  const product = await prisma.product.findFirst({
+    where: { id: req.params.productId, available: true, deletedAt: null },
+    select: { id: true },
+  });
+  if (!product)
+    return res.status(404).json({ message: "Produto não encontrado." });
+  await prisma.productFavorite.upsert({
+    where: {
+      userId_productId: { userId: req.user.id, productId: product.id },
+    },
+    update: {},
+    create: { userId: req.user.id, productId: product.id },
+  });
+  res.status(201).json({ ok: true, productId: product.id });
+});
+app.delete("/api/me/product-favorites/:productId", auth, async (req, res) => {
+  await prisma.productFavorite.deleteMany({
+    where: { userId: req.user.id, productId: req.params.productId },
+  });
+  res.json({ ok: true, productId: req.params.productId });
+});
+
+app.get("/api/admin/reviews", auth, admin, async (req, res) => {
+  const status = cleanText(req.query?.status, 20).toUpperCase();
+  const rows = await prisma.review.findMany({
+    where: ["PENDING", "APPROVED", "HIDDEN"].includes(status) ? { status } : {},
+    include: {
+      order: {
+        select: { id: true, trackingCode: true, total: true, deliveredAt: true },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 250,
+  });
+  res.json(rows.map((row) => ({ ...row, order: { ...row.order, total: Number(row.order.total) } })));
+});
+app.patch("/api/admin/reviews/:id", auth, admin, async (req, res) => {
+  const status = cleanText(req.body?.status, 20).toUpperCase();
+  if (!["PENDING", "APPROVED", "HIDDEN"].includes(status))
+    return res.status(400).json({ message: "Status de avaliação inválido." });
+  const now = new Date();
+  const row = await prisma.review.update({
+    where: { id: req.params.id },
+    data: {
+      status,
+      approvedAt: status === "APPROVED" ? now : null,
+      hiddenAt: status === "HIDDEN" ? now : null,
+    },
+  });
+  await writeAdminLog(req, "MODERATE_REVIEW", "Review", row.id, { status });
+  res.json(row);
+});
+
+app.get("/api/admin/campaigns", auth, admin, async (req, res) => {
+  const rows = await prisma.campaign.findMany({
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+  });
+  res.json(rows.map(serializeCampaign));
+});
+app.post("/api/admin/campaigns", auth, admin, async (req, res) => {
+  const title = cleanText(req.body?.title || req.body?.name, 120);
+  const description = cleanText(req.body?.description || req.body?.message, 500);
+  const startsAt = campaignOptionalDate(req.body?.startsAt);
+  const endsAt = campaignOptionalDate(req.body?.endsAt);
+  const targetUrl = campaignTargetUrl(req.body?.targetUrl);
+  const image = safeMediaUrl(req.body?.image);
+  if (!title || startsAt === undefined || endsAt === undefined || (startsAt && endsAt && endsAt <= startsAt))
+    return res.status(400).json({ message: "Informe título e período válidos." });
+  if (req.body?.targetUrl && !targetUrl)
+    return res.status(400).json({ message: "O destino da campanha é inválido." });
+  if (req.body?.image && !image)
+    return res.status(400).json({ message: "A imagem da campanha é inválida." });
+  const row = await prisma.campaign.create({
+    data: {
+      name: title,
+      segment: cleanText(req.body?.segment, 50) || "ALL",
+      message: description,
+      title,
+      description,
+      image,
+      buttonText: cleanText(req.body?.buttonText, 50) || null,
+      targetUrl,
+      couponCode: cleanText(req.body?.couponCode, 40).toUpperCase() || null,
+      startsAt,
+      endsAt,
+      sortOrder: boundedInteger(req.body?.sortOrder ?? 0, -10000, 10000) || 0,
+      active: req.body?.active === undefined ? true : booleanValue(req.body.active),
+    },
+  });
+  await writeAdminLog(req, "CREATE_CAMPAIGN", "Campaign", row.id);
+  res.status(201).json(serializeCampaign(row));
+});
+app.patch("/api/admin/campaigns/:id", auth, admin, async (req, res) => {
+  const current = await prisma.campaign.findUnique({
+    where: { id: req.params.id },
+  });
+  if (!current)
+    return res.status(404).json({ message: "Campanha não encontrada." });
+  const data = {};
+  if (req.body?.title !== undefined) {
+    const value = cleanText(req.body.title, 120);
+    if (!value) return res.status(400).json({ message: "Informe o título." });
+    data.title = value;
+    data.name = value;
+  }
+  if (req.body?.description !== undefined) {
+    data.description = cleanText(req.body.description, 500);
+    data.message = data.description;
+  }
+  for (const field of ["buttonText", "couponCode"])
+    if (req.body?.[field] !== undefined)
+      data[field] = cleanText(req.body[field], field === "buttonText" ? 50 : 80) || null;
+  if (req.body?.segment !== undefined)
+    data.segment = cleanText(req.body.segment, 80) || "ALL";
+  if (data.couponCode) data.couponCode = data.couponCode.toUpperCase();
+  if (req.body?.targetUrl !== undefined) {
+    data.targetUrl = campaignTargetUrl(req.body.targetUrl);
+    if (req.body.targetUrl && !data.targetUrl)
+      return res.status(400).json({ message: "O destino da campanha é inválido." });
+  }
+  if (req.body?.image !== undefined) {
+    data.image = safeMediaUrl(req.body.image);
+    if (req.body.image && !data.image)
+      return res.status(400).json({ message: "A imagem da campanha é inválida." });
+  }
+  for (const field of ["startsAt", "endsAt"])
+    if (req.body?.[field] !== undefined) {
+      data[field] = campaignOptionalDate(req.body[field]);
+      if (data[field] === undefined)
+        return res.status(400).json({ message: "Data de campanha inválida." });
+    }
+  const nextStartsAt = Object.hasOwn(data, "startsAt")
+    ? data.startsAt
+    : current.startsAt;
+  const nextEndsAt = Object.hasOwn(data, "endsAt") ? data.endsAt : current.endsAt;
+  if (nextStartsAt && nextEndsAt && nextEndsAt <= nextStartsAt)
+    return res.status(400).json({
+      message: "O fim da campanha precisa ser posterior ao início.",
+    });
+  if (req.body?.sortOrder !== undefined) {
+    const value = boundedInteger(req.body.sortOrder, -10000, 10000);
+    if (value == null) return res.status(400).json({ message: "Ordem inválida." });
+    data.sortOrder = value;
+  }
+  if (req.body?.active !== undefined) data.active = booleanValue(req.body.active);
+  const row = await prisma.campaign.update({ where: { id: current.id }, data });
+  await writeAdminLog(req, "UPDATE_CAMPAIGN", "Campaign", row.id);
+  res.json(serializeCampaign(row));
+});
+app.delete("/api/admin/campaigns/:id", auth, admin, async (req, res) => {
+  const row = await prisma.campaign.update({
+    where: { id: req.params.id },
+    data: { active: false },
+  });
+  await writeAdminLog(req, "ARCHIVE_CAMPAIGN", "Campaign", row.id);
+  res.json({ ok: true, archived: true });
+});
+
 app.get("/api/admin/customer-segments", auth, admin, async (req, res) => {
   const [settings, users, deliveredMetrics, latestDelivered] =
     await Promise.all([
@@ -10556,6 +11471,12 @@ app.post(
   "/api/orders/:trackingCode/review",
   reviewRateLimit,
   async (req, res) => {
+    const settings = await getSettings();
+    if (!settings.reviewCollectionEnabled)
+      return res.status(404).json({
+        code: "REVIEWS_DISABLED",
+        message: "As avaliações estão temporariamente desativadas.",
+      });
     const trackingCode = cleanText(req.params.trackingCode, 100);
     const order = await prisma.order.findUnique({ where: { trackingCode } });
     if (!order || order.status !== "DELIVERED")
@@ -10563,6 +11484,10 @@ app.post(
         .status(400)
         .json({ message: "A avaliação é liberada após a entrega." });
     const rating = Number(req.body?.rating),
+      foodRating =
+        req.body?.foodRating == null || req.body?.foodRating === ""
+          ? null
+          : Number(req.body.foodRating),
       deliveryRating =
         req.body?.deliveryRating == null || req.body?.deliveryRating === ""
           ? null
@@ -10571,6 +11496,10 @@ app.post(
       !Number.isInteger(rating) ||
       rating < 1 ||
       rating > 5 ||
+      (foodRating != null &&
+        (!Number.isInteger(foodRating) ||
+          foodRating < 1 ||
+          foodRating > 5)) ||
       (deliveryRating != null &&
         (!Number.isInteger(deliveryRating) ||
           deliveryRating < 1 ||
@@ -10583,13 +11512,18 @@ app.post(
       where: { orderId: order.id },
       update: {
         rating,
+        foodRating,
         deliveryRating,
         comment: cleanText(req.body?.comment, 500) || null,
+        status: "PENDING",
+        approvedAt: null,
+        hiddenAt: null,
       },
       create: {
         orderId: order.id,
         customerName: order.customerName,
         rating,
+        foodRating,
         deliveryRating,
         comment: cleanText(req.body?.comment, 500) || null,
       },
@@ -10666,6 +11600,12 @@ app.use((err, req, res, next) => {
     return res.status(409).json({ code: err.code, message: err.message });
   if (err?.code === "COUPON_UNAVAILABLE")
     return res.status(409).json({ code: err.code, message: err.message });
+  if (
+    ["REWARD_UNAVAILABLE", "BIRTHDAY_BENEFIT_UNAVAILABLE"].includes(
+      err?.code,
+    )
+  )
+    return res.status(409).json({ code: err.code, message: err.message });
   if (err?.code === "DAILY_ORDER_LIMIT")
     return res.status(429).json({ code: err.code, message: err.message });
   if (err?.code === "SLOT_FULL")
@@ -10696,7 +11636,7 @@ app.use((err, req, res, next) => {
 });
 
 const server = app.listen(PORT, () =>
-  console.log(`Master Pizzaria API rodando na porta ${PORT}`),
+  console.log(`API da pizzaria rodando na porta ${PORT}`),
 );
 let automationInProgress = false;
 let lastRetentionRunAt = 0;

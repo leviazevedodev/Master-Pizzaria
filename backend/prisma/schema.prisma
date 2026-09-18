@@ -82,8 +82,11 @@ model User {
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
   birthday          DateTime?
+  birthdayBenefitYear Int?
   loyaltyPoints     Int                  @default(0)
   cashbackBalance   Decimal              @default(0) @db.Decimal(10, 2)
+  inviteCode        String?              @unique
+  referredByUserId  String?
   twoFactorEnabled  Boolean              @default(false)
   twoFactorSecret   String?
   marketingOptIn    Boolean              @default(false)
@@ -91,10 +94,15 @@ model User {
   resetTokens       PasswordResetToken[]
   media             MediaAsset[]
   favoriteAddresses CustomerAddress[]
+  productFavorites  ProductFavorite[]
+  rewardTransactions RewardTransaction[]
   courierOrders     Order[]              @relation("CourierOrders")
+  referredByUser    User?                @relation("UserReferrals", fields: [referredByUserId], references: [id], onDelete: SetNull)
+  referrals         User[]               @relation("UserReferrals")
 
   @@index([createdAt])
   @@index([isAdmin, lastLoginAt, updatedAt])
+  @@index([referredByUserId])
 }
 
 model PasswordResetToken {
@@ -202,6 +210,7 @@ model Product {
   image                String?
   badge                String?
   featured             Boolean                @default(false)
+  isNew                Boolean                @default(false)
   available            Boolean                @default(true)
   sortOrder            Int                    @default(0)
   allowFlavorSplit     Boolean                @default(false)
@@ -238,6 +247,7 @@ model Product {
   comboSlotTemplates   ComboSlot[]            @relation("ComboSlotBaseProduct")
   comboSlotChoices     ComboSlotProduct[]
   centralFlavor        Flavor?                @relation("FlavorSourceProduct")
+  favorites            ProductFavorite[]
 
   @@index([categoryId, available, deletedAt])
   @@index([subcategoryId, available])
@@ -604,6 +614,8 @@ model Order {
   readyAt              DateTime?
   outForDeliveryAt     DateTime?
   deliveredAt          DateTime?
+  rewardsProcessedAt   DateTime?
+  birthdayBenefitApplied Boolean              @default(false)
   paymentMethod        PaymentMethod
   paymentMethodLabel   String?
   paymentStatus        PaymentStatus        @default(CASH_PENDING)
@@ -631,6 +643,8 @@ model Order {
   updatedAt            DateTime             @updatedAt
   items                OrderItem[]
   history              OrderStatusHistory[]
+  review               Review?
+  rewardTransactions   RewardTransaction[]
 
   @@index([status, createdAt])
   @@index([paymentStatus, createdAt])
@@ -827,6 +841,8 @@ model WhatsAppOutbox {
 model BusinessSettings {
   id                           String              @id @default("default")
   storeName                    String              @default("Master Pizzaria")
+  shortName                    String              @default("Master")
+  slogan                       String              @default("Pizza artesanal, feita na hora")
   timezone                     String              @default("America/Maceio")
   phone                        String              @default("+5579988725557")
   whatsappPrimary              String              @default("+5579988725557")
@@ -898,6 +914,15 @@ model BusinessSettings {
   vipMinSpend                  Decimal             @default(400.00) @db.Decimal(10, 2)
   inactiveCustomerDays         Int                 @default(60)
   logoImage                    String?
+  faviconImage                 String?
+  shareImage                   String?
+  primaryColor                 String              @default("#e31b23")
+  secondaryColor               String              @default("#111214")
+  accentColor                  String              @default("#ff323a")
+  seoTitle                     String?
+  seoDescription               String?
+  seoCanonicalUrl              String?
+  facebookUrl                  String?
   heroEyebrow                  String              @default("Artesanal • feita na hora")
   heroImage                    String?
   aboutEyebrow                 String              @default("Sobre a Master")
@@ -907,6 +932,22 @@ model BusinessSettings {
   promotionsTitle              String              @default("Ofertas em destaque")
   promotionsSubtitle           String              @default("Promoções selecionadas pela loja por tempo limitado.")
   footerText                   String              @default("Pizza artesanal com pedido simples, acompanhamento e atendimento próximo.")
+  publicReviewsEnabled         Boolean             @default(false)
+  reviewCollectionEnabled      Boolean             @default(true)
+  bestSellersEnabled           Boolean             @default(true)
+  newProductsEnabled           Boolean             @default(true)
+  newProductDays               Int                 @default(30)
+  rewardsMode                  String              @default("POINTS")
+  birthdayCampaignEnabled      Boolean             @default(false)
+  birthdayDiscountType         String              @default("PERCENT")
+  birthdayDiscountValue        Decimal             @default(10) @db.Decimal(10, 2)
+  birthdayMinimumOrder         Decimal             @default(0) @db.Decimal(10, 2)
+  birthdayValidityDays         Int                 @default(7)
+  referralEnabled              Boolean             @default(false)
+  referralReferrerReward       Decimal             @default(10) @db.Decimal(10, 2)
+  referralNewCustomerReward    Decimal             @default(5) @db.Decimal(10, 2)
+  referralMinimumOrder         Decimal             @default(30) @db.Decimal(10, 2)
+  initialSetupCompleted        Boolean             @default(false)
   updatedAt                    DateTime            @updatedAt
 }
 
@@ -936,11 +977,46 @@ model Review {
   orderId        String   @unique
   customerName   String?
   rating         Int
+  foodRating     Int?
   deliveryRating Int?
   comment        String?
+  status         String   @default("PENDING")
+  approvedAt     DateTime?
+  hiddenAt       DateTime?
   createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([createdAt])
+  @@index([status, createdAt])
+}
+
+model ProductFavorite {
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([userId, productId])
+  @@index([productId, createdAt])
+}
+
+model RewardTransaction {
+  id          String   @id @default(cuid())
+  externalKey String   @unique
+  userId      String
+  orderId     String?
+  type        String
+  points      Int      @default(0)
+  amount      Decimal  @default(0) @db.Decimal(10, 2)
+  description String
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order       Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([orderId, type])
 }
 
 model AdminLog {
@@ -1027,11 +1103,22 @@ model BusinessGoal {
 }
 
 model Campaign {
-  id        String   @id @default(cuid())
-  name      String
-  segment   String
-  message   String
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  name        String
+  segment     String
+  message     String
+  title       String?
+  description String?
+  image       String?
+  buttonText  String?
+  targetUrl   String?
+  couponCode  String?
+  startsAt    DateTime?
+  endsAt      DateTime?
+  sortOrder   Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active, startsAt, endsAt, sortOrder])
 }

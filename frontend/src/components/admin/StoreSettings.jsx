@@ -71,6 +71,8 @@ export default function StoreSettings({
   const uploadSetting = (key, file) => {
     const config = {
       logoImage: ["Logo do site", 16 / 7],
+      faviconImage: ["Ícone do site", 1],
+      shareImage: ["Imagem de compartilhamento", 1.91],
       heroImage: ["Imagem principal da home", 1 / 1.05],
       aboutImage: ["Imagem da seção Sobre", 4 / 3],
     }[key] || ["Imagem do site", 1];
@@ -469,6 +471,24 @@ export default function StoreSettings({
             />
           </label>
           <label>
+            Nome curto
+            <input
+              value={settings.shortName || ""}
+              onChange={(e) =>
+                setSettings({ ...settings, shortName: e.target.value })
+              }
+            />
+          </label>
+          <label className="span-2">
+            Slogan
+            <input
+              value={settings.slogan || ""}
+              onChange={(e) =>
+                setSettings({ ...settings, slogan: e.target.value })
+              }
+            />
+          </label>
+          <label>
             Telefone <small>(vazio = oculto)</small>
             <input
               value={settings.phone || ""}
@@ -532,6 +552,15 @@ export default function StoreSettings({
               value={settings.instagramUrl || ""}
               onChange={(e) =>
                 setSettings({ ...settings, instagramUrl: e.target.value })
+              }
+            />
+          </label>
+          <label>
+            URL do Facebook
+            <input
+              value={settings.facebookUrl || ""}
+              onChange={(e) =>
+                setSettings({ ...settings, facebookUrl: e.target.value })
               }
             />
           </label>
@@ -888,7 +917,7 @@ export default function StoreSettings({
           <div className="site-logo-preview">
             <img
               src={
-                mediaUrl(settings.logoImage) || "/images/master-pizzaria-logo.png"
+                mediaUrl(settings.logoImage) || "/images/store-placeholder.svg"
               }
               alt="Logo"
             />
@@ -914,6 +943,30 @@ export default function StoreSettings({
               setSettings({ ...settings, logoImage: e.target.value })
             }
           />
+        </div>
+        <div className="brand-assets-grid">
+          {[
+            ["faviconImage", "Ícone do navegador", "quadrado"],
+            ["shareImage", "Imagem de compartilhamento", "1200 × 630 recomendado"],
+          ].map(([field, label, hint]) => (
+            <div className="logo-admin-setting compact" key={field}>
+              <div><b>{label}</b><small>{hint}</small></div>
+              {settings[field] && <img src={mediaUrl(settings[field])} alt="" />}
+              <label className="upload-icon-button media-upload-standard">
+                <ImagePlus size={17} /><span>Anexar</span>
+                <input type="file" accept="image/jpeg,image/png,image/webp" disabled={imageUploading} onChange={(event) => uploadSetting(field, event.target.files?.[0])} />
+              </label>
+              <input value={settings[field] || ""} placeholder="Ou URL da imagem" onChange={(event) => setSettings({ ...settings, [field]: event.target.value })} />
+            </div>
+          ))}
+        </div>
+        <div className="settings-grid brand-seo-grid">
+          <label>Cor principal<input type="color" value={settings.primaryColor || "#e31b23"} onChange={(event) => setSettings({ ...settings, primaryColor: event.target.value })} /></label>
+          <label>Cor secundária<input type="color" value={settings.secondaryColor || "#111214"} onChange={(event) => setSettings({ ...settings, secondaryColor: event.target.value })} /></label>
+          <label>Cor de destaque<input type="color" value={settings.accentColor || "#ff323a"} onChange={(event) => setSettings({ ...settings, accentColor: event.target.value })} /></label>
+          <label className="span-2">Título para buscadores<input value={settings.seoTitle || ""} onChange={(event) => setSettings({ ...settings, seoTitle: event.target.value })} /></label>
+          <label className="span-2">Descrição para buscadores<textarea value={settings.seoDescription || ""} onChange={(event) => setSettings({ ...settings, seoDescription: event.target.value })} /></label>
+          <label className="span-2">URL canônica<input type="url" value={settings.seoCanonicalUrl || ""} onChange={(event) => setSettings({ ...settings, seoCanonicalUrl: event.target.value })} /></label>
         </div>
         <div className="visual-editor-grid">
           <div className="visual-editor-fields">
@@ -1141,4 +1194,3 @@ export default function StoreSettings({
     </>
   );
 }
-

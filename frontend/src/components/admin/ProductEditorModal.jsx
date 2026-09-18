@@ -254,6 +254,19 @@ export default function ProductEditorModal({
               <label className="switch-label">
                 <input
                   type="checkbox"
+                  checked={Boolean(productForm.isNew)}
+                  onChange={(e) =>
+                    setProductForm({
+                      ...productForm,
+                      isNew: e.target.checked,
+                    })
+                  }
+                />{" "}
+                Marcar como novidade
+              </label>
+              <label className="switch-label">
+                <input
+                  type="checkbox"
                   checked={productForm.isFlavorOption}
                   onChange={(e) =>
                     setProductForm({

@@ -1,0 +1,68 @@
+.setup-progress {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.setup-summary-hours {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 16px;
+  font-weight: 800;
+}
+
+.setup-summary-hours input,
+.setup-hours-list input {
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid #d8d3ca;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.setup-hours-list {
+  display: grid;
+  gap: 8px;
+}
+
+.setup-hours-list > div {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) auto 120px 120px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e2ddd5;
+  border-radius: 12px;
+}
+
+.setup-hours-list label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.82rem;
+}
+
+.setup-admin-ready {
+  padding: 30px;
+  border: 1px solid #ded9d0;
+  border-radius: 18px;
+  background: #faf8f4;
+  text-align: center;
+}
+
+.setup-admin-ready svg,
+.setup-admin-ready strong {
+  color: var(--brand-primary, var(--red));
+}
+
+@media (max-width: 760px) {
+  .setup-progress {
+    grid-template-columns: repeat(6, 1fr);
+  }
+
+  .setup-hours-list > div {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .setup-hours-list > div > b {
+    grid-column: 1 / -1;
+  }
+}

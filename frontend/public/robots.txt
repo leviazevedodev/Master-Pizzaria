@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Disallow: /gestao
+Disallow: /admin

@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   CalendarDays,
+  Copy,
+  Gift,
+  Heart,
   Clock3,
   LogOut,
   MapPin,
@@ -11,11 +14,12 @@ import {
   Save,
   ShoppingBag,
   UserRound,
+  WalletCards,
   Plus,
   Trash2,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, authHeaders } from "../lib/api";
+import { api, authHeaders, mediaUrl } from "../lib/api";
 import { etaRange, formatCep, money } from "../lib/format";
 import CustomerOrderNotifications from "../components/CustomerOrderNotifications";
 import CustomerCancelOrderButton from "../components/CustomerCancelOrderButton";
@@ -69,6 +73,9 @@ export default function AccountPage({
     referencePoint: user.referencePoint || "",
   });
   const [favorites, setFavorites] = useState([]);
+  const [productFavorites, setProductFavorites] = useState([]);
+  const [rewards, setRewards] = useState(null);
+  const [birthday, setBirthday] = useState("");
   const [favoriteLabel, setFavoriteLabel] = useState("Casa");
   async function loadOrders(silent = false) {
     if (!silent) setLoading(true);
@@ -95,9 +102,20 @@ export default function AccountPage({
       setFavorites(data || []);
     } catch {}
   }
+  async function loadGrowth() {
+    try {
+      const [rewardResponse, productResponse] = await Promise.all([
+        api.get("/me/rewards", authHeaders(session.token)),
+        api.get("/me/product-favorites", authHeaders(session.token)),
+      ]);
+      setRewards(rewardResponse.data);
+      setProductFavorites(productResponse.data || []);
+    } catch {}
+  }
   useEffect(() => {
     loadOrders();
     loadFavorites();
+    loadGrowth();
     const timer = window.setInterval(() => loadOrders(true), 20000);
     return () => window.clearInterval(timer);
   }, []);
@@ -218,6 +236,41 @@ export default function AccountPage({
       );
     }
   }
+  async function removeProductFavorite(product) {
+    try {
+      await api.delete(
+        `/me/product-favorites/${product.id}`,
+        authHeaders(session.token),
+      );
+      setProductFavorites((rows) =>
+        rows.filter((row) => row.id !== product.id),
+      );
+      setAddressMessage(`${product.name} foi removido dos favoritos.`);
+    } catch (err) {
+      setError(
+        err.response?.data?.message ||
+          "Não foi possível remover o produto dos favoritos.",
+      );
+    }
+  }
+  async function saveBirthday(event) {
+    event.preventDefault();
+    if (!birthday) return;
+    try {
+      await api.patch(
+        "/me/birthday",
+        { birthday },
+        authHeaders(session.token),
+      );
+      setAddressMessage("Data de nascimento cadastrada.");
+      await loadGrowth();
+    } catch (err) {
+      setError(
+        err.response?.data?.message ||
+          "Não foi possível cadastrar a data de nascimento.",
+      );
+    }
+  }
 
   return (
     <div className="page-shell account-page">
@@ -284,6 +337,127 @@ export default function AccountPage({
                 </div>
               </article>
             </section>
+            {rewards && (
+              <section className="account-rewards-card">
+                <div>
+                  <span className="eyebrow dark"><WalletCards size={14} /> Benefícios</span>
+                  <h2>Seu saldo para os próximos pedidos.</h2>
+                  <p>
+                    {rewards.mode === "POINTS"
+                      ? `${rewards.loyaltyPoints} pontos disponíveis`
+                      : rewards.mode === "CASHBACK"
+                        ? `${money(rewards.cashbackBalance)} em cashback`
+                        : "O programa de recompensas está pausado."}
+                  </p>
+                  {rewards.mode === "POINTS" && (
+                    <small>
+                      {rewards.loyaltyPoints >=
+                      Number(rewards.settings?.loyaltyRewardPoints || 0)
+                        ? `Você já pode trocar pontos por ${money(rewards.settings?.loyaltyRewardValue || 0)} no checkout.`
+                        : `Faltam ${Math.max(0, Number(rewards.settings?.loyaltyRewardPoints || 0) - rewards.loyaltyPoints)} pontos para ganhar ${money(rewards.settings?.loyaltyRewardValue || 0)}.`}
+                    </small>
+                  )}
+                  {rewards.birthday?.eligible && (
+                    <strong className="birthday-benefit"><Gift size={16} /> Seu benefício de aniversário está disponível.</strong>
+                  )}
+                  {!rewards.birthdayDate && (
+                    <form className="birthday-registration" onSubmit={saveBirthday}>
+                      <label>
+                        <CalendarDays size={15} /> Data de nascimento
+                        <input
+                          type="date"
+                          value={birthday}
+                          max={new Date().toISOString().slice(0, 10)}
+                          onChange={(event) => setBirthday(event.target.value)}
+                          required
+                        />
+                      </label>
+                      <button className="ghost-dark-btn">Cadastrar</button>
+                      <small>A data pode ser cadastrada uma vez. Ela será usada no benefício de aniversário.</small>
+                    </form>
+                  )}
+                </div>
+                {rewards.settings?.referralEnabled && (
+                  <div className="invite-code-card">
+                    <small>Seu código de indicação</small>
+                    <b>{rewards.inviteCode}</b>
+                    <button
+                      type="button"
+                      className="ghost-dark-btn"
+                      onClick={() => {
+                        const link = new URL("/cadastro", window.location.origin);
+                        link.searchParams.set("convite", rewards.inviteCode);
+                        navigator.clipboard?.writeText(link.href);
+                        setAddressMessage("Link de indicação copiado.");
+                      }}
+                    >
+                      <Copy size={15} /> Copiar link
+                    </button>
+                    <span>{rewards.referrals} indicação(ões) cadastrada(s)</span>
+                  </div>
+                )}
+              </section>
+            )}
+            <section className="favorite-products-card">
+              <div className="section-heading compact-heading">
+                <div>
+                  <span className="eyebrow dark"><Heart size={14} /> Produtos favoritos</span>
+                  <h2>Os sabores que você salvou.</h2>
+                </div>
+              </div>
+              {productFavorites.length ? (
+                <div className="favorite-products-list">
+                  {productFavorites.map((product) => (
+                    <article key={product.id}>
+                      <Link to="/cardapio">
+                        <img src={mediaUrl(product.image) || "/images/store-placeholder.svg"} alt="" />
+                        <span><b>{product.name}</b><small>{money(product.price)}</small></span>
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => removeProductFavorite(product)}
+                        aria-label={`Remover ${product.name} dos favoritos`}
+                        title="Remover dos favoritos"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="empty-inline">Toque no coração de um produto para encontrá-lo aqui.</p>
+              )}
+            </section>
+            {rewards?.transactions?.length > 0 && (
+              <section className="reward-history-card">
+                <div className="section-heading compact-heading">
+                  <div>
+                    <span className="eyebrow dark"><Clock3 size={14} /> Histórico de benefícios</span>
+                    <h2>Entradas e utilizações.</h2>
+                  </div>
+                </div>
+                <div className="reward-history-list">
+                  {rewards.transactions.map((transaction) => {
+                    const points = Number(transaction.points || 0);
+                    const amount = Number(transaction.amount || 0);
+                    const positive = points > 0 || amount > 0;
+                    return (
+                      <article key={transaction.id}>
+                        <span>
+                          <b>{transaction.description}</b>
+                          <small>{new Date(transaction.createdAt).toLocaleDateString("pt-BR")}</small>
+                        </span>
+                        <strong className={positive ? "positive" : "negative"}>
+                          {points
+                            ? `${points > 0 ? "+" : ""}${points} pts`
+                            : `${amount > 0 ? "+" : ""}${money(amount)}`}
+                        </strong>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
             <section className="account-profile-card">
               <div>
                 <small>E-mail cadastrado</small>

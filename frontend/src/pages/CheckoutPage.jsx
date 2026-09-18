@@ -178,6 +178,9 @@ export default function CheckoutPage({
     [selectedFavorite, setSelectedFavorite] = useState(""),
     [saveFavoriteAddress, setSaveFavoriteAddress] = useState(false),
     [favoriteAddressLabel, setFavoriteAddressLabel] = useState("Casa");
+  const [rewards, setRewards] = useState(null);
+  const [useRewards, setUseRewards] = useState(false);
+  const [useBirthdayReward, setUseBirthdayReward] = useState(false);
   useEffect(() => {
     const available = [
       ...(cashAvailable ? ["CASH"] : []),
@@ -204,7 +207,63 @@ export default function CheckoutPage({
     (sum, item) => sum + Number(item.price) * item.quantity,
     0,
   );
-  const discount = Number(coupon?.discount || 0);
+  const couponDiscount = Number(coupon?.discount || 0);
+  const birthdayDiscount =
+    useBirthdayReward &&
+    rewards?.birthday?.eligible &&
+    subtotal - couponDiscount >=
+      Number(rewards.settings?.birthdayMinimumOrder || 0)
+      ? Math.min(
+          Math.max(0, subtotal - couponDiscount),
+          rewards.settings?.birthdayDiscountType === "FIXED"
+            ? Number(rewards.settings?.birthdayDiscountValue || 0)
+            : (Math.max(0, subtotal - couponDiscount) *
+                Number(rewards.settings?.birthdayDiscountValue || 0)) /
+                100,
+        )
+      : 0;
+  const rewardLimit = Math.max(
+    0,
+    subtotal - couponDiscount - birthdayDiscount,
+  );
+  const rewardDiscount = useRewards
+    ? rewards?.mode === "POINTS"
+      ? Math.min(
+          rewardLimit,
+          Math.min(
+            Math.floor(
+              Number(rewards.loyaltyPoints || 0) /
+                Math.max(1, Number(rewards.settings?.loyaltyRewardPoints || 1)),
+            ),
+            Math.floor(
+              rewardLimit /
+                Math.max(0.01, Number(rewards.settings?.loyaltyRewardValue || 0)),
+            ),
+          ) * Number(rewards.settings?.loyaltyRewardValue || 0),
+        )
+      : rewards?.mode === "CASHBACK"
+        ? Math.min(rewardLimit, Number(rewards.cashbackBalance || 0))
+        : 0
+    : 0;
+  const discount = couponDiscount + birthdayDiscount + rewardDiscount;
+  useEffect(() => {
+    if (
+      useBirthdayReward &&
+      subtotal - couponDiscount <
+        Number(rewards?.settings?.birthdayMinimumOrder || 0)
+    )
+      setUseBirthdayReward(false);
+    if (useRewards && rewards?.mode === "POINTS" && rewardDiscount <= 0)
+      setUseRewards(false);
+  }, [
+    couponDiscount,
+    rewardDiscount,
+    rewards?.mode,
+    rewards?.settings?.birthdayMinimumOrder,
+    subtotal,
+    useBirthdayReward,
+    useRewards,
+  ]);
   const deliveryAddressComplete =
     form.fulfillmentType !== "DELIVERY" ||
     [
@@ -294,13 +353,17 @@ export default function CheckoutPage({
       api
         .get("/me/addresses", authHeaders(session.token))
         .catch(() => ({ data: [] })),
+      api
+        .get("/me/rewards", authHeaders(session.token))
+        .catch(() => ({ data: null })),
     ])
-      .then(([me, favs]) => {
+      .then(([me, favs, rewardResponse]) => {
         const user = me.data.user || {},
           rows = favs.data || [];
         setFavoriteAddresses(rows);
         const preferred = rows.find((a) => a.isDefault);
         if (preferred) setSelectedFavorite(preferred.id);
+        setRewards(rewardResponse.data);
         setForm((current) => ({
           ...current,
           customerName: current.customerName || user.name || "",
@@ -667,6 +730,8 @@ export default function CheckoutPage({
         {
           ...form,
           couponCode: coupon?.code || "",
+          useRewards,
+          useBirthdayReward,
           scheduledAt,
           saveFavoriteAddress: Boolean(session?.token && saveFavoriteAddress),
           favoriteAddressLabel,
@@ -1314,6 +1379,55 @@ export default function CheckoutPage({
                 </small>
               )}
             </div>
+            {rewards && rewards.mode !== "DISABLED" && (
+              <label className="checkout-benefit-option">
+                <input
+                  type="checkbox"
+                  checked={useRewards}
+                  disabled={
+                    rewards.mode === "POINTS"
+                      ? Number(rewards.settings?.loyaltyRewardValue || 0) <= 0 ||
+                        Number(rewards.loyaltyPoints || 0) <
+                          Number(rewards.settings?.loyaltyRewardPoints || 1) ||
+                        rewardLimit < Number(rewards.settings?.loyaltyRewardValue || 0)
+                      : Number(rewards.cashbackBalance || 0) <= 0
+                  }
+                  onChange={(event) => setUseRewards(event.target.checked)}
+                />
+                <span>
+                  <b>
+                    Usar {rewards.mode === "POINTS" ? "meus pontos" : "meu cashback"}
+                  </b>
+                  <small>
+                    {rewards.mode === "POINTS"
+                      ? `${rewards.loyaltyPoints} pontos disponíveis`
+                      : `${money(rewards.cashbackBalance)} disponíveis`}
+                  </small>
+                </span>
+              </label>
+            )}
+            {rewards?.birthday?.eligible && (
+              <label className="checkout-benefit-option birthday">
+                <input
+                  type="checkbox"
+                  checked={useBirthdayReward}
+                  disabled={
+                    subtotal - couponDiscount <
+                    Number(rewards.settings?.birthdayMinimumOrder || 0)
+                  }
+                  onChange={(event) => setUseBirthdayReward(event.target.checked)}
+                />
+                <span>
+                  <b>Usar benefício de aniversário</b>
+                  <small>
+                    Válido uma vez no período configurado pela loja
+                    {Number(rewards.settings?.birthdayMinimumOrder || 0) > 0
+                      ? ` em pedidos a partir de ${money(rewards.settings.birthdayMinimumOrder)}`
+                      : ""}.
+                  </small>
+                </span>
+              </label>
+            )}
             <h3>
               <CreditCard /> Forma de pagamento
             </h3>
@@ -1459,7 +1573,7 @@ export default function CheckoutPage({
             </div>
             {discount > 0 && (
               <div>
-                <span>Desconto</span>
+                <span>Descontos e benefícios</span>
                 <b>-{money(discount)}</b>
               </div>
             )}
@@ -1697,7 +1811,7 @@ function EmbeddedPaymentStep({ payment, payerEmail, onApproved, onRetry }) {
                   <b>Crédito e débito sem sair da pizzaria</b>
                   <small>
                     O componente oficial do Mercado Pago criptografa os dados.
-                    A Master Pizzaria recebe somente um token temporário.
+                    A loja recebe somente um token temporário.
                   </small>
                 </div>
               </div>

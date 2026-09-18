@@ -329,14 +329,17 @@ export const DEMO_PROMOTIONS = [
 ];
 
 export const DEMO_SETTINGS = {
-  storeName: "Master Pizzaria",
-  phone: "+5579988725557",
-  whatsappPrimary: "+5579988725557",
-  whatsappSecondary: "+5579988725557",
+  storeName: "Sua Pizzaria",
+  shortName: "Pizzaria",
+  slogan: "Pizza artesanal, feita na hora",
+  phone: "",
+  whatsappPrimary: "",
+  whatsappSecondary: "",
   whatsappSecondaryVisible: false,
-  instagram: "leviazevedo.dev",
-  instagramUrl: "https://www.instagram.com/leviazevedo.dev",
-  address: "São Cristóvão-SE",
+  instagram: "",
+  instagramUrl: "",
+  facebookUrl: "",
+  address: "",
   openingHours: "Consulte os horários no topo do site",
   deliveryFee: 4,
   freeDeliveryThreshold: 0,
@@ -354,7 +357,7 @@ export const DEMO_SETTINGS = {
   logoImage: "",
   heroEyebrow: "Artesanal • feita na hora",
   heroImage: "",
-  aboutEyebrow: "Sobre a Master",
+  aboutEyebrow: "Sobre a pizzaria",
   aboutTitle: "Pedido simples, atendimento próximo e pizza levada a sério.",
   aboutText:
     "Encontre seu pedido, escolha sabores, decida entre entrega ou retirada e acompanhe tudo de forma simples.",

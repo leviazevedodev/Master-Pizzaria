@@ -10,6 +10,8 @@ export default function MenuPage({
   subcategories,
   settings,
   onAdd,
+  highlights = {},
+  onToggleFavorite,
   digitalMode = false,
   cartCount = 0,
 }) {
@@ -142,7 +144,14 @@ export default function MenuPage({
         </div>
         <div className="product-grid">
           {filtered.map((product) => (
-            <ProductCard key={product.id} product={product} onAdd={onAdd} />
+            <ProductCard
+              key={product.id}
+              product={product}
+              onAdd={onAdd}
+              favorite={(highlights.favoriteProductIds || []).includes(product.id)}
+              isNew={(highlights.newProductIds || []).includes(product.id)}
+              onToggleFavorite={digitalMode ? undefined : onToggleFavorite}
+            />
           ))}
         </div>
         {!filtered.length && (
