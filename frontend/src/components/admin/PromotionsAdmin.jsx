@@ -319,6 +319,7 @@ export default function PromotionsAdmin({
                         </label>
                         <small className="upload-resolution-hint">
                           Resolução recomendada: 1200 × 675 px
+                          <br />Proporção recomendada: 16:9
                         </small>
                       </div>
                       <button
@@ -499,6 +500,7 @@ export default function PromotionsAdmin({
               </label>
               <small className="upload-resolution-hint">
                 Resolução recomendada: 1200 × 675 px
+                <br />Proporção recomendada: 16:9
               </small>
             </div>
             <label>

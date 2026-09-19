@@ -31,7 +31,6 @@ export default function HomePage({
   settings,
   storeHours = [],
   highlights = {},
-  onToggleFavorite,
   onAdd,
 }) {
   const [category, setCategory] = useState("todos");
@@ -328,9 +327,7 @@ export default function HomePage({
                 key={product.id}
                 product={product}
                 onAdd={onAdd}
-                favorite={(highlights.favoriteProductIds || []).includes(product.id)}
                 isNew={(highlights.newProductIds || []).includes(product.id)}
-                onToggleFavorite={onToggleFavorite}
               />
             ))}
           </div>
@@ -371,9 +368,7 @@ export default function HomePage({
                   key={product.id}
                   product={product}
                   onAdd={onAdd}
-                  favorite={(highlights.favoriteProductIds || []).includes(product.id)}
                   isNew={(highlights.newProductIds || []).includes(product.id)}
-                  onToggleFavorite={onToggleFavorite}
                 />
               ))}
             </div>

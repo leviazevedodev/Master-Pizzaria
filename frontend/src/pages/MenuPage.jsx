@@ -11,7 +11,6 @@ export default function MenuPage({
   settings,
   onAdd,
   highlights = {},
-  onToggleFavorite,
   digitalMode = false,
   cartCount = 0,
 }) {
@@ -148,9 +147,7 @@ export default function MenuPage({
               key={product.id}
               product={product}
               onAdd={onAdd}
-              favorite={(highlights.favoriteProductIds || []).includes(product.id)}
               isNew={(highlights.newProductIds || []).includes(product.id)}
-              onToggleFavorite={digitalMode ? undefined : onToggleFavorite}
             />
           ))}
         </div>

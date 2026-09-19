@@ -109,6 +109,7 @@ export default function ProductEditorModal({
                 </label>
                 <small className="upload-resolution-hint">
                   Resolução recomendada: 1200 × 900 px
+                  <br />Proporção recomendada: 4:3
                 </small>
               </div>
               <label className="product-image-url">
@@ -336,40 +337,35 @@ export default function ProductEditorModal({
                     >
                       <option value="MAX">Cobrar o sabor mais caro</option>
                       <option value="AVERAGE">Média dos sabores</option>
-                      <option value="PROPORTIONAL">
-                        Proporcional às partes escolhidas
-                      </option>
-                      {productForm.flavorPricingMode === "SUM" && (
-                        <option value="SUM">Média (configuração antiga)</option>
-                      )}
                     </select>
                   </label>
                 </div>
                 <small className="field-note">
-                  O servidor sempre recalcula o preço final. Em “Dividir e
-                  somar”, cada sabor contribui proporcionalmente para o valor da
-                  pizza.
+                  O servidor sempre recalcula o preço final. Em “Média”, soma os
+                  preços escolhidos e divide pela quantidade de sabores.
                 </small>
                 <div className="product-flavor-catalog-config">
                   <div>
                     <b>Sabores permitidos</b>
                     <small>
-                      Selecione no catálogo central quais sabores podem ser
-                      escolhidos neste produto.
+                      Sabores vindos de Produtos são incluídos automaticamente.
+                      Sabores independentes continuam opcionais.
                     </small>
                   </div>
                   <div className="modifier-group-checkboxes flavor-catalog-checkboxes">
                     {(flavors || [])
                       .filter((flavor) => flavor.active !== false)
                       .map((flavor) => {
-                        const selected = (productForm.flavorIds || []).includes(
-                          flavor.id,
-                        );
+                        const automatic = Boolean(flavor.sourceProductId);
+                        const selected =
+                          automatic ||
+                          (productForm.flavorIds || []).includes(flavor.id);
                         return (
                           <label key={flavor.id} className={selected ? "selected" : ""}>
                             <input
                               type="checkbox"
                               checked={selected}
+                              disabled={automatic}
                               onChange={() => toggleFlavor(flavor.id)}
                             />
                             <span>
@@ -379,6 +375,7 @@ export default function ProductEditorModal({
                                 {flavor.sizes?.filter((size) => size.available)
                                   .length || 0}{" "}
                                 tamanho(s)
+                                {automatic ? " • automático via Produtos" : ""}
                               </small>
                             </span>
                           </label>

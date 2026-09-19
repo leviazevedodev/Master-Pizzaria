@@ -47,3 +47,16 @@ test("todos os emissores de pedido encaminham comboSelections", async () => {
     assert.match(contents, /comboSelections: item\.comboSelections/);
   }
 });
+
+test("itens fixos do combo exibem foto, quantidade, nome e fallback responsivo", async () => {
+  const [component, styles] = await Promise.all([
+    source("../src/components/ConfigurableComboFlow.jsx"),
+    source("../src/styles/configurable-combo.css"),
+  ]);
+  assert.match(component, /product\?\.image/);
+  assert.match(component, /combo-fixed-item-fallback/);
+  assert.match(component, /\{entry\.quantity\}x incluído/);
+  assert.match(component, /product\?\.name \|\| entry\.name/);
+  assert.match(styles, /\.combo-fixed-item-media[\s\S]*aspect-ratio:\s*4 \/ 3/);
+  assert.match(styles, /@media \(max-width: 620px\)[\s\S]*\.combo-fixed-chips[\s\S]*grid-template-columns:\s*1fr/);
+});

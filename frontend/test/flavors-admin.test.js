@@ -20,6 +20,8 @@ test("catálogo central de sabores cobre cadastro, edição e pausa", async () =
   assert.match(component, /Disponibilidade e preço por tamanho/);
   assert.match(component, /<option value="FIXED">Preço fixo<\/option>/);
   assert.match(component, /<option value="SURCHARGE">Acréscimo<\/option>/);
+  assert.match(component, /flavor\.sourceProductId/);
+  assert.match(component, /Gerenciado em Produtos/);
 });
 
 test("grupos de sabor são administrados por categoria", async () => {

@@ -361,8 +361,9 @@ export default function FlavorsAdmin({
             <span>Catálogo central</span>
             <h2>Sabores de pizza</h2>
             <p>
-              Cadastre cada sabor uma única vez e controle preço, estoque e
-              disponibilidade por tamanho.
+              Sabores ligados a produtos aparecem automaticamente e devem ser
+              editados na aba Produtos. Use este cadastro para sabores
+              independentes.
             </p>
           </div>
           <b>{flavors.length}</b>
@@ -448,25 +449,38 @@ export default function FlavorsAdmin({
                       ? ` • usado em ${flavor.productsCount} produto(s)`
                       : ""}
                   </small>
+                  {flavor.sourceProductId && (
+                    <small className="managed-flavor-note">
+                      Gerenciado em Produtos
+                    </small>
+                  )}
                 </span>
               </div>
               <span>{flavor.group?.name || "Sem grupo"}</span>
-              <button
-                type="button"
-                className={flavor.active !== false ? "area-toggle active" : "area-toggle"}
-                onClick={() => toggleFlavor(flavor)}
-                aria-label={`${flavor.active !== false ? "Pausar" : "Reativar"} ${flavor.name}`}
-              >
-                {flavor.active !== false ? "Ativo" : "Pausado"}
-              </button>
-              <button
-                type="button"
-                className="icon-action"
-                onClick={() => startFlavorEdit(flavor)}
-                aria-label={`Editar ${flavor.name}`}
-              >
-                <Pencil size={16} /> Editar
-              </button>
+              {flavor.sourceProductId ? (
+                <span className={flavor.active !== false ? "area-toggle active" : "area-toggle"}>
+                  {flavor.active !== false ? "Ativo" : "Pausado"}
+                </span>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className={flavor.active !== false ? "area-toggle active" : "area-toggle"}
+                    onClick={() => toggleFlavor(flavor)}
+                    aria-label={`${flavor.active !== false ? "Pausar" : "Reativar"} ${flavor.name}`}
+                  >
+                    {flavor.active !== false ? "Ativo" : "Pausado"}
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-action"
+                    onClick={() => startFlavorEdit(flavor)}
+                    aria-label={`Editar ${flavor.name}`}
+                  >
+                    <Pencil size={16} /> Editar
+                  </button>
+                </>
+              )}
             </article>
           ))}
           {!visibleFlavors.length && (
@@ -713,6 +727,7 @@ export default function FlavorsAdmin({
             </label>
             <small className="upload-resolution-hint">
               Resolução recomendada: 1200 × 900 px
+              <br />Proporção recomendada: 4:3
             </small>
           </div>
         </div>

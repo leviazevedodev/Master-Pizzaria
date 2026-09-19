@@ -4,7 +4,6 @@ import {
   CalendarDays,
   Copy,
   Gift,
-  Heart,
   Clock3,
   LogOut,
   MapPin,
@@ -19,7 +18,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, authHeaders, mediaUrl } from "../lib/api";
+import { api, authHeaders } from "../lib/api";
 import { etaRange, formatCep, money } from "../lib/format";
 import CustomerOrderNotifications from "../components/CustomerOrderNotifications";
 import CustomerCancelOrderButton from "../components/CustomerCancelOrderButton";
@@ -73,7 +72,6 @@ export default function AccountPage({
     referencePoint: user.referencePoint || "",
   });
   const [favorites, setFavorites] = useState([]);
-  const [productFavorites, setProductFavorites] = useState([]);
   const [rewards, setRewards] = useState(null);
   const [birthday, setBirthday] = useState("");
   const [favoriteLabel, setFavoriteLabel] = useState("Casa");
@@ -104,12 +102,11 @@ export default function AccountPage({
   }
   async function loadGrowth() {
     try {
-      const [rewardResponse, productResponse] = await Promise.all([
-        api.get("/me/rewards", authHeaders(session.token)),
-        api.get("/me/product-favorites", authHeaders(session.token)),
-      ]);
+      const rewardResponse = await api.get(
+        "/me/rewards",
+        authHeaders(session.token),
+      );
       setRewards(rewardResponse.data);
-      setProductFavorites(productResponse.data || []);
     } catch {}
   }
   useEffect(() => {
@@ -233,23 +230,6 @@ export default function AccountPage({
     } catch (err) {
       setError(
         err.response?.data?.message || "Não foi possível remover o favorito.",
-      );
-    }
-  }
-  async function removeProductFavorite(product) {
-    try {
-      await api.delete(
-        `/me/product-favorites/${product.id}`,
-        authHeaders(session.token),
-      );
-      setProductFavorites((rows) =>
-        rows.filter((row) => row.id !== product.id),
-      );
-      setAddressMessage(`${product.name} foi removido dos favoritos.`);
-    } catch (err) {
-      setError(
-        err.response?.data?.message ||
-          "Não foi possível remover o produto dos favoritos.",
       );
     }
   }
@@ -398,36 +378,6 @@ export default function AccountPage({
                 )}
               </section>
             )}
-            <section className="favorite-products-card">
-              <div className="section-heading compact-heading">
-                <div>
-                  <span className="eyebrow dark"><Heart size={14} /> Produtos favoritos</span>
-                  <h2>Os sabores que você salvou.</h2>
-                </div>
-              </div>
-              {productFavorites.length ? (
-                <div className="favorite-products-list">
-                  {productFavorites.map((product) => (
-                    <article key={product.id}>
-                      <Link to="/cardapio">
-                        <img src={mediaUrl(product.image) || "/images/store-placeholder.svg"} alt="" />
-                        <span><b>{product.name}</b><small>{money(product.price)}</small></span>
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => removeProductFavorite(product)}
-                        aria-label={`Remover ${product.name} dos favoritos`}
-                        title="Remover dos favoritos"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <p className="empty-inline">Toque no coração de um produto para encontrá-lo aqui.</p>
-              )}
-            </section>
             {rewards?.transactions?.length > 0 && (
               <section className="reward-history-card">
                 <div className="section-heading compact-heading">

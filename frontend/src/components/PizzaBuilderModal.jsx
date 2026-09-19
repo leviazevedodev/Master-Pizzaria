@@ -14,6 +14,7 @@ import ConfigurableComboFlow from "./ConfigurableComboFlow";
 import {
   customizerBlockReason,
   initialModifierSelections,
+  originalFlavorId,
 } from "../lib/productCustomizer";
 
 function hasConfigurableComboSlots(product) {
@@ -103,8 +104,7 @@ function LegacyPizzaBuilderModal({
       baseProduct.defaultFlavorId) ||
     eligible[0]?.id ||
     "";
-  const centralFlavorCatalog = baseProduct.flavorCatalogMode === "CENTRAL";
-  const lockedFlavorId = centralFlavorCatalog ? null : baseProduct.id;
+  const lockedFlavorId = originalFlavorId(baseProduct, eligible);
   const [targetCount, setTargetCount] = useState(hasFlavorChoice ? 1 : 0);
   const [selected, setSelected] = useState(
     hasFlavorChoice && defaultFlavorId ? [defaultFlavorId] : [],
@@ -182,17 +182,17 @@ function LegacyPizzaBuilderModal({
   }
   const chosenPrices = chosen.map(flavorPrice);
   const chosenOriginalPrices = chosen.map(flavorOriginalPrice);
-  const proportionalFlavorPricing = ["SUM", "AVERAGE", "PROPORTIONAL"].includes(
+  const averageFlavorPricing = ["SUM", "AVERAGE"].includes(
     baseProduct.flavorPricingMode,
   );
   const sumDivisor = Math.max(1, targetCount || chosen.length || 1);
   const flavoredPrice = chosen.length
-    ? proportionalFlavorPricing
+    ? averageFlavorPricing
       ? chosenPrices.reduce((sum, value) => sum + value, 0) / sumDivisor
       : Math.max(basePrice, ...chosenPrices)
     : basePrice;
   const originalFlavoredPrice = chosen.length
-    ? proportionalFlavorPricing
+    ? averageFlavorPricing
       ? chosenOriginalPrices.reduce((sum, value) => sum + value, 0) / sumDivisor
       : Math.max(baseOriginalPrice, ...chosenOriginalPrices)
     : baseOriginalPrice;
@@ -486,10 +486,10 @@ function LegacyPizzaBuilderModal({
                     <span>
                       <b>{flavor.name}</b>
                       <small>
-                        {locked ? "Sabor base • " : ""}
+                        {locked ? "Seu sabor escolhido • " : ""}
                         {money(flavorPrice(flavor))}
                       </small>
-                      {proportionalFlavorPricing && active && (
+                      {averageFlavorPricing && active && (
                         <em className="flavor-price-calculation">
                           {money(flavorPrice(flavor))} ÷ {sumDivisor} ={" "}
                           <b>{money(flavorContribution(flavor))}</b>
@@ -501,10 +501,10 @@ function LegacyPizzaBuilderModal({
                 );
               })}
             </div>
-            {proportionalFlavorPricing && chosen.length > 0 && (
+            {averageFlavorPricing && chosen.length > 0 && (
               <div className="proportional-flavor-summary">
                 <div>
-                  <b>Cálculo proporcional dos sabores</b>
+                  <b>Média dos sabores</b>
                   <small>
                     Cada sabor contribui com seu valor dividido por {sumDivisor}
                     . O cálculo é atualizado enquanto você escolhe.

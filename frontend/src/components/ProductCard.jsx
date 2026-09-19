@@ -1,5 +1,5 @@
 import React from "react";
-import { Heart, Plus, Sparkles, Star } from "lucide-react";
+import { Plus, Sparkles, Star } from "lucide-react";
 import { money } from "../lib/format";
 import { mediaUrl } from "../lib/api";
 
@@ -9,9 +9,7 @@ const FALLBACK =
 export default function ProductCard({
   product,
   onAdd,
-  favorite = false,
   isNew = false,
-  onToggleFavorite,
 }) {
   const hasFlavors =
     product.allowFlavorSplit && product.availableFlavors?.length > 0;
@@ -48,20 +46,6 @@ export default function ProductCard({
           }}
         />
         <div className="product-overlay" />
-        {onToggleFavorite && (
-          <button
-            type="button"
-            className={`favorite-product-button ${favorite ? "active" : ""}`}
-            onClick={() => onToggleFavorite(product.id)}
-            aria-label={
-              favorite
-                ? `Remover ${product.name} dos favoritos`
-                : `Salvar ${product.name} nos favoritos`
-            }
-          >
-            <Heart size={18} fill={favorite ? "currentColor" : "none"} />
-          </button>
-        )}
         {product.badge && (
           <span className="product-badge">
             <Star size={13} fill="currentColor" /> {product.badge}

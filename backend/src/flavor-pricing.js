@@ -40,7 +40,15 @@ export function roundMoney(value) {
 export function normalizePizzaFlavorPricingMode(value) {
   const mode = String(value || "").trim().toUpperCase();
   if (!PIZZA_PRICING_MODES.has(mode)) return null;
-  return mode === "SUM" ? "AVERAGE" : mode;
+  return mode === "SUM" || mode === "PROPORTIONAL" ? "AVERAGE" : mode;
+}
+
+export function requiredBaseFlavorId(product, productFlavorLinks = []) {
+  if (!product?.isFlavorOption) return null;
+  const central = productFlavorLinks.find(
+    (entry) => entry?.flavor?.sourceProductId === product.id,
+  );
+  return central?.flavorId || central?.flavor?.id || product.id || null;
 }
 
 function normalizeFlavorIds(flavorIds) {
@@ -259,7 +267,7 @@ export function quoteFlavorSelection({
     basePrice: centsToMoney(basePriceCents),
     requestedPricingMode: requestedMode,
     pricingMode: normalizedMode,
-    legacySumMode: requestedMode === "SUM",
+    legacyAverageMode: ["SUM", "PROPORTIONAL"].includes(requestedMode),
     price,
     unitPrice: price,
     breakdown,

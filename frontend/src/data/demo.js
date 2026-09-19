@@ -261,6 +261,7 @@ export const DEMO_PRODUCTS = [
     compareAtPrice: 74.8,
     image: "/images/products/combo-calabresa-guarana-brownie.webp",
     badge: "Combo",
+    isCombo: true,
     category: DEMO_CATEGORIES[1],
     categoryId: "cat-combos",
     sortOrder: 11,

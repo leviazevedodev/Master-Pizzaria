@@ -231,6 +231,7 @@ export default function AlterationsAdmin({
                       </label>
                       <small className="upload-resolution-hint">
                         Resolução recomendada: 1200 × 900 px
+                        <br />Proporção recomendada: 4:3
                       </small>
                     </div>
                     <span className="modifier-option-copy">
@@ -307,6 +308,7 @@ export default function AlterationsAdmin({
                   </label>
                   <small className="upload-resolution-hint">
                     Resolução recomendada: 1200 × 900 px
+                    <br />Proporção recomendada: 4:3
                   </small>
                 </div>
                 <input

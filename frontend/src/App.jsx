@@ -118,7 +118,6 @@ export default function App() {
       reviewSummary: { average: 0, count: 0 },
       bestSellers: [],
       newProductIds: [],
-      favoriteProductIds: [],
     },
   );
   const [publicReady, setPublicReady] = useState(Boolean(initialPublic));
@@ -427,50 +426,6 @@ export default function App() {
     } catch {}
   }, [loadPublicData]);
 
-  const toggleFavorite = useCallback(
-    async (productId) => {
-      if (!session?.token) {
-        notify("Entre na sua conta para salvar produtos favoritos.");
-        window.location.assign(
-          `/entrar?next=${encodeURIComponent(location.pathname)}`,
-        );
-        return;
-      }
-      const favoriteIds = highlights.favoriteProductIds || [];
-      const removing = favoriteIds.includes(productId);
-      try {
-        if (removing)
-          await api.delete(
-            `/me/product-favorites/${productId}`,
-            authHeaders(session.token),
-          );
-        else
-          await api.post(
-            `/me/product-favorites/${productId}`,
-            {},
-            authHeaders(session.token),
-          );
-        setHighlights((value) => ({
-          ...value,
-          favoriteProductIds: removing
-            ? (value.favoriteProductIds || []).filter((id) => id !== productId)
-            : [...new Set([...(value.favoriteProductIds || []), productId])],
-        }));
-        notify(
-          removing
-            ? "Produto removido dos favoritos."
-            : "Produto salvo nos favoritos.",
-        );
-      } catch (error) {
-        notify(
-          error.response?.data?.message ||
-            "Não foi possível atualizar o favorito.",
-        );
-      }
-    },
-    [highlights.favoriteProductIds, location.pathname, session?.token],
-  );
-
   const sharedCatalogProps = {
     products,
     categories,
@@ -480,7 +435,6 @@ export default function App() {
     storeHours,
     highlights,
     session,
-    onToggleFavorite: toggleFavorite,
     onAdd: handleAddProduct,
   };
 

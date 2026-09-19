@@ -64,7 +64,9 @@ import { canDispatchCouriers } from "./admin-permissions.js";
 import { permissionNeededForAdminRequest } from "./admin-route-permissions.js";
 import {
   FlavorPricingError,
+  normalizePizzaFlavorPricingMode,
   quoteFlavorSelection,
+  requiredBaseFlavorId,
 } from "./flavor-pricing.js";
 import {
   birthdayBenefitState,
@@ -764,23 +766,55 @@ const restoreOrderBenefits = async (tx, orderId) => {
       userId: true,
       birthdayBenefitApplied: true,
       rewardTransactions: {
-        where: { type: { in: ["LOYALTY_REDEEM", "CASHBACK_REDEEM"] } },
-        select: { type: true, points: true, amount: true },
+        where: {
+          type: {
+            in: [
+              "LOYALTY_REDEEM",
+              "CASHBACK_REDEEM",
+              "LOYALTY_EARN",
+              "CASHBACK_EARN",
+              "REFERRAL_NEW_CUSTOMER",
+              "REFERRAL_REFERRER",
+            ],
+          },
+        },
+        select: {
+          externalKey: true,
+          userId: true,
+          type: true,
+          points: true,
+          amount: true,
+        },
       },
     },
   });
   if (!order?.userId) return;
-  for (const debit of order.rewardTransactions) {
+  for (const transaction of order.rewardTransactions) {
+    const redemption = ["LOYALTY_REDEEM", "CASHBACK_REDEEM"].includes(
+      transaction.type,
+    );
     await creditReward(tx, {
-      externalKey: `${order.id}:${debit.type}_RESTORE`,
-      userId: order.userId,
+      externalKey: redemption
+        ? `${order.id}:${transaction.type}_RESTORE`
+        : `${transaction.externalKey}:REVERSAL`,
+      userId: transaction.userId,
       orderId: order.id,
-      type: `${debit.type}_RESTORE`,
-      points: Math.abs(Number(debit.points || 0)),
-      amount: Math.abs(Number(debit.amount || 0)),
-      description: "Benefício devolvido após cancelamento do pedido",
+      type: redemption
+        ? `${transaction.type}_RESTORE`
+        : `${transaction.type}_REVERSAL`,
+      points:
+        Math.abs(Number(transaction.points || 0)) * (redemption ? 1 : -1),
+      amount:
+        Math.abs(Number(transaction.amount || 0)) * (redemption ? 1 : -1),
+      description: redemption
+        ? "Benefício devolvido após cancelamento do pedido"
+        : "Recompensa estornada após cancelamento ou reembolso do pedido",
     });
   }
+  await tx.order.update({
+    where: { id: order.id },
+    data: { cashbackEarned: 0 },
+  });
   if (order.birthdayBenefitApplied) {
     const activeBirthdayOrder = await tx.order.findFirst({
       where: {
@@ -970,6 +1004,8 @@ const serializeProduct = (product) => ({
   ...product,
   price: Number(product.price),
   isCombo: Boolean(product.isCombo),
+  flavorPricingMode:
+    normalizePizzaFlavorPricingMode(product.flavorPricingMode) || "MAX",
   comboMode: product.comboSlots?.length
     ? product.comboSlots.some((slot) => slot.type !== "FIXED_PRODUCT")
       ? "CONFIGURABLE"
@@ -1102,8 +1138,10 @@ const serializeComboSlotBaseProduct = (product) =>
         image: safeMediaUrl(product.image),
         categoryId: product.categoryId,
         allowFlavorSplit: Boolean(product.allowFlavorSplit),
+        isFlavorOption: Boolean(product.isFlavorOption),
         maxFlavors: Math.min(4, Math.max(1, Number(product.maxFlavors || 1))),
-        flavorPricingMode: product.flavorPricingMode,
+        flavorPricingMode:
+          normalizePizzaFlavorPricingMode(product.flavorPricingMode) || "MAX",
         stockAvailable:
           !product.stockTracked || Number(product.stockQuantity || 0) > 0,
         availableSizes: (product.productSizes || [])
@@ -1244,7 +1282,8 @@ const serializePublicProduct = (product) => {
       : "LEGACY_FIXED",
     comboSlots: (product.comboSlots || []).map(serializeComboSlot),
     maxFlavors: Math.min(4, Number(product.maxFlavors || 1)),
-    flavorPricingMode: product.flavorPricingMode,
+    flavorPricingMode:
+      normalizePizzaFlavorPricingMode(product.flavorPricingMode) || "MAX",
     pausedUntil: product.pausedUntil,
     availableDays: product.availableDays,
     availableStartTime: product.availableStartTime,
@@ -3005,6 +3044,7 @@ const comboBaseProductSelect = {
   ...comboChoiceProductSelect,
   categoryId: true,
   allowFlavorSplit: true,
+  isFlavorOption: true,
   maxFlavors: true,
   flavorPricingMode: true,
   promotion: true,
@@ -4550,6 +4590,12 @@ app.post(
             code: "FLAVOR_NOT_ALLOWED",
             message: `Um dos sabores escolhidos não está disponível para ${base.name}.`,
           });
+        const requiredFlavorId = requiredBaseFlavorId(base, centralLinks);
+        if (requiredFlavorId && !flavorIds.includes(requiredFlavorId))
+          return res.status(400).json({
+            code: "BASE_FLAVOR_REQUIRED",
+            message: `O sabor original ${base.name} deve permanecer selecionado.`,
+          });
         if (flavorIds.some((id) => !centralFlavorMap.has(id)))
           return res.status(400).json({
             code: "FLAVOR_NOT_FOUND",
@@ -4608,9 +4654,11 @@ app.post(
       } else {
         // Compatibilidade temporária com instalações que ainda não aplicaram a
         // migração expansiva do catálogo central.
-        if (!flavorIds.includes(base.id))
+        const requiredFlavorId = requiredBaseFlavorId(base);
+        if (requiredFlavorId && !flavorIds.includes(requiredFlavorId))
           return res.status(400).json({
-            message: `O sabor base ${base.name} deve permanecer selecionado.`,
+            code: "BASE_FLAVOR_REQUIRED",
+            message: `O sabor original ${base.name} deve permanecer selecionado.`,
           });
         if (
           flavorIds.length >
@@ -6413,6 +6461,8 @@ app.post("/api/admin/table-sessions/:id/close", auth, admin, async (req, res) =>
         changedByRole: req.adminUser.staffRole === "WAITER" ? "GARÇOM" : "ADMINISTRADOR",
       })),
     });
+    for (const order of current.orders)
+      await applyOrderRewards(tx, order.id);
     return tx.tableSession.update({
       where: { id: current.id },
       data: {
@@ -7019,9 +7069,22 @@ app.patch("/api/admin/orders/:id/status", auth, admin, async (req, res) => {
           message: "Pedido não encontrado ou atribuído a outro entregador.",
         });
     }
-    const same = await prisma.order.findUnique({
-      where: { id: req.params.id },
-      include: orderInclude,
+    const same = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${req.params.id}))`;
+      const locked = await tx.order.findUnique({
+        where: { id: req.params.id },
+        select: { status: true, paymentStatus: true },
+      });
+      if (
+        status === "DELIVERED" &&
+        locked?.status === "DELIVERED" &&
+        ["APPROVED", "CASH_PENDING"].includes(locked.paymentStatus)
+      )
+        await applyOrderRewards(tx, req.params.id);
+      return tx.order.findUnique({
+        where: { id: req.params.id },
+        include: orderInclude,
+      });
     });
     return res.json({ ...serializeOrder(same), idempotent: true });
   }
@@ -7744,6 +7807,12 @@ app.patch("/api/admin/flavors/:id", auth, admin, async (req, res) => {
   const current = await prisma.flavor.findUnique({ where: { id: req.params.id } });
   if (!current)
     return res.status(404).json({ message: "Sabor não encontrado." });
+  if (current.sourceProductId)
+    return res.status(409).json({
+      code: "PRODUCT_MANAGED_FLAVOR",
+      message:
+        "Este sabor é gerenciado pelo produto de origem. Faça a alteração na aba Produtos.",
+    });
   const data = {};
   if (req.body?.name !== undefined) data.name = cleanText(req.body.name, 100);
   if (req.body?.slug !== undefined) data.slug = cleanText(req.body.slug, 100).toLowerCase();
@@ -7829,6 +7898,12 @@ app.delete("/api/admin/flavors/:id", auth, admin, async (req, res) => {
     select: { sourceProductId: true },
   });
   if (!row) return res.status(404).json({ message: "Sabor não encontrado." });
+  if (row.sourceProductId)
+    return res.status(409).json({
+      code: "PRODUCT_MANAGED_FLAVOR",
+      message:
+        "Este sabor é gerenciado pelo produto de origem. Desmarque “Pode ser sabor” na aba Produtos.",
+    });
   const [products, orders] = await Promise.all([
     prisma.productFlavor.count({ where: { flavorId: req.params.id } }),
     prisma.orderItemFlavor.count({ where: { flavorId: req.params.id } }),
@@ -8330,14 +8405,174 @@ async function syncProductFlavors(tx, productId, flavorIds) {
       (flavorIds || []).map((id) => cleanText(id, 80)).filter(Boolean),
     ),
   ];
-  if (unique.length)
+  const standalone = unique.length
+    ? await tx.flavor.findMany({
+        where: { id: { in: unique }, sourceProductId: null },
+        select: { id: true },
+      })
+    : [];
+  const standaloneIds = new Set(standalone.map((flavor) => flavor.id));
+  const orderedStandaloneIds = unique.filter((id) => standaloneIds.has(id));
+  if (orderedStandaloneIds.length)
     await tx.productFlavor.createMany({
-      data: unique.map((flavorId, index) => ({
+      data: orderedStandaloneIds.map((flavorId, index) => ({
         productId,
         flavorId,
         sortOrder: index,
       })),
     });
+}
+
+async function syncAutomaticSourceFlavorLinks(tx, categoryIds) {
+  const ids = [...new Set(categoryIds.filter(Boolean))];
+  for (const categoryId of ids) {
+    const products = await tx.product.findMany({
+      where: { categoryId, isCombo: false },
+      select: { id: true, allowFlavorSplit: true, deletedAt: true },
+    });
+    const productIds = products.map((product) => product.id);
+    if (!productIds.length) continue;
+    await tx.productFlavor.deleteMany({
+      where: {
+        productId: { in: productIds },
+        flavor: { sourceProductId: { not: null } },
+      },
+    });
+    const sourceFlavors = await tx.flavor.findMany({
+      where: {
+        active: true,
+        sourceProduct: {
+          categoryId,
+          isCombo: false,
+          isFlavorOption: true,
+          available: true,
+          deletedAt: null,
+        },
+      },
+      select: { id: true },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    });
+    if (!sourceFlavors.length) continue;
+    const configurableIds = products
+      .filter((product) => product.allowFlavorSplit && !product.deletedAt)
+      .map((product) => product.id);
+    if (!configurableIds.length) continue;
+    await tx.productFlavor.createMany({
+      data: configurableIds.flatMap((productId) =>
+        sourceFlavors.map((flavor, sortOrder) => ({
+          productId,
+          flavorId: flavor.id,
+          sortOrder: sortOrder + 100,
+        })),
+      ),
+      skipDuplicates: true,
+    });
+  }
+}
+
+async function syncProductSourceFlavor(tx, productId) {
+  const product = await tx.product.findUnique({
+    where: { id: productId },
+    include: {
+      subcategory: true,
+      productSizes: {
+        include: { size: true },
+        orderBy: { sortOrder: "asc" },
+      },
+    },
+  });
+  if (!product) return null;
+  const existing = await tx.flavor.findUnique({
+    where: { sourceProductId: product.id },
+  });
+  const active = Boolean(
+    product.isFlavorOption &&
+      !product.isCombo &&
+      product.available &&
+      !product.deletedAt,
+  );
+  if (!product.isFlavorOption || product.isCombo) {
+    if (existing) {
+      await tx.flavor.update({
+        where: { id: existing.id },
+        data: { active: false },
+      });
+      await tx.productFlavor.deleteMany({ where: { flavorId: existing.id } });
+    }
+    return existing?.id || null;
+  }
+
+  const groupSlug = product.subcategory?.slug || "sabores";
+  const group = await tx.flavorGroup.upsert({
+    where: {
+      categoryId_slug: { categoryId: product.categoryId, slug: groupSlug },
+    },
+    update: {
+      name: product.subcategory?.name || "Sabores",
+      active: true,
+      sortOrder: Number(product.subcategory?.sortOrder || 0),
+    },
+    create: {
+      name: product.subcategory?.name || "Sabores",
+      slug: groupSlug,
+      description: "Grupo mantido automaticamente a partir dos produtos.",
+      categoryId: product.categoryId,
+      active: true,
+      sortOrder: Number(product.subcategory?.sortOrder || 0),
+    },
+  });
+  const conflict = await tx.flavor.findFirst({
+    where: {
+      ...(existing ? { id: { not: existing.id } } : {}),
+      OR: [
+        { slug: product.slug },
+        { name: { equals: product.name, mode: "insensitive" } },
+      ],
+    },
+    select: { id: true },
+  });
+  const suffix = product.id.slice(-8).toLowerCase();
+  const flavorData = {
+    name: conflict ? `${product.name} · ${suffix}` : product.name,
+    slug: conflict ? `${product.slug}-${suffix}` : product.slug,
+    description: product.description,
+    groupId: group.id,
+    price: product.price,
+    promoPrice: null,
+    promoActive: false,
+    promoStartAt: null,
+    promoEndAt: null,
+    image: product.image,
+    active,
+    featured: product.featured,
+    allowHalfAndHalf: true,
+    sortOrder: product.sortOrder,
+    stockTracked: product.stockTracked,
+    stockQuantity: product.stockQuantity,
+    stockLowThreshold: product.stockLowThreshold,
+  };
+  const flavor = existing
+    ? await tx.flavor.update({ where: { id: existing.id }, data: flavorData })
+    : await tx.flavor.create({
+        data: {
+          ...flavorData,
+          ingredients: [],
+          sourceProductId: product.id,
+        },
+      });
+  await tx.flavorSize.deleteMany({ where: { flavorId: flavor.id } });
+  if (product.productSizes.length)
+    await tx.flavorSize.createMany({
+      data: product.productSizes.map((entry, index) => ({
+        flavorId: flavor.id,
+        sizeId: entry.sizeId,
+        pricingMode: "FIXED",
+        price: entry.price,
+        available: entry.size?.active !== false,
+        sortOrder: Number(entry.sortOrder ?? index),
+      })),
+    });
+  return flavor.id;
 }
 async function syncProductModifierGroups(
   tx,
@@ -8468,11 +8703,8 @@ app.post("/api/admin/products", auth, admin, async (req, res) => {
   const price = Number(req.body?.price);
   const maxFlavors = Number(req.body?.maxFlavors ?? 1);
   const sortOrder = boundedInteger(req.body?.sortOrder ?? 0);
-  const flavorPricingMode = ["MAX", "SUM", "AVERAGE", "PROPORTIONAL"].includes(
-    req.body?.flavorPricingMode,
-  )
-    ? req.body.flavorPricingMode
-    : "MAX";
+  const flavorPricingMode =
+    normalizePizzaFlavorPricingMode(req.body?.flavorPricingMode) || "MAX";
   const flavorIds = Array.isArray(req.body?.flavorIds)
     ? req.body.flavorIds
     : [];
@@ -8562,9 +8794,11 @@ app.post("/api/admin/products", auth, admin, async (req, res) => {
         removableIngredients,
       },
     });
-    await syncProductFlavors(tx, p.id, flavorIds);
     await syncProductModifierGroups(tx, p.id, modifierGroupIds, categoryId);
     await syncProductSizes(tx, p.id, sizePrices);
+    await syncProductFlavors(tx, p.id, flavorIds);
+    await syncProductSourceFlavor(tx, p.id);
+    await syncAutomaticSourceFlavorLinks(tx, [categoryId]);
     return tx.product.findUnique({
       where: { id: p.id },
       include: productInclude,
@@ -8617,15 +8851,14 @@ app.patch("/api/admin/products/:id", auth, admin, async (req, res) => {
     data.maxFlavors = maxFlavors;
   }
   if (req.body?.flavorPricingMode !== undefined) {
-    if (
-      !["MAX", "SUM", "AVERAGE", "PROPORTIONAL"].includes(
-        req.body.flavorPricingMode,
-      )
-    )
+    const flavorPricingMode = normalizePizzaFlavorPricingMode(
+      req.body.flavorPricingMode,
+    );
+    if (!flavorPricingMode)
       return res
         .status(400)
         .json({ message: "Regra de preço dos sabores inválida." });
-    data.flavorPricingMode = req.body.flavorPricingMode;
+    data.flavorPricingMode = flavorPricingMode;
   }
   if (req.body?.stockTracked !== undefined)
     data.stockTracked = booleanValue(req.body.stockTracked);
@@ -8726,6 +8959,11 @@ app.patch("/api/admin/products/:id", auth, admin, async (req, res) => {
     }
     if (Array.isArray(req.body?.sizePrices))
       await syncProductSizes(tx, req.params.id, req.body.sizePrices);
+    await syncProductSourceFlavor(tx, req.params.id);
+    await syncAutomaticSourceFlavorLinks(tx, [
+      current.categoryId,
+      updated.categoryId,
+    ]);
     return tx.product.findUnique({
       where: { id: req.params.id },
       include: productInclude,
@@ -8734,17 +8972,29 @@ app.patch("/api/admin/products/:id", auth, admin, async (req, res) => {
   res.json(serializeProduct(product));
 });
 app.delete("/api/admin/products/:id", auth, admin, async (req, res) => {
-  const p = await prisma.product.update({
-    where: { id: req.params.id },
-    data: { available: false, deletedAt: new Date() },
+  const p = await prisma.$transaction(async (tx) => {
+    const archived = await tx.product.update({
+      where: { id: req.params.id },
+      data: { available: false, deletedAt: new Date() },
+    });
+    await syncProductSourceFlavor(tx, archived.id);
+    await syncAutomaticSourceFlavorLinks(tx, [archived.categoryId]);
+    return archived;
   });
   res.json({ ok: true, id: p.id, archived: true });
 });
 app.post("/api/admin/products/:id/restore", auth, admin, async (req, res) => {
-  const p = await prisma.product.update({
-    where: { id: req.params.id },
-    data: { deletedAt: null, available: true },
-    include: productInclude,
+  const p = await prisma.$transaction(async (tx) => {
+    const restored = await tx.product.update({
+      where: { id: req.params.id },
+      data: { deletedAt: null, available: true },
+    });
+    await syncProductSourceFlavor(tx, restored.id);
+    await syncAutomaticSourceFlavorLinks(tx, [restored.categoryId]);
+    return tx.product.findUnique({
+      where: { id: restored.id },
+      include: productInclude,
+    });
   });
   res.json(serializeProduct(p));
 });
@@ -11094,7 +11344,7 @@ const optionalDate = (value) => {
 app.get("/api/highlights", optionalAuth, async (req, res) => {
   const settings = await getSettings();
   const now = new Date();
-  const [campaignRows, reviewRows, reviewAggregate, bestSellerRows, favoriteRows, newRows] =
+  const [campaignRows, reviewRows, reviewAggregate, bestSellerRows, newRows] =
     await Promise.all([
       prisma.campaign.findMany({
         where: {
@@ -11128,12 +11378,6 @@ app.get("/api/highlights", optionalAuth, async (req, res) => {
             _sum: { quantity: true },
             orderBy: { _sum: { quantity: "desc" } },
             take: 8,
-          })
-        : [],
-      req.user?.id
-        ? prisma.productFavorite.findMany({
-            where: { userId: req.user.id },
-            select: { productId: true },
           })
         : [],
       settings.newProductsEnabled
@@ -11179,7 +11423,6 @@ app.get("/api/highlights", optionalAuth, async (req, res) => {
     newProductIds: newRows
       .filter((product) => productIsNew(product, settings, now))
       .map((product) => product.id),
-    favoriteProductIds: favoriteRows.map((row) => row.productId),
   });
 });
 
@@ -11234,41 +11477,6 @@ app.get("/api/me/rewards", auth, async (req, res) => {
       amount: Number(row.amount || 0),
     })),
   });
-});
-
-app.get("/api/me/product-favorites", auth, async (req, res) => {
-  const rows = await prisma.productFavorite.findMany({
-    where: { userId: req.user.id },
-    include: { product: { include: productInclude } },
-    orderBy: { createdAt: "desc" },
-  });
-  res.json(
-    rows
-      .filter((row) => row.product.available && !row.product.deletedAt)
-      .map((row) => serializePublicProduct(row.product)),
-  );
-});
-app.post("/api/me/product-favorites/:productId", auth, async (req, res) => {
-  const product = await prisma.product.findFirst({
-    where: { id: req.params.productId, available: true, deletedAt: null },
-    select: { id: true },
-  });
-  if (!product)
-    return res.status(404).json({ message: "Produto não encontrado." });
-  await prisma.productFavorite.upsert({
-    where: {
-      userId_productId: { userId: req.user.id, productId: product.id },
-    },
-    update: {},
-    create: { userId: req.user.id, productId: product.id },
-  });
-  res.status(201).json({ ok: true, productId: product.id });
-});
-app.delete("/api/me/product-favorites/:productId", auth, async (req, res) => {
-  await prisma.productFavorite.deleteMany({
-    where: { userId: req.user.id, productId: req.params.productId },
-  });
-  res.json({ ok: true, productId: req.params.productId });
 });
 
 app.get("/api/admin/reviews", auth, admin, async (req, res) => {

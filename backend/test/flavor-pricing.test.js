@@ -4,6 +4,7 @@ import {
   FlavorPricingError,
   normalizePizzaFlavorPricingMode,
   quoteFlavorSelection,
+  requiredBaseFlavorId,
   roundMoney,
 } from "../src/flavor-pricing.js";
 
@@ -93,7 +94,7 @@ test("SURCHARGE soma somente o acréscimo configurado no backend ao preço base"
   assert.equal(result.breakdown[0].effectivePrice, 45.15);
 });
 
-test("AVERAGE, PROPORTIONAL e SUM calculam a média e arredondam em centavos", () => {
+test("AVERAGE substitui os modos antigos equivalentes e arredonda em centavos", () => {
   const flavors = [flavor("a", 40), flavor("b", 40.01)];
   for (const pricingMode of ["AVERAGE", "PROPORTIONAL", "SUM"]) {
     const result = quote({
@@ -102,11 +103,34 @@ test("AVERAGE, PROPORTIONAL e SUM calculam a média e arredondam em centavos", (
       pricingMode,
     });
     assert.equal(result.price, 40.01);
-    assert.equal(result.pricingMode, pricingMode === "SUM" ? "AVERAGE" : pricingMode);
-    assert.equal(result.legacySumMode, pricingMode === "SUM");
+    assert.equal(result.pricingMode, "AVERAGE");
+    assert.equal(
+      result.legacyAverageMode,
+      ["SUM", "PROPORTIONAL"].includes(pricingMode),
+    );
   }
   assert.equal(normalizePizzaFlavorPricingMode("sum"), "AVERAGE");
+  assert.equal(normalizePizzaFlavorPricingMode("proportional"), "AVERAGE");
   assert.equal(roundMoney(19.995), 20);
+});
+
+test("identifica o sabor central obrigatório do produto escolhido", () => {
+  assert.equal(
+    requiredBaseFlavorId(
+      { id: "product-calabresa", isFlavorOption: true },
+      [
+        {
+          flavorId: "flavor-calabresa",
+          flavor: { sourceProductId: "product-calabresa" },
+        },
+      ],
+    ),
+    "flavor-calabresa",
+  );
+  assert.equal(
+    requiredBaseFlavorId({ id: "product", isFlavorOption: false }, []),
+    null,
+  );
 });
 
 test("rejeita IDs repetidos e seleção acima do limite", () => {

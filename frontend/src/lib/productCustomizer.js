@@ -4,6 +4,16 @@ function minimumForGroup(group) {
     : Number(group.minSelect || 0);
 }
 
+export function originalFlavorId(product, eligibleFlavors = []) {
+  if (!product?.isFlavorOption) return null;
+  const candidate =
+    product.defaultFlavorId ||
+    (product.flavorCatalogMode === "CENTRAL" ? null : product.id);
+  return eligibleFlavors.some((flavor) => flavor.id === candidate)
+    ? candidate
+    : null;
+}
+
 export function initialModifierSelections(groups = []) {
   const selections = {};
   for (const group of groups) {

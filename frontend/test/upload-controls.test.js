@@ -55,10 +55,16 @@ test("todo upload administrativo exibe a resolução recomendada", async () => {
     if (!uploadCount) continue;
     uploadFiles.push(fileUrl.href.slice(srcUrl.href.length));
     const hintCount = (source.match(/className="upload-resolution-hint"/g) || []).length;
+    const aspectCount = (source.match(/Proporção recomendada/g) || []).length;
     assert.equal(
       hintCount,
       uploadCount,
       `${fileUrl.pathname} precisa de uma recomendação por input de arquivo`,
+    );
+    assert.equal(
+      aspectCount,
+      uploadCount,
+      `${fileUrl.pathname} precisa da proporção de cada input de arquivo`,
     );
   }
 
@@ -94,10 +100,19 @@ test("recomendações correspondem aos recortes e o envio continua usando postFo
     "1200 × 900 px",
   ]) assert.match(settings, new RegExp(resolution));
   for (const source of [products, flavors, combos, additions])
-    assert.match(source, /1200 × 900 px/);
+    assert.match(source, /1200 × 900 px[\s\S]*Proporção recomendada: 4:3/);
   assert.match(promotions, /1200 × 675 px/);
   assert.match(campaigns, /1200 × 525 px/);
+  assert.match(settings, /shareImage: \["Imagem de compartilhamento", 40 \/ 21\]/);
+  for (const ratio of ["16:7", "1:1", "40:21", "20:21", "4:3"])
+    assert.match(settings, new RegExp(ratio));
   assert.match(adminPage, /api\.postForm\("\/admin\/media"/);
   assert.match(adminPage, /"Imagem da promoção", 16 \/ 9/);
   assert.match(adminPage, /"Banner da campanha", 16 \/ 7/);
+  const css = await readFile(stylesUrl, "utf8");
+  assert.match(css, /\.product-photo\s*\{[\s\S]*?aspect-ratio:\s*4 \/ 3/);
+  assert.match(css, /\.promotion-image\s*\{[\s\S]*?aspect-ratio:\s*16 \/ 9/);
+  assert.match(css, /\.hero-photo-wrap\s*\{[\s\S]*?aspect-ratio:\s*20 \/ 21/);
+  assert.match(css, /\.about-visual img\s*\{[\s\S]*?aspect-ratio:\s*4 \/ 3/);
+  assert.match(css, /\.campaign-public-card > img\s*\{[\s\S]*?aspect-ratio:\s*16 \/ 7/);
 });

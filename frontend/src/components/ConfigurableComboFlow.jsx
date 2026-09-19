@@ -249,14 +249,39 @@ export default function ConfigurableComboFlow({
               <PackageCheck size={20} />
             </div>
             <div className="combo-fixed-chips">
-              {fixedSlots.map((entry) => (
-                <span key={entry.id}>
-                  {entry.quantity}x {entry.products?.[0]?.product?.name || entry.name}
-                  {entry.products?.[0]?.sizeName
-                    ? ` • ${entry.products[0].sizeName}`
-                    : ""}
-                </span>
-              ))}
+              {fixedSlots.map((entry) => {
+                const choice = entry.products?.[0];
+                const product = choice?.product;
+                return (
+                  <article key={entry.id} className="combo-fixed-item">
+                    <span className="combo-fixed-item-media">
+                      {product?.image ? (
+                        <img
+                          src={mediaUrl(product.image)}
+                          alt=""
+                          loading="lazy"
+                          onError={(event) => {
+                            event.currentTarget.hidden = true;
+                            event.currentTarget.nextElementSibling.hidden = false;
+                          }}
+                        />
+                      ) : null}
+                      <span
+                        className="combo-fixed-item-fallback"
+                        hidden={Boolean(product?.image)}
+                        aria-hidden="true"
+                      >
+                        <PackageCheck size={22} />
+                      </span>
+                    </span>
+                    <span className="combo-fixed-item-copy">
+                      <small>{entry.quantity}x incluído</small>
+                      <b>{product?.name || entry.name}</b>
+                      {choice?.sizeName && <span>{choice.sizeName}</span>}
+                    </span>
+                  </article>
+                );
+              })}
             </div>
           </section>
         )}

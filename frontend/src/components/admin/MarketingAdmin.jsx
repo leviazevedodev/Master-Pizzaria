@@ -214,7 +214,7 @@ export default function MarketingAdmin({
               }
             />
             {imageUploading && <small>Enviando imagem...</small>}
-            <small className="upload-resolution-hint">Resolução recomendada: 1200 × 525 px</small>
+            <small className="upload-resolution-hint">Resolução recomendada: 1200 × 525 px<br />Proporção recomendada: 16:7</small>
           </label>
           <label>Texto do botão<input value={form.buttonText} onChange={(event) => setForm({ ...form, buttonText: event.target.value })} /></label>
           <label>Destino<input value={form.targetUrl} onChange={(event) => setForm({ ...form, targetUrl: event.target.value })} /></label>

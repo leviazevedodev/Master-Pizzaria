@@ -570,6 +570,19 @@ async function main() {
     ]),
   );
   const defaultCombo = bySlug["combo-master"];
+  if (
+    defaultCombo &&
+    (!defaultCombo.isCombo || defaultCombo.categoryId !== categoryMap.combos)
+  ) {
+    await prisma.product.update({
+      where: { id: defaultCombo.id },
+      data: {
+        isCombo: true,
+        categoryId: categoryMap.combos,
+        subcategoryId: null,
+      },
+    });
+  }
   if (createdProductIds.has(defaultCombo.id)) {
     const defaultComboItems = [
       {

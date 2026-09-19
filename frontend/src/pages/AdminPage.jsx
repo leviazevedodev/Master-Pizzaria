@@ -711,7 +711,11 @@ export default function AdminPage({
       allowFlavorSplit: Boolean(p.allowFlavorSplit),
       isFlavorOption: Boolean(p.isFlavorOption),
       maxFlavors: Number(p.maxFlavors || 1),
-      flavorPricingMode: p.flavorPricingMode || "MAX",
+      flavorPricingMode: ["AVERAGE", "PROPORTIONAL", "SUM"].includes(
+        p.flavorPricingMode,
+      )
+        ? "AVERAGE"
+        : "MAX",
       flavorIds: p.flavorIds || [],
       modifierGroupIds: p.modifierGroupIds || [],
       sizePrices: (p.availableSizes || []).map((size) => ({
