@@ -373,15 +373,16 @@ export default function AdminPage({
         jobs.combos = () => api.get("/admin/combos", headers);
       if (can("products") || can("alterations"))
         jobs.sizes = () => api.get("/admin/sizes", headers);
-      if (can("products") || can("alterations")) {
+      if (can("products") || can("alterations") || can("promotions"))
         jobs.flavors = () => api.get("/admin/flavors", headers);
+      if (can("products") || can("alterations")) {
         jobs.flavorGroups = () => api.get("/admin/flavor-groups", headers);
       }
       if (can("categories") || can("products") || can("alterations")) {
         jobs.categories = () => api.get("/admin/categories", headers);
         jobs.subcategories = () => api.get("/admin/subcategories", headers);
       }
-      if (can("alterations") || can("products")) {
+      if (can("alterations") || can("products") || can("promotions")) {
         jobs.modifiers = () => api.get("/admin/modifier-groups", headers);
       }
       if (can("delivery"))
@@ -1060,6 +1061,16 @@ export default function AdminPage({
       fail(err, "Não foi possível atualizar a promoção do adicional.");
     }
   }
+  async function updateFlavorPromotion(row, patch) {
+    try {
+      await api.patch(`/admin/flavors/${row.id}/promotion`, patch, headers);
+      notify("Promoção do sabor atualizada.");
+      await loadAll();
+      await onCatalogChanged?.();
+    } catch (err) {
+      fail(err, "Não foi possível atualizar a promoção do sabor.");
+    }
+  }
   async function uploadMedia(file, onDone) {
     if (!file) return;
     if (file.size > 1_800_000)
@@ -1505,7 +1516,6 @@ export default function AdminPage({
               onPayment: setPaymentTarget,
               onPrint: (order) => printOrderReceipt(order, settings),
               onOpen: openOrder,
-              lateWarningMinutes: settings?.lateWarningMinutes || 30,
               deliveryOnly: isDeliveryStaff,
               savingId: statusSavingId,
             }}
@@ -1532,7 +1542,6 @@ export default function AdminPage({
               onPayment: isWaiter ? undefined : setPaymentTarget,
               onPrint: (order) => printOrderReceipt(order, settings),
               onOpen: openOrder,
-              lateWarningMinutes: settings?.lateWarningMinutes || 30,
               deliveryOnly: isDeliveryStaff,
               savingId: statusSavingId,
             }}
@@ -1765,6 +1774,9 @@ export default function AdminPage({
                 session={session}
                 combos={combos}
                 products={products}
+                flavors={flavors}
+                flavorGroups={flavorGroups}
+                sizes={sizes}
                 onChanged={async () => { await loadAll(); await onCatalogChanged?.(); }}
                 notify={notify}
                 fail={fail}
@@ -1806,6 +1818,7 @@ export default function AdminPage({
                 rows={promotions}
                 products={products.filter((p) => !p.deletedAt)}
                 combos={combos.filter((p) => !p.deletedAt)}
+                flavors={flavors}
                 modifierGroups={modifierGroups}
                 form={promotionForm}
                 setForm={setPromotionForm}
@@ -1813,6 +1826,7 @@ export default function AdminPage({
                 update={updatePromotion}
                 remove={removePromotion}
                 updateModifierOption={updateModifierOptionPromotion}
+                updateFlavor={updateFlavorPromotion}
                 uploadMedia={(file, onDone) =>
                   requestCrop(file, onDone, "Imagem da promoção", 16 / 9)
                 }

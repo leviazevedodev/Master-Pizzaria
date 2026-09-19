@@ -69,9 +69,6 @@ import {
   requiredBaseFlavorId,
 } from "./flavor-pricing.js";
 import {
-  birthdayBenefitState,
-  calculateBirthdayDiscount,
-  calculateReferralReward,
   calculateRewardEarning,
   calculateRewardRedemption,
   campaignIsActive,
@@ -375,18 +372,6 @@ const normalizePhone = (value) => {
 };
 const validPhone = (phone) => /^\d{10,11}$/.test(phone);
 const validEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
-const parseBirthday = (value) => {
-  const raw = cleanText(value, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return undefined;
-  const date = new Date(`${raw}T12:00:00.000Z`);
-  if (
-    Number.isNaN(date.getTime()) ||
-    date.toISOString().slice(0, 10) !== raw ||
-    date > new Date()
-  )
-    return undefined;
-  return date;
-};
 const validCustomerPassword = (password) =>
   typeof password === "string" &&
   password.length >= 8 &&
@@ -422,10 +407,8 @@ const publicUser = (user) => ({
   city: user.city || "",
   state: user.state || "",
   referencePoint: user.referencePoint || "",
-  birthday: user.birthday || null,
   loyaltyPoints: Number(user.loyaltyPoints || 0),
   cashbackBalance: Number(user.cashbackBalance || 0),
-  inviteCode: user.inviteCode || "",
   createdAt: user.createdAt,
 });
 const roundMoney = (value) =>
@@ -463,6 +446,7 @@ const serializeSettings = (settings) => ({
     settings.storeGoogleMapsUrl,
   ),
   instagramUrl: safeExternalUrl(settings.instagramUrl, 600),
+  facebookName: cleanText(settings.facebookName, 120),
   facebookUrl: safeExternalUrl(settings.facebookUrl, 600),
   seoCanonicalUrl: safeExternalUrl(settings.seoCanonicalUrl, 600),
   logoImage: safeMediaUrl(settings.logoImage),
@@ -509,6 +493,7 @@ const serializePublicSettings = (settings) => {
     "whatsappSecondaryVisible",
     "instagram",
     "instagramUrl",
+    "facebookName",
     "facebookUrl",
     "address",
     "openingHours",
@@ -571,15 +556,6 @@ const serializePublicSettings = (settings) => {
     "loyaltyRewardPoints",
     "loyaltyRewardValue",
     "cashbackPercent",
-    "birthdayCampaignEnabled",
-    "birthdayDiscountType",
-    "birthdayDiscountValue",
-    "birthdayMinimumOrder",
-    "birthdayValidityDays",
-    "referralEnabled",
-    "referralReferrerReward",
-    "referralNewCustomerReward",
-    "referralMinimumOrder",
   ];
   const publicRow = Object.fromEntries(
     fields.map((field) => [field, row[field]]),
@@ -613,23 +589,6 @@ const getSettings = async () => {
   } finally {
     if (settingsRequest === request) settingsRequest = null;
   }
-};
-const ensureUserInviteCode = async (client, user) => {
-  if (user?.inviteCode) return user.inviteCode;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const inviteCode = crypto.randomBytes(5).toString("hex").toUpperCase();
-    const updated = await client.user.updateMany({
-      where: { id: user.id, inviteCode: null },
-      data: { inviteCode },
-    });
-    if (updated.count) return inviteCode;
-    const current = await client.user.findUnique({
-      where: { id: user.id },
-      select: { inviteCode: true },
-    });
-    if (current?.inviteCode) return current.inviteCode;
-  }
-  throw new Error("Não foi possível gerar o código de indicação.");
 };
 const creditReward = async (
   tx,
@@ -668,12 +627,6 @@ const applyOrderRewards = async (tx, orderId) => {
       total: true,
       status: true,
       rewardsProcessedAt: true,
-      user: {
-        select: {
-          id: true,
-          referredByUserId: true,
-        },
-      },
     },
   });
   if (
@@ -705,50 +658,6 @@ const applyOrderRewards = async (tx, orderId) => {
       description: `Cashback do pedido ${order.id.slice(-8).toUpperCase()}`,
     });
     if (credited) cashbackEarned += earning.amount;
-  }
-  if (
-    settings.referralEnabled &&
-    order.user?.referredByUserId &&
-    Number(order.total) >= Number(settings.referralMinimumOrder || 0)
-  ) {
-    const deliveredCount = await tx.order.count({
-      where: { userId: order.userId, status: "DELIVERED" },
-    });
-    if (deliveredCount === 1) {
-      const newCustomerReward = Math.max(
-        0,
-        Number(settings.referralNewCustomerReward || 0),
-      );
-      const referrerReward = Math.max(
-        0,
-        Number(settings.referralReferrerReward || 0),
-      );
-      const newCustomerCredit = calculateReferralReward(
-        newCustomerReward,
-        settings,
-      );
-      const referrerCredit = calculateReferralReward(referrerReward, settings);
-      if (newCustomerCredit.points || newCustomerCredit.amount)
-        await creditReward(tx, {
-          externalKey: `${order.id}:REFERRAL_NEW_CUSTOMER`,
-          userId: order.userId,
-          orderId: order.id,
-          type: "REFERRAL_NEW_CUSTOMER",
-          points: newCustomerCredit.points,
-          amount: newCustomerCredit.amount,
-          description: "Benefício pelo primeiro pedido indicado",
-        });
-      if (referrerCredit.points || referrerCredit.amount)
-        await creditReward(tx, {
-          externalKey: `${order.id}:REFERRAL_REFERRER`,
-          userId: order.user.referredByUserId,
-          orderId: order.id,
-          type: "REFERRAL_REFERRER",
-          points: referrerCredit.points,
-          amount: referrerCredit.amount,
-          description: "Recompensa por indicação concluída",
-        });
-    }
   }
   await tx.order.update({
     where: { id: order.id },
@@ -3636,42 +3545,12 @@ app.post("/api/auth/register", authRateLimit, async (req, res) => {
       field: "phone",
       message: "Este telefone já está cadastrado. Tente entrar na conta.",
     });
-  const settings = await getSettings();
-  const requestedInviteCode = cleanText(req.body?.inviteCode, 32).toUpperCase();
-  const referrer =
-    settings.referralEnabled && requestedInviteCode
-      ? await prisma.user.findFirst({
-          where: {
-            inviteCode: requestedInviteCode,
-            isAdmin: false,
-            customerBlocked: false,
-          },
-          select: { id: true },
-        })
-      : null;
-  if (settings.referralEnabled && requestedInviteCode && !referrer)
-    return res.status(400).json({
-      code: "INVALID_INVITE_CODE",
-      field: "inviteCode",
-      message: "O código de indicação não é válido.",
-    });
-  const birthdayRaw = cleanText(req.body?.birthday, 20);
-  const birthday = birthdayRaw ? parseBirthday(birthdayRaw) : null;
-  if (birthdayRaw && !birthday)
-    return res.status(400).json({
-      code: "INVALID_BIRTHDAY",
-      field: "birthday",
-      message: "Informe uma data de nascimento válida.",
-    });
   const user = await prisma.user.create({
     data: {
       name,
       email,
       phone,
       passwordHash: await bcrypt.hash(password, 12),
-      birthday,
-      inviteCode: crypto.randomBytes(5).toString("hex").toUpperCase(),
-      referredByUserId: referrer?.id || null,
       postalCode: cleanText(req.body?.postalCode, 12) || null,
       street: cleanText(req.body?.street, 120) || null,
       addressNumber: cleanText(req.body?.addressNumber, 16) || null,
@@ -3898,27 +3777,6 @@ app.patch("/api/me/address", auth, async (req, res) => {
   };
   const user = await prisma.user.update({ where: { id: req.user.id }, data });
   res.json({ user: publicUser(user) });
-});
-
-app.patch("/api/me/birthday", auth, async (req, res) => {
-  const birthday = parseBirthday(req.body?.birthday);
-  if (!birthday)
-    return res.status(400).json({
-      code: "INVALID_BIRTHDAY",
-      field: "birthday",
-      message: "Informe uma data de nascimento válida.",
-    });
-  const updated = await prisma.user.updateMany({
-    where: { id: req.user.id, birthday: null },
-    data: { birthday },
-  });
-  if (!updated.count)
-    return res.status(409).json({
-      code: "BIRTHDAY_ALREADY_SET",
-      message:
-        "A data de nascimento já foi cadastrada. Fale com a loja se precisar corrigi-la.",
-    });
-  res.json({ birthday: birthday.toISOString().slice(0, 10) });
 });
 
 app.get("/api/me/orders", auth, async (req, res) => {
@@ -5005,58 +4863,28 @@ app.post(
   const couponDiscountAmount = discountAmount;
   const useRewards =
     !isDineIn && Boolean(req.user?.id) && booleanValue(req.body?.useRewards);
-  const useBirthdayReward =
-    !isDineIn &&
-    Boolean(req.user?.id) &&
-    booleanValue(req.body?.useBirthdayReward);
   let rewardRedemption = { mode: "DISABLED", amount: 0, pointsUsed: 0 };
-  let birthdayDiscount = 0;
-  let birthdayBenefitYear = null;
-  if (useRewards || useBirthdayReward) {
+  if (useRewards) {
     const benefitUser = await prisma.user.findUnique({
       where: { id: req.user.id },
       select: {
-        birthday: true,
-        birthdayBenefitYear: true,
         loyaltyPoints: true,
         cashbackBalance: true,
       },
     });
-    if (useBirthdayReward) {
-      const birthdayState = birthdayBenefitState(benefitUser, settings);
-      if (!birthdayState.eligible)
-        return res.status(409).json({
-          code: "BIRTHDAY_BENEFIT_UNAVAILABLE",
-          message: "O benefício de aniversário não está disponível para esta conta.",
-        });
-      birthdayBenefitYear = birthdayState.year;
-      birthdayDiscount = calculateBirthdayDiscount(
-        Math.max(0, subtotal - couponDiscountAmount),
-        settings,
-      );
-      if (birthdayDiscount <= 0)
-        return res.status(409).json({
-          code: "BIRTHDAY_BENEFIT_UNAVAILABLE",
-          message: `O benefício de aniversário exige pedido mínimo de R$ ${Number(settings.birthdayMinimumOrder || 0).toFixed(2).replace(".", ",")}.`,
-        });
-    }
-    if (useRewards)
-      rewardRedemption = calculateRewardRedemption({
-        subtotal: Math.max(
-          0,
-          subtotal - couponDiscountAmount - birthdayDiscount,
-        ),
-        points: benefitUser?.loyaltyPoints,
-        cashback: benefitUser?.cashbackBalance,
-        settings,
-      });
-    if (useRewards && rewardRedemption.amount <= 0)
+    rewardRedemption = calculateRewardRedemption({
+      subtotal: Math.max(0, subtotal - couponDiscountAmount),
+      points: benefitUser?.loyaltyPoints,
+      cashback: benefitUser?.cashbackBalance,
+      settings,
+    });
+    if (rewardRedemption.amount <= 0)
       return res.status(409).json({
         code: "REWARD_UNAVAILABLE",
         message: "Você ainda não possui saldo suficiente para resgatar.",
       });
     discountAmount = roundMoney(
-      couponDiscountAmount + birthdayDiscount + rewardRedemption.amount,
+      couponDiscountAmount + rewardRedemption.amount,
     );
   }
   const cashbackUsed = roundMoney(rewardRedemption.amount);
@@ -5086,45 +4914,30 @@ app.post(
   const resolved = quote.address || null;
   let order = await prisma.$transaction(async (tx) => {
     let lockedBenefitUser = null;
-    if (useRewards || useBirthdayReward) {
+    if (useRewards) {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('customer-benefits'), hashtext(${req.user.id}))`;
       lockedBenefitUser = await tx.user.findUnique({
         where: { id: req.user.id },
         select: {
-          birthday: true,
-          birthdayBenefitYear: true,
           loyaltyPoints: true,
           cashbackBalance: true,
         },
       });
-      if (useBirthdayReward) {
-        const state = birthdayBenefitState(lockedBenefitUser, settings);
-        if (!state.eligible || state.year !== birthdayBenefitYear)
-          throw Object.assign(
-            new Error("O benefício de aniversário acabou de ser utilizado."),
-            { code: "BIRTHDAY_BENEFIT_UNAVAILABLE" },
-          );
-      }
-      if (useRewards) {
-        const currentRedemption = calculateRewardRedemption({
-          subtotal: Math.max(
-            0,
-            subtotal - couponDiscountAmount - birthdayDiscount,
-          ),
-          points: lockedBenefitUser?.loyaltyPoints,
-          cashback: lockedBenefitUser?.cashbackBalance,
-          settings,
-        });
-        if (
-          currentRedemption.mode !== rewardRedemption.mode ||
-          currentRedemption.pointsUsed < rewardRedemption.pointsUsed ||
-          currentRedemption.amount < rewardRedemption.amount
-        )
-          throw Object.assign(
-            new Error("Seu saldo de benefícios foi alterado. Atualize o pedido."),
-            { code: "REWARD_UNAVAILABLE" },
-          );
-      }
+      const currentRedemption = calculateRewardRedemption({
+        subtotal: Math.max(0, subtotal - couponDiscountAmount),
+        points: lockedBenefitUser?.loyaltyPoints,
+        cashback: lockedBenefitUser?.cashbackBalance,
+        settings,
+      });
+      if (
+        currentRedemption.mode !== rewardRedemption.mode ||
+        currentRedemption.pointsUsed < rewardRedemption.pointsUsed ||
+        currentRedemption.amount < rewardRedemption.amount
+      )
+        throw Object.assign(
+          new Error("Seu saldo de benefícios foi alterado. Atualize o pedido."),
+          { code: "REWARD_UNAVAILABLE" },
+        );
     }
     let sessionForOrder = tableSession;
     if (isDineIn) {
@@ -5299,7 +5112,7 @@ app.post(
         discountAmount,
         couponCode,
         cashbackUsed,
-        birthdayBenefitApplied: birthdayDiscount > 0,
+        birthdayBenefitApplied: false,
         orderOrigin: isDigitalTableOrder ? "DIGITAL_TABLE" : isDineIn ? "TABLE" : "SITE",
         tableId: isDineIn ? sessionForOrder.tableId : null,
         tableSessionId: isDineIn ? sessionForOrder.id : null,
@@ -5375,11 +5188,6 @@ app.post(
         },
       });
     }
-    if (birthdayDiscount > 0)
-      await tx.user.update({
-        where: { id: req.user.id },
-        data: { birthdayBenefitYear },
-      });
     return createdOrder;
   });
   if (req.user?.id && fulfillmentType === "DELIVERY") {
@@ -5876,7 +5684,10 @@ app.get(
     await activateDueScheduledOrders();
     const order = await prisma.order.findUnique({
       where: { trackingCode: cleanText(req.params.trackingCode, 80) },
-      include: orderInclude,
+      include: {
+        ...orderInclude,
+        review: { select: { id: true } },
+      },
     });
     if (!order)
       return res.status(404).json({ message: "Pedido não encontrado." });
@@ -5902,6 +5713,7 @@ app.get(
       city: o.city,
       cancelReason: o.cancelReason || null,
       canCancel: o.canCancel,
+      reviewed: Boolean(order.review),
       items: o.items,
       history: o.history,
     });
@@ -5952,7 +5764,9 @@ app.use("/api/admin", auth, admin, adminRateLimit, (req, res, next) => {
   } else if (needed === "__ALTERATION_READ__") {
     if (
       req.adminPermissions == null ||
-      ["alterations", "products"].some((key) => hasAdminPermission(req, key))
+      ["alterations", "products", "promotions"].some((key) =>
+        hasAdminPermission(req, key),
+      )
     )
       return next();
   } else if (needed === "__FLAVOR_WRITE__") {
@@ -7803,6 +7617,64 @@ app.post("/api/admin/flavors", auth, admin, async (req, res) => {
   });
   res.status(201).json(serializeFlavor(row));
 });
+app.patch("/api/admin/flavors/:id/promotion", auth, admin, async (req, res) => {
+  const current = await prisma.flavor.findUnique({
+    where: { id: req.params.id },
+  });
+  if (!current)
+    return res.status(404).json({ message: "Sabor não encontrado." });
+
+  const data = {};
+  if (req.body?.promoPrice !== undefined) {
+    if (req.body.promoPrice === "" || req.body.promoPrice == null)
+      data.promoPrice = null;
+    else {
+      const value = Number(req.body.promoPrice);
+      if (!Number.isFinite(value) || value < 0 || value >= Number(current.price))
+        return res.status(400).json({
+          message: "O preço promocional deve ser menor que o preço base do sabor.",
+        });
+      data.promoPrice = value;
+    }
+  }
+  for (const field of ["promoStartAt", "promoEndAt"])
+    if (req.body?.[field] !== undefined) {
+      const value = optionalDate(req.body[field]);
+      if (value === undefined)
+        return res.status(400).json({ message: "Período promocional inválido." });
+      data[field] = value;
+    }
+  if (req.body?.promoActive !== undefined)
+    data.promoActive = booleanValue(req.body.promoActive);
+
+  const finalPromo = Object.hasOwn(data, "promoPrice")
+    ? data.promoPrice
+    : current.promoPrice;
+  const finalStart = Object.hasOwn(data, "promoStartAt")
+    ? data.promoStartAt
+    : current.promoStartAt;
+  const finalEnd = Object.hasOwn(data, "promoEndAt")
+    ? data.promoEndAt
+    : current.promoEndAt;
+  const finalActive = Object.hasOwn(data, "promoActive")
+    ? data.promoActive
+    : current.promoActive;
+  if (finalStart && finalEnd && finalEnd <= finalStart)
+    return res.status(400).json({
+      message: "O término da promoção deve ocorrer depois do início.",
+    });
+  if (finalActive && finalPromo == null)
+    return res.status(400).json({
+      message: "Informe um preço promocional antes de ativar a oferta.",
+    });
+
+  const row = await prisma.flavor.update({
+    where: { id: current.id },
+    data,
+    include: flavorAdminInclude,
+  });
+  res.json(serializeFlavor(row));
+});
 app.patch("/api/admin/flavors/:id", auth, admin, async (req, res) => {
   const current = await prisma.flavor.findUnique({ where: { id: req.params.id } });
   if (!current)
@@ -7902,7 +7774,7 @@ app.delete("/api/admin/flavors/:id", auth, admin, async (req, res) => {
     return res.status(409).json({
       code: "PRODUCT_MANAGED_FLAVOR",
       message:
-        "Este sabor é gerenciado pelo produto de origem. Desmarque “Pode ser sabor” na aba Produtos.",
+        "Este sabor é gerenciado pelo produto de origem. Desmarque “É um sabor” na aba Produtos.",
     });
   const [products, orders] = await Promise.all([
     prisma.productFlavor.count({ where: { flavorId: req.params.id } }),
@@ -10410,6 +10282,7 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
     "whatsappPrimary",
     "whatsappSecondary",
     "instagram",
+    "facebookName",
     "address",
     "openingHours",
     "heroTitle",
@@ -10507,11 +10380,6 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
     "loyaltyPointsPerReal",
     "loyaltyRewardValue",
     "cashbackPercent",
-    "birthdayDiscountValue",
-    "birthdayMinimumOrder",
-    "referralReferrerReward",
-    "referralNewCustomerReward",
-    "referralMinimumOrder",
   ]) {
     if (req.body?.[f] !== undefined) {
       const v = Number(req.body[f]);
@@ -10563,19 +10431,10 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
         .json({ message: "Período de inatividade inválido." });
     data.inactiveCustomerDays = v;
   }
-  for (const f of [
-    "loyaltyRewardPoints",
-    "newProductDays",
-    "birthdayValidityDays",
-  ]) {
+  for (const f of ["loyaltyRewardPoints", "newProductDays"]) {
     if (req.body?.[f] === undefined) continue;
     const value = Number(req.body[f]);
-    const max =
-      f === "loyaltyRewardPoints"
-        ? 1_000_000
-        : f === "birthdayValidityDays"
-          ? 31
-          : 365;
+    const max = f === "loyaltyRewardPoints" ? 1_000_000 : 365;
     if (!Number.isInteger(value) || value < 1 || value > max)
       return res.status(400).json({ message: "Configuração numérica inválida." });
     data[f] = value;
@@ -10587,12 +10446,6 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
     data.rewardsMode = value;
     data.loyaltyEnabled = value === "POINTS";
     data.cashbackEnabled = value === "CASHBACK";
-  }
-  if (req.body?.birthdayDiscountType !== undefined) {
-    const value = String(req.body.birthdayDiscountType || "").toUpperCase();
-    if (!["PERCENT", "FIXED"].includes(value))
-      return res.status(400).json({ message: "Tipo de benefício de aniversário inválido." });
-    data.birthdayDiscountType = value;
   }
   if (req.body?.lateWarningMinutes !== undefined) {
     const v = Number(req.body.lateWarningMinutes);
@@ -10676,22 +10529,11 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
     "reviewCollectionEnabled",
     "bestSellersEnabled",
     "newProductsEnabled",
-    "birthdayCampaignEnabled",
-    "referralEnabled",
     "initialSetupCompleted",
   ])
     if (req.body?.[f] !== undefined) data[f] = booleanValue(req.body[f]);
   for (const f of ["whatsappOrderCreatedTemplate", "whatsappStatusTemplate"])
     if (req.body?.[f] !== undefined) data[f] = cleanText(req.body[f], 500);
-
-  const nextRewardsMode = data.rewardsMode ?? current.rewardsMode;
-  const nextReferralEnabled =
-    data.referralEnabled ?? current.referralEnabled;
-  if (nextReferralEnabled && nextRewardsMode === "DISABLED")
-    return res.status(400).json({
-      message:
-        "Escolha pontos ou cashback antes de ativar o programa de indicação.",
-    });
 
   const nextCep = cleanCep(data.storePostalCode ?? current.storePostalCode);
   const oldCep = cleanCep(current.storePostalCode);
@@ -11377,7 +11219,7 @@ app.get("/api/highlights", optionalAuth, async (req, res) => {
             where: { order: { status: "DELIVERED" } },
             _sum: { quantity: true },
             orderBy: { _sum: { quantity: "desc" } },
-            take: 8,
+            take: 4,
           })
         : [],
       settings.newProductsEnabled
@@ -11427,50 +11269,31 @@ app.get("/api/highlights", optionalAuth, async (req, res) => {
 });
 
 app.get("/api/me/rewards", auth, async (req, res) => {
-  let user = await prisma.user.findUnique({
+  const user = await prisma.user.findUnique({
     where: { id: req.user.id },
     select: {
       id: true,
-      birthday: true,
-      birthdayBenefitYear: true,
       loyaltyPoints: true,
       cashbackBalance: true,
-      inviteCode: true,
     },
   });
-  const inviteCode = await ensureUserInviteCode(prisma, user);
-  if (!user.inviteCode) user = { ...user, inviteCode };
-  const [settings, transactions, referrals] = await Promise.all([
+  const [settings, transactions] = await Promise.all([
     getSettings(),
     prisma.rewardTransaction.findMany({
       where: { userId: req.user.id },
       orderBy: { createdAt: "desc" },
       take: 100,
     }),
-    prisma.user.count({ where: { referredByUserId: req.user.id } }),
   ]);
   res.json({
     mode: rewardsMode(settings),
     loyaltyPoints: Number(user.loyaltyPoints || 0),
     cashbackBalance: Number(user.cashbackBalance || 0),
-    inviteCode: user.inviteCode,
-    referrals,
-    birthdayDate: user.birthday
-      ? new Date(user.birthday).toISOString().slice(0, 10)
-      : null,
-    birthday: birthdayBenefitState(user, settings),
     settings: {
       loyaltyPointsPerReal: Number(settings.loyaltyPointsPerReal || 0),
       loyaltyRewardPoints: Number(settings.loyaltyRewardPoints || 0),
       loyaltyRewardValue: Number(settings.loyaltyRewardValue || 0),
       cashbackPercent: Number(settings.cashbackPercent || 0),
-      referralEnabled: Boolean(settings.referralEnabled),
-      referralReferrerReward: Number(settings.referralReferrerReward || 0),
-      referralNewCustomerReward: Number(settings.referralNewCustomerReward || 0),
-      birthdayCampaignEnabled: Boolean(settings.birthdayCampaignEnabled),
-      birthdayDiscountType: settings.birthdayDiscountType,
-      birthdayDiscountValue: Number(settings.birthdayDiscountValue || 0),
-      birthdayMinimumOrder: Number(settings.birthdayMinimumOrder || 0),
     },
     transactions: transactions.map((row) => ({
       ...row,
@@ -11691,8 +11514,7 @@ app.post(
       return res
         .status(400)
         .json({ message: "A avaliação é liberada após a entrega." });
-    const rating = Number(req.body?.rating),
-      foodRating =
+    const foodRating =
         req.body?.foodRating == null || req.body?.foodRating === ""
           ? null
           : Number(req.body.foodRating),
@@ -11701,42 +11523,47 @@ app.post(
           ? null
           : Number(req.body.deliveryRating);
     if (
-      !Number.isInteger(rating) ||
-      rating < 1 ||
-      rating > 5 ||
-      (foodRating != null &&
-        (!Number.isInteger(foodRating) ||
-          foodRating < 1 ||
-          foodRating > 5)) ||
-      (deliveryRating != null &&
+      !Number.isInteger(foodRating) ||
+      foodRating < 1 ||
+      foodRating > 5 ||
+      (order.fulfillmentType === "DELIVERY" &&
         (!Number.isInteger(deliveryRating) ||
           deliveryRating < 1 ||
           deliveryRating > 5))
     )
       return res
         .status(400)
-        .json({ message: "A nota deve ser um número inteiro de 1 a 5." });
-    const row = await prisma.review.upsert({
+        .json({ message: "Avalie comida e entrega com uma nota de 1 a 5." });
+    const existing = await prisma.review.findUnique({
       where: { orderId: order.id },
-      update: {
-        rating,
-        foodRating,
-        deliveryRating,
-        comment: cleanText(req.body?.comment, 500) || null,
-        status: "PENDING",
-        approvedAt: null,
-        hiddenAt: null,
-      },
-      create: {
+      select: { id: true },
+    });
+    if (existing)
+      return res.status(409).json({
+        code: "ORDER_ALREADY_REVIEWED",
+        message: "Este pedido já foi avaliado.",
+      });
+    try {
+      const row = await prisma.review.create({
+        data: {
         orderId: order.id,
         customerName: order.customerName,
-        rating,
+        rating: foodRating,
         foodRating,
-        deliveryRating,
+        deliveryRating:
+          order.fulfillmentType === "DELIVERY" ? deliveryRating : null,
         comment: cleanText(req.body?.comment, 500) || null,
       },
-    });
-    res.json(row);
+      });
+      res.status(201).json(row);
+    } catch (error) {
+      if (error?.code === "P2002")
+        return res.status(409).json({
+          code: "ORDER_ALREADY_REVIEWED",
+          message: "Este pedido já foi avaliado.",
+        });
+      throw error;
+    }
   },
 );
 

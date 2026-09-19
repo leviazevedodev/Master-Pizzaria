@@ -19,6 +19,29 @@ import MotoIcon from "../components/MotoIcon";
 import CustomerOrderNotifications from "../components/CustomerOrderNotifications";
 import CustomerCancelOrderButton from "../components/CustomerCancelOrderButton";
 
+function StarRating({ label, value, onChange }) {
+  return (
+    <fieldset className="star-rating-field">
+      <legend>{label}</legend>
+      <div className="star-rating-buttons" role="radiogroup" aria-label={label}>
+        {[1, 2, 3, 4, 5].map((star) => (
+          <button
+            type="button"
+            key={star}
+            className={star <= value ? "selected" : ""}
+            onClick={() => onChange(star)}
+            role="radio"
+            aria-checked={value === star}
+            aria-label={`${star} estrela${star > 1 ? "s" : ""}`}
+          >
+            <Star size={28} fill={star <= value ? "currentColor" : "none"} />
+          </button>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
 export default function TrackOrderPage({ session, settings = {} }) {
   const { code } = useParams();
   const navigate = useNavigate();
@@ -27,9 +50,8 @@ export default function TrackOrderPage({ session, settings = {} }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [review, setReview] = useState({
-    rating: 5,
-    foodRating: 5,
-    deliveryRating: 5,
+    foodRating: 0,
+    deliveryRating: 0,
     comment: "",
   });
   const [reviewStatus, setReviewStatus] = useState("");
@@ -106,6 +128,7 @@ export default function TrackOrderPage({ session, settings = {} }) {
         },
       );
       setReviewStatus("Obrigado! Sua avaliação foi enviada para moderação.");
+      setOrder((current) => ({ ...current, reviewed: true }));
     } catch (reviewError) {
       setReviewStatus(
         reviewError.response?.data?.message ||
@@ -297,7 +320,8 @@ export default function TrackOrderPage({ session, settings = {} }) {
               ))}
             </div>
             {order.status === "DELIVERED" &&
-              settings.reviewCollectionEnabled !== false && (
+              settings.reviewCollectionEnabled !== false &&
+              !order.reviewed && (
                 <form className="order-review-form" onSubmit={submitReview}>
                   <div>
                     <MessageSquare />
@@ -307,27 +331,22 @@ export default function TrackOrderPage({ session, settings = {} }) {
                     </span>
                   </div>
                   <div className="review-rating-grid">
-                    {[
-                      ["rating", "Nota geral"],
-                      ["foodRating", "Comida"],
-                      ...(order.fulfillmentType === "DELIVERY"
-                        ? [["deliveryRating", "Entrega"]]
-                        : []),
-                    ].map(([field, label]) => (
-                      <label key={field}>
-                        {label}
-                        <select
-                          value={review[field]}
-                          onChange={(event) =>
-                            setReview({ ...review, [field]: Number(event.target.value) })
-                          }
-                        >
-                          {[5, 4, 3, 2, 1].map((value) => (
-                            <option value={value} key={value}>{value} estrela{value > 1 ? "s" : ""}</option>
-                          ))}
-                        </select>
-                      </label>
-                    ))}
+                    {order.fulfillmentType === "DELIVERY" && (
+                      <StarRating
+                        label="Entrega"
+                        value={review.deliveryRating}
+                        onChange={(deliveryRating) =>
+                          setReview((current) => ({ ...current, deliveryRating }))
+                        }
+                      />
+                    )}
+                    <StarRating
+                      label="Comida"
+                      value={review.foodRating}
+                      onChange={(foodRating) =>
+                        setReview((current) => ({ ...current, foodRating }))
+                      }
+                    />
                   </div>
                   <label>
                     Comentário (opcional)
@@ -338,12 +357,25 @@ export default function TrackOrderPage({ session, settings = {} }) {
                       placeholder="Conte o que você mais gostou"
                     />
                   </label>
-                  <button className="primary-btn" disabled={reviewStatus === "Enviando..."}>
+                  <button
+                    className="primary-btn"
+                    disabled={
+                      reviewStatus === "Enviando..." ||
+                      review.foodRating < 1 ||
+                      (order.fulfillmentType === "DELIVERY" &&
+                        review.deliveryRating < 1)
+                    }
+                  >
                     <Star size={16} /> Enviar avaliação
                   </button>
                   {reviewStatus && <p className="review-status">{reviewStatus}</p>}
                 </form>
               )}
+            {order.status === "DELIVERED" && order.reviewed && (
+              <div className="review-complete" role="status">
+                <Check size={18} /> Este pedido já foi avaliado. Obrigado!
+              </div>
+            )}
           </section>
         )}
       </main>

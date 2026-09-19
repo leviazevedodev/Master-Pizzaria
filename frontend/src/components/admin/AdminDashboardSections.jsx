@@ -54,12 +54,10 @@ export function OverviewAdmin({
 
   return (
     <>
-      <section className="admin-stats admin-stats-five">
+      <section className="admin-stats">
         <Stat label="Pedidos hoje" value={dashboard?.todayOrders || 0} />
         <Stat label="Em andamento" value={dashboard?.openOrders || 0} />
         <Stat label="Agendados" value={scheduledCount} />
-        <Stat label="Em alerta de prazo" value={dashboard?.warningOrders || 0} />
-        <Stat label="Prazo atrasado" value={dashboard?.overdueOrders || 0} />
       </section>
       <section className="admin-panel">
         <div className="panel-title">

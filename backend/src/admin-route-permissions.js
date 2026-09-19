@@ -33,15 +33,6 @@ const MARKETING_SETTING_FIELDS = new Set([
   "loyaltyRewardValue",
   "cashbackEnabled",
   "cashbackPercent",
-  "birthdayCampaignEnabled",
-  "birthdayDiscountType",
-  "birthdayDiscountValue",
-  "birthdayMinimumOrder",
-  "birthdayValidityDays",
-  "referralEnabled",
-  "referralReferrerReward",
-  "referralNewCustomerReward",
-  "referralMinimumOrder",
 ]);
 
 export function permissionNeededForAdminRequest(req) {
@@ -90,6 +81,7 @@ export function permissionNeededForAdminRequest(req) {
     return method === "GET" ? "__ALTERATION_READ__" : "products";
   if (path.startsWith("/categories") || path.startsWith("/subcategories"))
     return method === "GET" ? "__CATEGORY_READ__" : "categories";
+  if (/^\/flavors\/[^/]+\/promotion\/?$/.test(path)) return "promotions";
   if (path.startsWith("/flavor-groups") || path.startsWith("/flavors"))
     return method === "GET" ? "__ALTERATION_READ__" : "__FLAVOR_WRITE__";
   if (path.startsWith("/modifier-"))

@@ -6278,6 +6278,126 @@ textarea {
     height: 190px;
   }
 }
+
+/* Campos de avaliação por estrelas, sem nota geral. */
+.review-rating-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+.star-rating-field {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid #ded9d0;
+  border-radius: 13px;
+  padding: 12px;
+  background: #fff;
+}
+.star-rating-field legend {
+  padding: 0 5px;
+  font-size: 12px;
+  font-weight: 850;
+}
+.star-rating-buttons {
+  display: flex;
+  gap: 3px;
+}
+.star-rating-buttons button {
+  display: grid;
+  min-width: 36px;
+  min-height: 36px;
+  place-items: center;
+  border: 0;
+  padding: 2px;
+  background: transparent;
+  color: #c9c4ba;
+  cursor: pointer;
+}
+.star-rating-buttons button.selected {
+  color: #f0a500;
+}
+.star-rating-buttons button:focus-visible {
+  outline: 2px solid var(--brand-primary, #e31b23);
+  outline-offset: 2px;
+  border-radius: 7px;
+}
+.review-complete {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+  border: 1px solid #b8dfc7;
+  border-radius: 13px;
+  padding: 13px 15px;
+  background: #eef9f2;
+  color: #17683f;
+  font-weight: 800;
+}
+.review-category-scores {
+  display: grid;
+  gap: 6px;
+}
+.review-score-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.review-score-row > small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+/* Resiliência dos cartões quando o zoom altera a largura útil da viewport. */
+:where(
+  .product-card,
+  .promotion-card,
+  .campaign-public-card,
+  .store-info-card,
+  .reviews-public-grid > article,
+  .account-stats > article,
+  .account-rewards-card,
+  .admin-panel,
+  .admin-order,
+  .kitchen-ticket,
+  .report-kpis > article,
+  .live-operation-grid > article,
+  .coupon-admin-list > article,
+  .combo-admin-list > article
+) {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+}
+:where(
+  .product-card,
+  .promotion-card,
+  .campaign-public-card,
+  .store-info-card,
+  .admin-panel,
+  .admin-order,
+  .kitchen-ticket,
+  .report-kpis > article,
+  .live-operation-grid > article,
+  .coupon-admin-list > article,
+  .combo-admin-list > article
+) > * {
+  min-width: 0;
+}
+:where(.panel-title, .section-heading, .admin-order, .coupon-facts) {
+  min-width: 0;
+}
+:where(.admin-panel, .store-info-card, .product-card, .promotion-card) img {
+  max-width: 100%;
+}
+@media (max-width: 1180px) {
+  :where(.report-kpis, .live-operation-grid, .financial-report-kpis) {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)) !important;
+  }
+}
+@media (max-width: 620px) {
+  .review-rating-grid { grid-template-columns: 1fr !important; }
+  .star-rating-buttons { justify-content: space-between; }
+}
 .sale-badge {
   position: absolute;
   right: 13px;

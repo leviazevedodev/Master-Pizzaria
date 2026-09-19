@@ -281,7 +281,7 @@ export default function ProductEditorModal({
                     })
                   }
                 />{" "}
-                Pode ser sabor de outras pizzas
+                É um sabor
               </label>
               <label className="switch-label">
                 <input

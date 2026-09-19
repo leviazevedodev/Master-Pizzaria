@@ -87,6 +87,7 @@ export default function HomePage({
   const instagramUrl = String(settings.instagramUrl || "").trim();
   const instagramName = String(settings.instagram || "").trim();
   const facebookUrl = String(settings.facebookUrl || "").trim();
+  const facebookName = String(settings.facebookName || "").trim();
   const hasSocial = Boolean(
     whatsapp1 || whatsapp2 || instagramUrl || instagramName || facebookUrl,
   );
@@ -233,7 +234,7 @@ export default function HomePage({
               </div>
             </div>
             <div className="promotion-grid">
-              {promotions.map((promo) => (
+              {promotions.slice(0, 6).map((promo) => (
                 <article className="promotion-card" key={promo.id}>
                   <div className="promotion-image">
                     <img
@@ -264,6 +265,14 @@ export default function HomePage({
                 </article>
               ))}
             </div>
+            {promotions.length > 6 && (
+              <div className="view-all-wrap">
+                <p>Mostrando 6 de {promotions.length} ofertas.</p>
+                <Link className="ghost-dark-btn view-all-btn" to="/cardapio">
+                  Abrir o cardápio para ver mais <ArrowRight size={17} />
+                </Link>
+              </div>
+            )}
           </section>
         )}
 
@@ -363,7 +372,7 @@ export default function HomePage({
               </div>
             </div>
             <div className="product-grid">
-              {highlights.bestSellers.map((product) => (
+              {highlights.bestSellers.slice(0, 4).map((product) => (
                 <ProductCard
                   key={product.id}
                   product={product}
@@ -382,17 +391,32 @@ export default function HomePage({
                 <span className="eyebrow dark">Avaliações verificadas</span>
                 <h2>Quem pediu conta como foi.</h2>
                 <p>
-                  Nota {Number(highlights.reviewSummary?.average || 0).toFixed(1)} de 5 em {highlights.reviewSummary?.count || 0} avaliações.
+                  Média da comida: {Number(highlights.reviewSummary?.average || 0).toFixed(1)} de 5 em {highlights.reviewSummary?.count || 0} avaliações.
                 </p>
               </div>
             </div>
             <div className="reviews-public-grid">
               {highlights.reviews.map((review) => (
                 <article key={review.id}>
-                  <div className="review-stars" aria-label={`${review.rating} de 5 estrelas`}>
-                    {Array.from({ length: 5 }, (_, index) => (
-                      <Star key={index} size={17} fill={index < review.rating ? "currentColor" : "none"} />
-                    ))}
+                  <div className="review-category-scores">
+                    {review.deliveryRating && (
+                      <div className="review-score-row">
+                        <small>Entrega</small>
+                        <span className="review-stars" aria-label={`Entrega: ${review.deliveryRating} de 5 estrelas`}>
+                          {Array.from({ length: 5 }, (_, index) => (
+                            <Star key={index} size={17} fill={index < review.deliveryRating ? "currentColor" : "none"} />
+                          ))}
+                        </span>
+                      </div>
+                    )}
+                    <div className="review-score-row">
+                      <small>Comida</small>
+                      <span className="review-stars" aria-label={`Comida: ${review.foodRating || review.rating} de 5 estrelas`}>
+                        {Array.from({ length: 5 }, (_, index) => (
+                          <Star key={index} size={17} fill={index < (review.foodRating || review.rating) ? "currentColor" : "none"} />
+                        ))}
+                      </span>
+                    </div>
                   </div>
                   {review.comment && <p>“{review.comment}”</p>}
                   <b>{review.customerName || "Cliente"}</b>
@@ -558,7 +582,7 @@ export default function HomePage({
                     )}
                     {facebookUrl && (
                       <a href={facebookUrl} target="_blank" rel="noreferrer">
-                        <Facebook /> Facebook
+                        <Facebook /> {facebookName || "Facebook"}
                       </a>
                     )}
                   </div>

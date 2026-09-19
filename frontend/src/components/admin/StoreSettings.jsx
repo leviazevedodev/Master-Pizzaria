@@ -601,6 +601,16 @@ export default function StoreSettings({
             />
           </label>
           <label>
+            Nome no Facebook <small>(vazio = usar “Facebook”)</small>
+            <input
+              value={settings.facebookName || ""}
+              onChange={(e) =>
+                setSettings({ ...settings, facebookName: e.target.value })
+              }
+              placeholder="Ex.: Master Pizzaria"
+            />
+          </label>
+          <label>
             URL do Facebook
             <input
               value={settings.facebookUrl || ""}
@@ -657,24 +667,6 @@ export default function StoreSettings({
               }
             />
             <small>Ex.: compra 18:00 + 30–45 min = 18:30–18:45.</small>
-          </label>
-          <label>
-            Alerta antes do prazo (min)
-            <input
-              type="number"
-              min="1"
-              max="180"
-              value={settings.lateWarningMinutes || 30}
-              onChange={(e) =>
-                setSettings({
-                  ...settings,
-                  lateWarningMinutes: Number(e.target.value),
-                })
-              }
-            />
-            <small>
-              Pedidos ganham um alerta no painel quando entrarem nessa janela.
-            </small>
           </label>
           <label className="span-2">
             Descrição do cardápio
@@ -768,31 +760,6 @@ export default function StoreSettings({
                 <b>Impressão automática</b>
                 <small>
                   Ao chegar pedido novo, abre a impressão na tela Cozinha.
-                </small>
-              </span>
-            </label>
-            <label
-              className={
-                settings.smartCourierQueueEnabled !== false
-                  ? "payment-toggle active"
-                  : "payment-toggle"
-              }
-            >
-              <input
-                type="checkbox"
-                checked={settings.smartCourierQueueEnabled !== false}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    smartCourierQueueEnabled: e.target.checked,
-                  })
-                }
-              />
-              <span>
-                <b>Fila inteligente de entregadores</b>
-                <small>
-                  Ao sair para entrega, atribui o entregador ativo com menos
-                  corridas em aberto.
                 </small>
               </span>
             </label>

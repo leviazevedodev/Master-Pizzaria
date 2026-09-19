@@ -2,8 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   CalendarDays,
-  Copy,
-  Gift,
   Clock3,
   LogOut,
   MapPin,
@@ -73,7 +71,6 @@ export default function AccountPage({
   });
   const [favorites, setFavorites] = useState([]);
   const [rewards, setRewards] = useState(null);
-  const [birthday, setBirthday] = useState("");
   const [favoriteLabel, setFavoriteLabel] = useState("Casa");
   async function loadOrders(silent = false) {
     if (!silent) setLoading(true);
@@ -233,25 +230,6 @@ export default function AccountPage({
       );
     }
   }
-  async function saveBirthday(event) {
-    event.preventDefault();
-    if (!birthday) return;
-    try {
-      await api.patch(
-        "/me/birthday",
-        { birthday },
-        authHeaders(session.token),
-      );
-      setAddressMessage("Data de nascimento cadastrada.");
-      await loadGrowth();
-    } catch (err) {
-      setError(
-        err.response?.data?.message ||
-          "Não foi possível cadastrar a data de nascimento.",
-      );
-    }
-  }
-
   return (
     <div className="page-shell account-page">
       <div className="container page-top">
@@ -337,45 +315,7 @@ export default function AccountPage({
                         : `Faltam ${Math.max(0, Number(rewards.settings?.loyaltyRewardPoints || 0) - rewards.loyaltyPoints)} pontos para ganhar ${money(rewards.settings?.loyaltyRewardValue || 0)}.`}
                     </small>
                   )}
-                  {rewards.birthday?.eligible && (
-                    <strong className="birthday-benefit"><Gift size={16} /> Seu benefício de aniversário está disponível.</strong>
-                  )}
-                  {!rewards.birthdayDate && (
-                    <form className="birthday-registration" onSubmit={saveBirthday}>
-                      <label>
-                        <CalendarDays size={15} /> Data de nascimento
-                        <input
-                          type="date"
-                          value={birthday}
-                          max={new Date().toISOString().slice(0, 10)}
-                          onChange={(event) => setBirthday(event.target.value)}
-                          required
-                        />
-                      </label>
-                      <button className="ghost-dark-btn">Cadastrar</button>
-                      <small>A data pode ser cadastrada uma vez. Ela será usada no benefício de aniversário.</small>
-                    </form>
-                  )}
                 </div>
-                {rewards.settings?.referralEnabled && (
-                  <div className="invite-code-card">
-                    <small>Seu código de indicação</small>
-                    <b>{rewards.inviteCode}</b>
-                    <button
-                      type="button"
-                      className="ghost-dark-btn"
-                      onClick={() => {
-                        const link = new URL("/cadastro", window.location.origin);
-                        link.searchParams.set("convite", rewards.inviteCode);
-                        navigator.clipboard?.writeText(link.href);
-                        setAddressMessage("Link de indicação copiado.");
-                      }}
-                    >
-                      <Copy size={15} /> Copiar link
-                    </button>
-                    <span>{rewards.referrals} indicação(ões) cadastrada(s)</span>
-                  </div>
-                )}
               </section>
             )}
             {rewards?.transactions?.length > 0 && (

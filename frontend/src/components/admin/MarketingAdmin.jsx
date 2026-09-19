@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Check, EyeOff, Gift, Megaphone, Pencil, Plus, Save, Star, Trash2, X } from "lucide-react";
 import { api, authHeaders, mediaUrl } from "../../lib/api";
+import CouponsAdmin from "./CouponsAdmin";
 
 const EMPTY_CAMPAIGN = {
   id: null,
@@ -73,15 +74,6 @@ export default function MarketingAdmin({
         "loyaltyRewardValue",
         "cashbackEnabled",
         "cashbackPercent",
-        "birthdayCampaignEnabled",
-        "birthdayDiscountType",
-        "birthdayDiscountValue",
-        "birthdayMinimumOrder",
-        "birthdayValidityDays",
-        "referralEnabled",
-        "referralReferrerReward",
-        "referralNewCustomerReward",
-        "referralMinimumOrder",
       ];
       const payload = Object.fromEntries(fields.map((field) => [field, settings[field]]));
       const { data } = await api.patch("/admin/settings", payload, headers);
@@ -171,7 +163,7 @@ export default function MarketingAdmin({
     <div className="marketing-admin-grid">
       <form className="admin-panel settings-form" onSubmit={saveGrowthSettings}>
         <div className="panel-title">
-          <div><span>Relacionamento</span><h2>Vitrine, recompensas e indicação</h2><p>Ative somente os programas que a loja deseja oferecer.</p></div>
+          <div><span>Relacionamento</span><h2>Vitrine, avaliações e recompensas</h2><p>Ative somente os recursos que a loja deseja oferecer.</p></div>
           <Gift />
         </div>
         <div className="marketing-toggle-grid">
@@ -179,19 +171,17 @@ export default function MarketingAdmin({
           {toggle("publicReviewsEnabled", "Exibir avaliações aprovadas no site")}
           {toggle("bestSellersEnabled", "Exibir os mais pedidos")}
           {toggle("newProductsEnabled", "Destacar novidades")}
-          {toggle("birthdayCampaignEnabled", "Benefício de aniversário")}
-          {toggle("referralEnabled", "Programa de indicação")}
         </div>
         <div className="settings-grid">
           <label>Programa de recompensa<select value={settings.rewardsMode || "DISABLED"} onChange={(event) => set("rewardsMode", event.target.value)}><option value="DISABLED">Desativado</option><option value="POINTS">Pontos</option><option value="CASHBACK">Cashback</option></select></label>
           <label>Dias como novidade<input type="number" min="1" max="365" value={settings.newProductDays || 30} onChange={(event) => set("newProductDays", Number(event.target.value))} /></label>
           {settings.rewardsMode === "POINTS" && <><label>Pontos por real<input type="number" min="0" step="0.1" value={settings.loyaltyPointsPerReal || 0} onChange={(event) => set("loyaltyPointsPerReal", Number(event.target.value))} /></label><label>Pontos para resgate<input type="number" min="1" value={settings.loyaltyRewardPoints || 500} onChange={(event) => set("loyaltyRewardPoints", Number(event.target.value))} /></label><label>Valor do resgate<input type="number" min="0" step="0.01" value={settings.loyaltyRewardValue || 0} onChange={(event) => set("loyaltyRewardValue", Number(event.target.value))} /></label></>}
           {settings.rewardsMode === "CASHBACK" && <label>Cashback (%)<input type="number" min="0" max="100" step="0.1" value={settings.cashbackPercent || 0} onChange={(event) => set("cashbackPercent", Number(event.target.value))} /></label>}
-          {settings.birthdayCampaignEnabled && <><label>Desconto de aniversário<select value={settings.birthdayDiscountType || "PERCENT"} onChange={(event) => set("birthdayDiscountType", event.target.value)}><option value="PERCENT">Percentual</option><option value="FIXED">Valor fixo</option></select></label><label>Valor do benefício<input type="number" min="0" step="0.01" value={settings.birthdayDiscountValue || 0} onChange={(event) => set("birthdayDiscountValue", Number(event.target.value))} /></label><label>Pedido mínimo<input type="number" min="0" step="0.01" value={settings.birthdayMinimumOrder || 0} onChange={(event) => set("birthdayMinimumOrder", Number(event.target.value))} /></label><label>Validade após aniversário (dias)<input type="number" min="1" max="31" value={settings.birthdayValidityDays || 7} onChange={(event) => set("birthdayValidityDays", Number(event.target.value))} /></label></>}
-          {settings.referralEnabled && <><label>{settings.rewardsMode === "POINTS" ? "Pontos de quem indicou" : "Crédito de quem indicou"}<input type="number" min="0" step={settings.rewardsMode === "POINTS" ? "1" : "0.01"} value={settings.referralReferrerReward || 0} onChange={(event) => set("referralReferrerReward", Number(event.target.value))} /></label><label>{settings.rewardsMode === "POINTS" ? "Pontos do novo cliente" : "Crédito do novo cliente"}<input type="number" min="0" step={settings.rewardsMode === "POINTS" ? "1" : "0.01"} value={settings.referralNewCustomerReward || 0} onChange={(event) => set("referralNewCustomerReward", Number(event.target.value))} /></label><label>Pedido mínimo da indicação<input type="number" min="0" step="0.01" value={settings.referralMinimumOrder || 0} onChange={(event) => set("referralMinimumOrder", Number(event.target.value))} /></label></>}
         </div>
         <button className="primary-btn" disabled={saving}><Save size={16} /> Salvar relacionamento</button>
       </form>
+
+      <CouponsAdmin session={session} notify={notify} fail={fail} />
 
       <form className="admin-panel settings-form" onSubmit={createCampaign}>
         <div className="panel-title"><div><span>Campanhas</span><h2>Faixas promocionais da página inicial</h2><p>Use período, imagem, cupom e chamada para ação.</p></div><Megaphone /></div>
@@ -235,7 +225,7 @@ export default function MarketingAdmin({
       <section className="admin-panel settings-form marketing-reviews-panel">
         <div className="panel-title"><div><span>Moderação</span><h2>Avaliações de pedidos entregues</h2><p>Somente as aprovadas aparecem publicamente.</p></div><Star /></div>
         <div className="review-admin-list">
-          {reviews.map((review) => <article key={review.id}><div><span>{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</span><b>{review.customerName || "Cliente"}</b><p>{review.comment || "Sem comentário."}</p><small>Status: {review.status}</small></div><div>{review.status !== "APPROVED" && <button className="primary-btn" onClick={() => moderate(review, "APPROVED")}><Check size={15} /> Aprovar</button>}{review.status !== "HIDDEN" && <button className="ghost-dark-btn" onClick={() => moderate(review, "HIDDEN")}><EyeOff size={15} /> Ocultar</button>}</div></article>)}
+          {reviews.map((review) => <article key={review.id}><div><span>{review.deliveryRating ? `Entrega: ${"★".repeat(review.deliveryRating)}${"☆".repeat(5 - review.deliveryRating)} • ` : ""}Comida: {"★".repeat(review.foodRating || review.rating)}{"☆".repeat(5 - (review.foodRating || review.rating))}</span><b>{review.customerName || "Cliente"}</b><p>{review.comment || "Sem comentário."}</p><small>Status: {review.status}</small></div><div>{review.status !== "APPROVED" && <button className="primary-btn" onClick={() => moderate(review, "APPROVED")}><Check size={15} /> Aprovar</button>}{review.status !== "HIDDEN" && <button className="ghost-dark-btn" onClick={() => moderate(review, "HIDDEN")}><EyeOff size={15} /> Ocultar</button>}</div></article>)}
           {!reviews.length && <p className="empty-inline">Nenhuma avaliação recebida.</p>}
         </div>
       </section>

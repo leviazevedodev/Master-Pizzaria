@@ -120,12 +120,24 @@ const products = [
     name: "Combo Master",
     slug: "combo-master",
     description:
-      "Pizza Calabresa + Guaraná 2L + Brownie Master em uma oferta completa.",
+      "Escolha os sabores da pizza e leve Guaraná 2L + Brownie Master.",
     price: 74.8,
     category: "combos",
     isCombo: true,
     badge: "Combo",
     sortOrder: 11,
+    image: "/images/products/combo-calabresa-guarana-brownie.webp",
+  },
+  {
+    name: "Combo Escolha Master",
+    slug: "combo-escolha-master",
+    description:
+      "Monte sua pizza, leve um Brownie Master e escolha o refrigerante do combo.",
+    price: 69.9,
+    category: "combos",
+    isCombo: true,
+    badge: "Combo configurável",
+    sortOrder: 12,
     image: "/images/products/combo-calabresa-guarana-brownie.webp",
   },
 ];
@@ -570,20 +582,19 @@ async function main() {
     ]),
   );
   const defaultCombo = bySlug["combo-master"];
-  if (
-    defaultCombo &&
-    (!defaultCombo.isCombo || defaultCombo.categoryId !== categoryMap.combos)
-  ) {
-    await prisma.product.update({
-      where: { id: defaultCombo.id },
-      data: {
-        isCombo: true,
-        categoryId: categoryMap.combos,
-        subcategoryId: null,
-      },
-    });
+  const choiceCombo = bySlug["combo-escolha-master"];
+  for (const combo of [defaultCombo, choiceCombo]) {
+    if (combo && (!combo.isCombo || combo.categoryId !== categoryMap.combos))
+      await prisma.product.update({
+        where: { id: combo.id },
+        data: {
+          isCombo: true,
+          categoryId: categoryMap.combos,
+          subcategoryId: null,
+        },
+      });
   }
-  if (createdProductIds.has(defaultCombo.id)) {
+  if (createdProductIds.has(defaultCombo.id) || forceDefaults) {
     const defaultComboItems = [
       {
         product: bySlug.calabresa,
@@ -594,6 +605,10 @@ async function main() {
       { product: bySlug["brownie-master"], sizeId: null, quantity: 1 },
     ];
     await prisma.$transaction(async (tx) => {
+      if (forceDefaults) {
+        await tx.comboSlot.deleteMany({ where: { comboId: defaultCombo.id } });
+        await tx.comboItem.deleteMany({ where: { comboId: defaultCombo.id } });
+      }
       await tx.comboItem.createMany({
         data: defaultComboItems.map((entry, sortOrder) => ({
           comboId: defaultCombo.id,
@@ -603,14 +618,29 @@ async function main() {
           sortOrder,
         })),
       });
-      for (const [sortOrder, entry] of defaultComboItems.entries())
+      await tx.comboSlot.create({
+        data: {
+          comboId: defaultCombo.id,
+          type: "CONFIGURABLE_PIZZA",
+          name: "Escolha sua pizza",
+          quantity: 1,
+          sortOrder: 0,
+          baseProductId: bySlug.calabresa.id,
+          sizeId: sizeMap.media.id,
+          flavorScope: "ALL",
+          maxFlavors: sizeMap.media.maxFlavors,
+          allowModifiers: true,
+          modifierPricingMode: "NORMAL",
+        },
+      });
+      for (const [sortOrder, entry] of defaultComboItems.slice(1).entries())
         await tx.comboSlot.create({
           data: {
             comboId: defaultCombo.id,
             type: "FIXED_PRODUCT",
             name: entry.product.name,
             quantity: entry.quantity,
-            sortOrder,
+            sortOrder: sortOrder + 1,
             products: {
               create: {
                 productId: entry.product.id,
@@ -623,11 +653,68 @@ async function main() {
         });
     });
   }
+  if (createdProductIds.has(choiceCombo.id) || forceDefaults) {
+    await prisma.$transaction(async (tx) => {
+      if (forceDefaults)
+        await tx.comboSlot.deleteMany({ where: { comboId: choiceCombo.id } });
+      await tx.comboSlot.create({
+        data: {
+          comboId: choiceCombo.id,
+          type: "CONFIGURABLE_PIZZA",
+          name: "Escolha sua pizza",
+          quantity: 1,
+          sortOrder: 0,
+          baseProductId: bySlug.calabresa.id,
+          sizeId: sizeMap.media.id,
+          flavorScope: "ALL",
+          maxFlavors: sizeMap.media.maxFlavors,
+          allowModifiers: true,
+          modifierPricingMode: "NORMAL",
+        },
+      });
+      await tx.comboSlot.create({
+        data: {
+          comboId: choiceCombo.id,
+          type: "FIXED_PRODUCT",
+          name: "Brownie Master",
+          quantity: 1,
+          sortOrder: 1,
+          products: {
+            create: {
+              productId: bySlug["brownie-master"].id,
+              priceAdjustment: 0,
+              sortOrder: 0,
+            },
+          },
+        },
+      });
+      await tx.comboSlot.create({
+        data: {
+          comboId: choiceCombo.id,
+          type: "PRODUCT_CHOICE",
+          name: "Escolha seu refrigerante",
+          quantity: 1,
+          sortOrder: 2,
+          products: {
+            create: [
+              ["guarana-2l", 0],
+              ["pepsi-2l", 0],
+              ["coca-cola-2l", 2],
+            ].map(([slug, priceAdjustment], sortOrder) => ({
+              productId: bySlug[slug].id,
+              priceAdjustment,
+              sortOrder,
+            })),
+          },
+        },
+      });
+    });
+  }
   const desiredPromotions = [
     {
       productId: bySlug["combo-master"].id,
       title: "Combo Master",
-      subtitle: "Calabresa + Guaraná 2L + Brownie Master.",
+      subtitle: "Pizza configurável + Guaraná 2L + Brownie Master.",
       image: "/images/products/combo-calabresa-guarana-brownie.webp",
       originalPrice: 74.8,
       promoPrice: 59.9,

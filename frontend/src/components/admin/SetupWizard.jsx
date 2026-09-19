@@ -66,7 +66,7 @@ export default function SetupWizard({
           "seoTitle",
           "seoDescription",
         ],
-        ["phone", "whatsappPrimary", "instagram", "instagramUrl", "facebookUrl"],
+        ["phone", "whatsappPrimary", "instagram", "instagramUrl", "facebookName", "facebookUrl"],
         [
           "address",
           "storePostalCode",
@@ -170,7 +170,8 @@ export default function SetupWizard({
             <label>WhatsApp<input value={settings.whatsappPrimary || ""} onChange={(event) => set("whatsappPrimary", event.target.value)} /></label>
             <label>Instagram<input value={settings.instagram || ""} onChange={(event) => set("instagram", event.target.value)} /></label>
             <label>URL do Instagram<input value={settings.instagramUrl || ""} onChange={(event) => set("instagramUrl", event.target.value)} /></label>
-            <label className="span-2">URL do Facebook<input value={settings.facebookUrl || ""} onChange={(event) => set("facebookUrl", event.target.value)} /></label>
+            <label>Nome no Facebook<input value={settings.facebookName || ""} onChange={(event) => set("facebookName", event.target.value)} /></label>
+            <label>URL do Facebook<input value={settings.facebookUrl || ""} onChange={(event) => set("facebookUrl", event.target.value)} /></label>
           </div>
         )}
         {step === 2 && (

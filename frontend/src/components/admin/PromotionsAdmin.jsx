@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Megaphone, PackagePlus, Pizza, Plus, Trash2, Upload, UtensilsCrossed } from "lucide-react";
+import { Layers3, Megaphone, PackagePlus, Pizza, Plus, Trash2, Upload, UtensilsCrossed } from "lucide-react";
 import { mediaUrl } from "../../lib/api";
 import { money } from "../../lib/format";
 import { toIsoDateTime } from "../../lib/dateInput";
@@ -9,6 +9,7 @@ export default function PromotionsAdmin({
   rows,
   products,
   combos,
+  flavors,
   modifierGroups,
   form,
   setForm,
@@ -16,19 +17,21 @@ export default function PromotionsAdmin({
   update,
   remove,
   updateModifierOption,
+  updateFlavor,
   uploadMedia,
   imageUploading,
   reorder,
 }) {
   const [mode, setMode] = useState("PRODUCTS");
+  const isSimpleMode = mode === "ADDITIONALS" || mode === "FLAVORS";
   const promotionProducts = mode === "COMBOS" ? combos : products;
   const comboIds = useMemo(() => new Set(combos.map((combo) => combo.id)), [combos]);
   const selected = promotionProducts.find((p) => p.id === form.productId);
   useEffect(() => {
-    if (mode === "ADDITIONALS" || promotionProducts.some((product) => product.id === form.productId)) return;
+    if (isSimpleMode || promotionProducts.some((product) => product.id === form.productId)) return;
     const first = promotionProducts[0];
     setForm((current) => ({ ...current, productId: first?.id || "", originalPrice: first?.basePrice ?? first?.price ?? "", promoPrice: "", sizePrices: {}, title: "", subtitle: "", image: "" }));
-  }, [mode, promotionProducts, form.productId]);
+  }, [isSimpleMode, promotionProducts, form.productId]);
   const orderedRows = useMemo(
     () =>
       rows.filter((row) => (Boolean(row.product?.isCombo) || comboIds.has(row.productId)) === (mode === "COMBOS")).sort(
@@ -75,6 +78,29 @@ export default function PromotionsAdmin({
     () => additionalGroups.flatMap(([, items]) => items),
     [additionalGroups],
   );
+  const flavorGroups = useMemo(() => {
+    const grouped = new Map();
+    for (const flavor of flavors || []) {
+      const groupName = flavor.group?.name || "Sem grupo";
+      if (!grouped.has(groupName)) grouped.set(groupName, []);
+      grouped.get(groupName).push({
+        ...flavor,
+        promoKind: "FLAVOR",
+        groupName,
+        basePrice: flavor.basePrice ?? flavor.price,
+      });
+    }
+    return [...grouped.entries()].map(([groupName, items]) => [
+      groupName,
+      items.sort(
+        (a, b) =>
+          Number(a.sortOrder || 0) - Number(b.sortOrder || 0) ||
+          String(a.name || "").localeCompare(String(b.name || ""), "pt-BR"),
+      ),
+    ]);
+  }, [flavors]);
+  const simpleGroups = mode === "FLAVORS" ? flavorGroups : additionalGroups;
+  const simpleRows = mode === "FLAVORS" ? (flavors || []) : additionalRows;
   function chooseProduct(id) {
     const p = promotionProducts.find((row) => row.id === id);
     setForm({
@@ -86,8 +112,10 @@ export default function PromotionsAdmin({
       title: form.title || p?.name || "",
     });
   }
-  function saveAdditional(row, patch) {
-    return updateModifierOption(row, patch);
+  function saveSimplePromotion(row, patch) {
+    return mode === "FLAVORS"
+      ? updateFlavor(row, patch)
+      : updateModifierOption(row, patch);
   }
   function dt(value) {
     if (!value) return "";
@@ -107,7 +135,7 @@ export default function PromotionsAdmin({
       );
       return;
     }
-    saveAdditional(row, { promoActive: !row.promoActive });
+    saveSimplePromotion(row, { promoActive: !row.promoActive });
   }
   return (
     <div className="promotions-control">
@@ -133,9 +161,16 @@ export default function PromotionsAdmin({
         >
           <UtensilsCrossed size={17} /> Adicionais
         </button>
+        <button
+          type="button"
+          className={mode === "FLAVORS" ? "active" : ""}
+          onClick={() => setMode("FLAVORS")}
+        >
+          <Layers3 size={17} /> Sabores
+        </button>
       </div>
 
-      {mode !== "ADDITIONALS" ? (
+      {!isSimpleMode ? (
         <div className="admin-two-column promotions-admin-layout">
           <section className="admin-panel">
             <div className="panel-title">
@@ -528,22 +563,23 @@ export default function PromotionsAdmin({
           <div className="panel-title">
             <div>
               <span>Promoções internas</span>
-              <h2>Adicionais em promoção</h2>
+              <h2>{mode === "FLAVORS" ? "Sabores em promoção" : "Adicionais em promoção"}</h2>
               <p>
-                Os adicionais continuam separados pelo grupo ao qual pertencem,
-                mas em linhas compactas para comportar muitos itens.
+                {mode === "FLAVORS"
+                  ? "Defina o preço e o período promocional usando o mesmo cadastro central de sabores."
+                  : "Os adicionais continuam separados pelo grupo ao qual pertencem, mas em linhas compactas para comportar muitos itens."}
               </p>
             </div>
-            <b>{additionalRows.filter((r) => r.promoActive).length} ativas</b>
+            <b>{simpleRows.filter((r) => r.promoActive).length} ativas</b>
           </div>
           <div className="additional-promo-groups">
-            {additionalGroups.map(([groupName, groupRows]) => (
+            {simpleGroups.map(([groupName, groupRows]) => (
               <section
                 className="additional-promo-group compact"
                 key={groupName}
               >
                 <div className="promotion-group-title">
-                  <UtensilsCrossed size={15} />
+                  {mode === "FLAVORS" ? <Layers3 size={15} /> : <UtensilsCrossed size={15} />}
                   <b>{groupName}</b>
                   <span>{groupRows.length}</span>
                 </div>
@@ -558,7 +594,7 @@ export default function PromotionsAdmin({
                           <img src={mediaUrl(row.image)} alt="" />
                         ) : (
                           <span>
-                            <UtensilsCrossed size={18} />
+                            {mode === "FLAVORS" ? <Layers3 size={18} /> : <UtensilsCrossed size={18} />}
                           </span>
                         )}
                         <div>
@@ -576,11 +612,13 @@ export default function PromotionsAdmin({
                               type="number"
                               min="0"
                               step="0.01"
+                              readOnly={mode === "FLAVORS"}
+                              title={mode === "FLAVORS" ? "Altere o preço base no cadastro do sabor." : undefined}
                               defaultValue={row.basePrice ?? row.price ?? 0}
-                              onBlur={(e) =>
+                              onBlur={mode === "FLAVORS" ? undefined : (e) =>
                                 Number(e.target.value) !==
                                   Number(row.basePrice ?? row.price ?? 0) &&
-                                saveAdditional(row, {
+                                saveSimplePromotion(row, {
                                   price: Number(e.target.value),
                                 })
                               }
@@ -598,7 +636,7 @@ export default function PromotionsAdmin({
                               defaultValue={row.promoPrice ?? ""}
                               placeholder="0,00"
                               onBlur={(e) =>
-                                saveAdditional(row, {
+                                saveSimplePromotion(row, {
                                   promoPrice:
                                     e.target.value === ""
                                       ? null
@@ -616,7 +654,7 @@ export default function PromotionsAdmin({
                             type="datetime-local"
                             defaultValue={dt(row.promoStartAt)}
                             onBlur={(e) =>
-                              saveAdditional(row, {
+                              saveSimplePromotion(row, {
                                 promoStartAt: toIsoDateTime(e.target.value),
                               })
                             }
@@ -628,7 +666,7 @@ export default function PromotionsAdmin({
                             type="datetime-local"
                             defaultValue={dt(row.promoEndAt)}
                             onBlur={(e) =>
-                              saveAdditional(row, {
+                              saveSimplePromotion(row, {
                                 promoEndAt: toIsoDateTime(e.target.value),
                               })
                             }

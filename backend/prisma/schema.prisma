@@ -922,6 +922,7 @@ model BusinessSettings {
   seoTitle                     String?
   seoDescription               String?
   seoCanonicalUrl              String?
+  facebookName                 String?
   facebookUrl                  String?
   heroEyebrow                  String              @default("Artesanal • feita na hora")
   heroImage                    String?

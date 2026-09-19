@@ -147,6 +147,7 @@ export default function ComboSlotEditor({
   canMoveDown,
 }) {
   const [flavorSearch, setFlavorSearch] = useState("");
+  const [expanded, setExpanded] = useState(index === 0);
   const catalogProducts = useMemo(
     () => products.filter((product) => !product.deletedAt && !product.isCombo),
     [products],
@@ -266,7 +267,7 @@ export default function ComboSlotEditor({
   const slotTitle = slot.name.trim() || SLOT_TYPES.find((row) => row.value === slot.type)?.label;
 
   return (
-    <article className="combo-slot-card">
+    <article className={`combo-slot-card ${expanded ? "expanded" : "collapsed"}`}>
       <header>
         <span className="combo-slot-number">{index + 1}</span>
         <div>
@@ -274,6 +275,15 @@ export default function ComboSlotEditor({
           <small>O cliente recebe {slot.quantity || 1} unidade(s) deste item.</small>
         </div>
         <div className="combo-slot-actions">
+          <button
+            type="button"
+            className="icon-action combo-slot-expand"
+            onClick={() => setExpanded((value) => !value)}
+            aria-expanded={expanded}
+            aria-label={expanded ? "Recolher item" : "Configurar item"}
+          >
+            <ChevronDown size={16} />
+          </button>
           <button type="button" className="icon-action" disabled={!canMoveUp} onClick={() => onMove(-1)} aria-label="Mover item para cima">
             <ChevronUp size={15} />
           </button>
@@ -286,6 +296,8 @@ export default function ComboSlotEditor({
         </div>
       </header>
 
+      {expanded && (
+        <div className="combo-slot-body">
       <div className="combo-slot-basics">
         <label>
           Tipo do item
@@ -502,6 +514,8 @@ export default function ComboSlotEditor({
               </section>
             </>
           )}
+        </div>
+      )}
         </div>
       )}
     </article>

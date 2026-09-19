@@ -255,7 +255,7 @@ export const DEMO_PRODUCTS = [
     name: "Combo Master",
     slug: "combo-master",
     description:
-      "Pizza Calabresa + Guaraná 2L + Brownie Master em uma oferta completa.",
+      "Escolha os sabores da pizza e leve Guaraná 2L + Brownie Master.",
     price: 59.9,
     basePrice: 74.8,
     compareAtPrice: 74.8,
@@ -265,6 +265,20 @@ export const DEMO_PRODUCTS = [
     category: DEMO_CATEGORIES[1],
     categoryId: "cat-combos",
     sortOrder: 11,
+  },
+  {
+    id: "demo-combo-escolha",
+    name: "Combo Escolha Master",
+    slug: "combo-escolha-master",
+    description:
+      "Monte sua pizza, leve um Brownie Master e escolha o refrigerante do combo.",
+    price: 69.9,
+    image: "/images/products/combo-calabresa-guarana-brownie.webp",
+    badge: "Combo configurável",
+    isCombo: true,
+    category: DEMO_CATEGORIES[1],
+    categoryId: "cat-combos",
+    sortOrder: 12,
   },
 ];
 
@@ -285,13 +299,83 @@ const flavorProducts = DEMO_PRODUCTS.filter(
 for (const product of DEMO_PRODUCTS) {
   if (product.allowFlavorSplit) product.availableFlavors = flavorProducts;
 }
+const demoPizza = DEMO_PRODUCTS.find((product) => product.id === "demo-calabresa");
+const demoBrownie = DEMO_PRODUCTS.find((product) => product.id === "demo-brownie");
+const demoDrinks = ["demo-guarana", "demo-pepsi", "demo-coca"]
+  .map((id) => DEMO_PRODUCTS.find((product) => product.id === id));
+const configurablePizzaSlot = (comboId) => ({
+  id: `${comboId}-pizza`,
+  type: "CONFIGURABLE_PIZZA",
+  name: "Escolha sua pizza",
+  quantity: 1,
+  sortOrder: 0,
+  baseProductId: demoPizza.id,
+  baseProduct: demoPizza,
+  sizeId: "size-m",
+  size: DEMO_SIZES[1],
+  flavorScope: "ALL",
+  maxFlavors: 2,
+  allowModifiers: true,
+  modifierPricingMode: "NORMAL",
+  flavorGroupRules: [],
+  flavorRules: [],
+  modifierRules: [],
+  products: [],
+});
+const fixedSlot = (comboId, product, sortOrder) => ({
+  id: `${comboId}-${product.id}`,
+  type: "FIXED_PRODUCT",
+  name: product.name,
+  quantity: 1,
+  sortOrder,
+  products: [{
+    id: `${comboId}-${product.id}-choice`,
+    productId: product.id,
+    product,
+    priceAdjustment: 0,
+    sortOrder: 0,
+  }],
+  flavorGroupRules: [],
+  flavorRules: [],
+  modifierRules: [],
+});
+const demoMasterCombo = DEMO_PRODUCTS.find((product) => product.id === "demo-combo");
+demoMasterCombo.comboMode = "CONFIGURABLE";
+demoMasterCombo.comboSlots = [
+  configurablePizzaSlot(demoMasterCombo.id),
+  fixedSlot(demoMasterCombo.id, demoDrinks[0], 1),
+  fixedSlot(demoMasterCombo.id, demoBrownie, 2),
+];
+const demoChoiceCombo = DEMO_PRODUCTS.find((product) => product.id === "demo-combo-escolha");
+demoChoiceCombo.comboMode = "CONFIGURABLE";
+demoChoiceCombo.comboSlots = [
+  configurablePizzaSlot(demoChoiceCombo.id),
+  fixedSlot(demoChoiceCombo.id, demoBrownie, 1),
+  {
+    id: `${demoChoiceCombo.id}-drink`,
+    type: "PRODUCT_CHOICE",
+    name: "Escolha seu refrigerante",
+    quantity: 1,
+    sortOrder: 2,
+    products: demoDrinks.map((product, sortOrder) => ({
+      id: `${demoChoiceCombo.id}-${product.id}-choice`,
+      productId: product.id,
+      product,
+      priceAdjustment: product.id === "demo-coca" ? 2 : 0,
+      sortOrder,
+    })),
+    flavorGroupRules: [],
+    flavorRules: [],
+    modifierRules: [],
+  },
+];
 export const DEMO_FLAVORS = flavorProducts;
 
 export const DEMO_PROMOTIONS = [
   {
     id: "promo-combo",
     title: "Combo Master",
-    subtitle: "Calabresa + Guaraná 2L + Brownie Master.",
+    subtitle: "Pizza configurável + Guaraná 2L + Brownie Master.",
     image: "/images/products/combo-calabresa-guarana-brownie.webp",
     originalPrice: 74.8,
     promoPrice: 59.9,
@@ -339,6 +423,7 @@ export const DEMO_SETTINGS = {
   whatsappSecondaryVisible: false,
   instagram: "",
   instagramUrl: "",
+  facebookName: "",
   facebookUrl: "",
   address: "",
   openingHours: "Consulte os horários no topo do site",

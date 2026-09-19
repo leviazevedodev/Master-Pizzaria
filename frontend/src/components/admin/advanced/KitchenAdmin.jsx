@@ -6,6 +6,8 @@ import {
   ChefHat,
   Maximize2,
   Monitor,
+  Eye,
+  EyeOff,
   Printer,
   RefreshCw,
   UtensilsCrossed,
@@ -113,6 +115,13 @@ export function KitchenAdmin({
   const [orders, setOrders] = useState([]);
   const [advancingId, setAdvancingId] = useState(null);
   const [focusView, setFocusView] = useState(null);
+  const [showReady, setShowReady] = useState(() => {
+    try {
+      return localStorage.getItem("master-pizza-kitchen-show-ready") !== "off";
+    } catch {
+      return true;
+    }
+  });
   const [now, setNow] = useState(Date.now);
   const loadInFlight = useRef(false);
   const screenRef = useRef(null);
@@ -275,9 +284,29 @@ export function KitchenAdmin({
   }
   const notificationsActive = notificationsEnabled && permission === "granted";
   const salonView = focusView === "SALON";
-  const visibleOrders = salonView
+  const screenOrders = salonView
     ? orders.filter((order) => order.fulfillmentType === "DINE_IN")
     : orders;
+  const readyCount = screenOrders.filter(
+    (order) => !["RECEIVED", "PREPARING"].includes(order.status),
+  ).length;
+  const visibleOrders = showReady
+    ? screenOrders
+    : screenOrders.filter((order) =>
+        ["RECEIVED", "PREPARING"].includes(order.status),
+      );
+  function toggleReadyOrders() {
+    setShowReady((current) => {
+      const next = !current;
+      try {
+        localStorage.setItem(
+          "master-pizza-kitchen-show-ready",
+          next ? "on" : "off",
+        );
+      } catch {}
+      return next;
+    });
+  }
   return (
     <div
       ref={screenRef}
@@ -296,6 +325,14 @@ export function KitchenAdmin({
           </p>
         </div>
         <div className="kitchen-actions">
+          <button
+            type="button"
+            className={`ghost-dark-btn kitchen-ready-toggle ${showReady ? "active" : ""}`}
+            onClick={toggleReadyOrders}
+          >
+            {showReady ? <EyeOff size={16} /> : <Eye size={16} />}
+            {showReady ? "Ocultar prontos" : `Mostrar prontos${readyCount ? ` (${readyCount})` : ""}`}
+          </button>
           {focusView ? (
             <>
               <div className="kitchen-screen-switch" aria-label="Tipo de tela">
@@ -457,12 +494,16 @@ export function KitchenAdmin({
           <div className="kitchen-empty">
             {salonView ? <UtensilsCrossed /> : <ChefHat />}
             <h3>
-              {salonView
+              {!showReady && readyCount
+                ? `${readyCount} pedido(s) pronto(s) oculto(s)`
+                : salonView
                 ? "Nenhum pedido presencial no momento"
                 : "Nenhum pedido na cozinha"}
             </h3>
             <p>
-              {salonView
+              {!showReady && readyCount
+                ? "Use “Mostrar prontos” para exibir esses pedidos novamente."
+                : salonView
                 ? "As mesas com pedidos ativos aparecerão aqui automaticamente."
                 : "Os novos pedidos aparecerão aqui automaticamente."}
             </p>

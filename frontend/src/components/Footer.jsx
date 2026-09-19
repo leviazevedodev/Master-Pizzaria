@@ -1,6 +1,6 @@
 import React from "react";
 import { mediaUrl } from "../lib/api";
-import { Instagram, MapPin, MessageCircle, Phone } from "lucide-react";
+import { Facebook, Instagram, MapPin, MessageCircle, Phone } from "lucide-react";
 
 export default function Footer({ settings }) {
   const phone = String(settings.phone || "").trim(),
@@ -11,6 +11,8 @@ export default function Footer({ settings }) {
         : String(settings.whatsappSecondary || "").trim();
   const instagramName = String(settings.instagram || "").trim(),
     instagramUrl = String(settings.instagramUrl || "").trim();
+  const facebookName = String(settings.facebookName || "").trim(),
+    facebookUrl = String(settings.facebookUrl || "").trim();
   const hasContact = Boolean(phone || w1 || w2);
   return (
     <footer className="footer">
@@ -74,6 +76,12 @@ export default function Footer({ settings }) {
             >
               <Instagram size={14} />
               {instagramName || "Instagram"}
+            </a>
+          )}
+          {facebookUrl && (
+            <a href={facebookUrl} target="_blank" rel="noreferrer">
+              <Facebook size={14} />
+              {facebookName || "Facebook"}
             </a>
           )}
         </div>

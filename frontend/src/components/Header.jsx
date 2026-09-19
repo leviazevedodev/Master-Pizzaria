@@ -21,6 +21,12 @@ export default function Header({
 }) {
   const [open, setOpen] = useState(false);
   const [installPrompt, setInstallPrompt] = useState(null);
+  const [installed, setInstalled] = useState(() =>
+    Boolean(
+      window.matchMedia?.("(display-mode: standalone)")?.matches ||
+        window.navigator.standalone,
+    ),
+  );
   const close = () => setOpen(false);
   const accountPath = session?.user?.isAdmin
     ? "/gestao"
@@ -45,20 +51,32 @@ export default function Header({
       event.preventDefault();
       setInstallPrompt(event);
     };
-    const installed = () => setInstallPrompt(null);
+    const handleInstalled = () => {
+      setInstallPrompt(null);
+      setInstalled(true);
+    };
     window.addEventListener("beforeinstallprompt", captureInstall);
-    window.addEventListener("appinstalled", installed);
+    window.addEventListener("appinstalled", handleInstalled);
     return () => {
       window.removeEventListener("beforeinstallprompt", captureInstall);
-      window.removeEventListener("appinstalled", installed);
+      window.removeEventListener("appinstalled", handleInstalled);
     };
   }, []);
 
   async function installApp() {
-    if (!installPrompt) return;
+    if (!installPrompt) {
+      const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+      window.alert(
+        isIos
+          ? "No Safari, toque em Compartilhar e depois em ‘Adicionar à Tela de Início’."
+          : "Abra o menu do navegador e escolha ‘Instalar aplicativo’ ou ‘Adicionar à tela inicial’.",
+      );
+      return;
+    }
     try {
       await installPrompt.prompt();
-      await installPrompt.userChoice;
+      const choice = await installPrompt.userChoice;
+      if (choice?.outcome === "accepted") setInstalled(true);
     } finally {
       setInstallPrompt(null);
     }
@@ -114,15 +132,15 @@ export default function Header({
           </Link>
         </nav>
         <div className="nav-actions">
-          {settings?.pwaEnabled !== false && installPrompt && (
+          {settings?.pwaEnabled !== false && !installed && (
             <button
               type="button"
               className="install-app-button"
               onClick={installApp}
-              title={`Instalar ${storeName}`}
+              title={`Adicionar ${storeName} à tela inicial`}
             >
               <Download size={17} />
-              <span>Instalar aplicativo</span>
+              <span>Adicionar à tela inicial</span>
             </button>
           )}
           {String(settings?.phone || "").trim() && (

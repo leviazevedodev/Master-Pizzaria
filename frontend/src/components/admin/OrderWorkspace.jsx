@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   AlertTriangle,
   Banknote,
@@ -21,6 +21,7 @@ import {
   nextStatusForOrder,
   paymentLabel,
 } from "../../lib/adminOrders";
+import { kitchenCountdown } from "../../lib/operations";
 
 const DEFAULT_VIEWS = [
   "OPEN",
@@ -50,12 +51,11 @@ function OrderTabs({ value, onChange, buckets, overview, deliveryOnly, waiterOnl
     <div className={`order-view-tabs ${overview ? "overview-order-tabs" : ""}`}>
       {viewsForRole({ overview, deliveryOnly, waiterOnly }).map((key) => {
         const count = buckets[key]?.length || 0;
-        const calling = overview && ["RECEIVED", "READY_FOR_TABLE", "SERVED"].includes(key) && count > 0;
         return (
           <button
             type="button"
             key={key}
-            className={`${value === key ? "active" : ""} ${calling ? "attention-pulse" : ""}`.trim()}
+            className={value === key ? "active" : ""}
             onClick={() => onChange(key)}
           >
             {key === "SCHEDULED" && <CalendarClock size={15} />} {ORDER_VIEW_LABELS[key]} <b>{count}</b>
@@ -74,19 +74,23 @@ export function OrderViewTabs(props) {
   return <OrderTabs {...props} />;
 }
 
-function deadlineState(order, warningMinutes = 30) {
-  if (
-    order.fulfillmentType === "DINE_IN" ||
-    ["DELIVERED", "CANCELED"].includes(order.status) ||
-    !order.estimatedTo
-  ) return "";
-
-  const remaining = new Date(order.estimatedTo).getTime() - Date.now();
-  if (!Number.isFinite(remaining)) return "";
-  if (remaining <= 0) return "overdue";
-  return remaining <= Math.max(1, Number(warningMinutes || 30)) * 60_000
-    ? "warning"
-    : "";
+function OrderCountdown({ order, now }) {
+  if (["DELIVERED", "CANCELED"].includes(order.status)) return null;
+  const timer = kitchenCountdown(
+    { ...order, status: "PREPARING" },
+    now,
+    order.estimatedDeliveryMax,
+  );
+  return (
+    <div
+      className={`kitchen-countdown admin-order-countdown ${timer.tone}`}
+      style={{ "--countdown-angle": `${timer.ratio * 360}deg` }}
+      title={timer.description}
+      aria-label={timer.description}
+    >
+      <span>{timer.label}</span>
+    </div>
+  );
 }
 
 function nextStatusLabel(order) {
@@ -175,20 +179,23 @@ export function OrderList({
   onOpen,
   onPayment,
   onPrint,
-  lateWarningMinutes = 30,
   deliveryOnly = false,
   savingId = null,
 }) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
   if (!orders.length) return <div className="empty-admin"><ShoppingBag /><p>Nenhum pedido por aqui.</p></div>;
   return (
     <div className="order-list">
       {orders.map((order) => {
-        const urgency = deadlineState(order, lateWarningMinutes);
         const eta = etaRange(order);
         const dineIn = order.fulfillmentType === "DINE_IN";
         return (
           <article
-            className={`admin-order clickable status-card-${String(order.status).toLowerCase()} ${dineIn ? "dine-in-order" : ""} ${urgency ? `deadline-${urgency}` : ""}`}
+            className={`admin-order clickable status-card-${String(order.status).toLowerCase()} ${dineIn ? "dine-in-order" : ""}`}
             key={order.id}
             onClick={() => onOpen(order)}
           >
@@ -210,11 +217,7 @@ export function OrderList({
               <small>{dineIn ? "Atendimento no salão" : order.fulfillmentType === "PICKUP" ? "Retirada" : `Entrega • ${order.neighborhood || order.city || ""}`}</small>
             </div>
             <OrderItemsPreview order={order} />
-            {urgency && (
-              <span className={`deadline-alert ${urgency}`} title={urgency === "overdue" ? "O prazo estimado já foi atingido." : `Faltam até ${lateWarningMinutes} minutos para o limite da previsão.`}>
-                <AlertTriangle size={18} /><b>{urgency === "overdue" ? "Prazo atingido" : `Atenção • ≤ ${lateWarningMinutes} min`}</b>
-              </span>
-            )}
+            <OrderCountdown order={order} now={now} />
             <strong>{money(order.total)}</strong>
             <div className="order-actions">
               <OrderStatusActions order={order} onStatus={onStatus} onCancel={onCancel} onPayment={onPayment} deliveryOnly={deliveryOnly} compact saving={savingId === order.id} />

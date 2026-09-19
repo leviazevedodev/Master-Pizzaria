@@ -180,7 +180,6 @@ export default function CheckoutPage({
     [favoriteAddressLabel, setFavoriteAddressLabel] = useState("Casa");
   const [rewards, setRewards] = useState(null);
   const [useRewards, setUseRewards] = useState(false);
-  const [useBirthdayReward, setUseBirthdayReward] = useState(false);
   useEffect(() => {
     const available = [
       ...(cashAvailable ? ["CASH"] : []),
@@ -208,24 +207,7 @@ export default function CheckoutPage({
     0,
   );
   const couponDiscount = Number(coupon?.discount || 0);
-  const birthdayDiscount =
-    useBirthdayReward &&
-    rewards?.birthday?.eligible &&
-    subtotal - couponDiscount >=
-      Number(rewards.settings?.birthdayMinimumOrder || 0)
-      ? Math.min(
-          Math.max(0, subtotal - couponDiscount),
-          rewards.settings?.birthdayDiscountType === "FIXED"
-            ? Number(rewards.settings?.birthdayDiscountValue || 0)
-            : (Math.max(0, subtotal - couponDiscount) *
-                Number(rewards.settings?.birthdayDiscountValue || 0)) /
-                100,
-        )
-      : 0;
-  const rewardLimit = Math.max(
-    0,
-    subtotal - couponDiscount - birthdayDiscount,
-  );
+  const rewardLimit = Math.max(0, subtotal - couponDiscount);
   const rewardDiscount = useRewards
     ? rewards?.mode === "POINTS"
       ? Math.min(
@@ -245,23 +227,15 @@ export default function CheckoutPage({
         ? Math.min(rewardLimit, Number(rewards.cashbackBalance || 0))
         : 0
     : 0;
-  const discount = couponDiscount + birthdayDiscount + rewardDiscount;
+  const discount = couponDiscount + rewardDiscount;
   useEffect(() => {
-    if (
-      useBirthdayReward &&
-      subtotal - couponDiscount <
-        Number(rewards?.settings?.birthdayMinimumOrder || 0)
-    )
-      setUseBirthdayReward(false);
     if (useRewards && rewards?.mode === "POINTS" && rewardDiscount <= 0)
       setUseRewards(false);
   }, [
     couponDiscount,
     rewardDiscount,
     rewards?.mode,
-    rewards?.settings?.birthdayMinimumOrder,
     subtotal,
-    useBirthdayReward,
     useRewards,
   ]);
   const deliveryAddressComplete =
@@ -731,7 +705,6 @@ export default function CheckoutPage({
           ...form,
           couponCode: coupon?.code || "",
           useRewards,
-          useBirthdayReward,
           scheduledAt,
           saveFavoriteAddress: Boolean(session?.token && saveFavoriteAddress),
           favoriteAddressLabel,
@@ -1402,28 +1375,6 @@ export default function CheckoutPage({
                     {rewards.mode === "POINTS"
                       ? `${rewards.loyaltyPoints} pontos disponíveis`
                       : `${money(rewards.cashbackBalance)} disponíveis`}
-                  </small>
-                </span>
-              </label>
-            )}
-            {rewards?.birthday?.eligible && (
-              <label className="checkout-benefit-option birthday">
-                <input
-                  type="checkbox"
-                  checked={useBirthdayReward}
-                  disabled={
-                    subtotal - couponDiscount <
-                    Number(rewards.settings?.birthdayMinimumOrder || 0)
-                  }
-                  onChange={(event) => setUseBirthdayReward(event.target.checked)}
-                />
-                <span>
-                  <b>Usar benefício de aniversário</b>
-                  <small>
-                    Válido uma vez no período configurado pela loja
-                    {Number(rewards.settings?.birthdayMinimumOrder || 0) > 0
-                      ? ` em pedidos a partir de ${money(rewards.settings.birthdayMinimumOrder)}`
-                      : ""}.
                   </small>
                 </span>
               </label>

@@ -493,7 +493,7 @@ export default function FlavorsAdmin({
 
       <form
         ref={editorRef}
-        className="admin-panel compact-form"
+        className="admin-panel compact-form flavor-editor-form"
         onSubmit={submitFlavor}
       >
         <div className="panel-title">
@@ -738,6 +738,7 @@ export default function FlavorsAdmin({
         )}
 
         <fieldset
+          className="flavor-size-settings"
           style={{
             border: "1px solid var(--line)",
             borderRadius: 14,
@@ -813,6 +814,7 @@ export default function FlavorsAdmin({
         </fieldset>
 
         <fieldset
+          className="flavor-publication-settings"
           style={{
             border: "1px solid var(--line)",
             borderRadius: 14,
