@@ -28,6 +28,7 @@ test("branding usa identidade configurada e produz Restaurant JSON-LD", () => {
   );
 
   assert.equal(branding.title, "Pizzaria do Bairro");
+  assert.equal(branding.socialTitle, "Pizzaria do Bairro");
   assert.equal(branding.canonical, "https://pizzaria.example/cardapio");
   assert.equal(branding.primaryColor, "#aa1122");
   assert.equal(branding.jsonLd["@type"], "Restaurant");
@@ -35,6 +36,15 @@ test("branding usa identidade configurada e produz Restaurant JSON-LD", () => {
   assert.deepEqual(branding.jsonLd.sameAs, [
     "https://instagram.com/pizzaria",
   ]);
+});
+
+test("compartilhamento usa o nome da loja mesmo com título SEO antigo", () => {
+  const branding = buildBranding(
+    { storeName: "Pizzaria Ex", seoTitle: "Cardápio Online" },
+    { origin: "https://loja.example", pathname: "/" },
+  );
+  assert.equal(branding.title, "Cardápio Online");
+  assert.equal(branding.socialTitle, "Pizzaria Ex");
 });
 
 test("páginas administrativas recebem noindex", () => {
@@ -66,12 +76,22 @@ test("manifest acompanha nome, cores e ícone da marca", () => {
     {
       origin: "https://azul.example",
       pathname: "/",
+      logoUrl: "https://azul.example/logo.png",
       faviconUrl: "https://azul.example/icon.png",
     },
   );
   const manifest = buildDynamicManifest(branding);
   assert.equal(manifest.name, "Pizzaria Azul");
-  assert.equal(manifest.short_name, "Azul");
+  assert.equal(manifest.short_name, "Pizzaria Azul");
   assert.equal(manifest.theme_color, "#0055aa");
-  assert.equal(manifest.icons[0].src, "https://azul.example/icon.png");
+  assert.equal(manifest.icons[0].src, "https://azul.example/logo.png");
+  assert.equal(manifest.icons[0].purpose, "any");
+});
+
+test("branding sem nome configurado usa fallback público seguro", () => {
+  const branding = buildBranding({}, { origin: "https://loja.example", pathname: "/" });
+  assert.equal(branding.storeName, "Pizzaria");
+  const manifest = buildDynamicManifest(branding);
+  assert.equal(manifest.short_name, "Pizzaria");
+  assert.equal(manifest.icons[0].src, "/images/store-placeholder.svg");
 });

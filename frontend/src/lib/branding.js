@@ -1,5 +1,5 @@
 const FALLBACK = Object.freeze({
-  storeName: "Sua Pizzaria",
+  storeName: "Pizzaria",
   shortName: "Pizzaria",
   primaryColor: "#e31b23",
   secondaryColor: "#111214",
@@ -83,6 +83,7 @@ export function buildBranding(settings = {}, context = {}) {
     storeName,
     shortName,
     title,
+    socialTitle: storeName,
     description,
     canonical,
     logo,
@@ -142,7 +143,7 @@ export function applyBrandingToDocument(documentRef, branding) {
   });
   ensureMeta(documentRef, 'meta[property="og:title"]', {
     property: "og:title",
-    content: branding.title,
+    content: branding.socialTitle,
   });
   ensureMeta(documentRef, 'meta[property="og:description"]', {
     property: "og:description",
@@ -158,7 +159,7 @@ export function applyBrandingToDocument(documentRef, branding) {
   });
   ensureMeta(documentRef, 'meta[name="twitter:title"]', {
     name: "twitter:title",
-    content: branding.title,
+    content: branding.socialTitle,
   });
   ensureMeta(documentRef, 'meta[name="twitter:description"]', {
     name: "twitter:description",
@@ -176,6 +177,10 @@ export function applyBrandingToDocument(documentRef, branding) {
   }
   if (branding.favicon)
     ensureLink(documentRef, "icon").setAttribute("href", branding.favicon);
+  ensureLink(documentRef, "apple-touch-icon").setAttribute(
+    "href",
+    branding.logo || "/images/store-placeholder.svg",
+  );
   if (branding.canonical)
     ensureLink(documentRef, "canonical").setAttribute(
       "href",
@@ -198,25 +203,23 @@ export function applyBrandingToDocument(documentRef, branding) {
 }
 
 export function buildDynamicManifest(branding) {
-  const icon = branding.favicon || branding.logo;
+  const icon =
+    branding.logo || "/images/store-placeholder.svg";
   return {
     id: "/",
     name: branding.storeName,
-    short_name: branding.shortName,
+    short_name: branding.storeName,
     start_url: "/",
+    scope: "/",
     display: "standalone",
     background_color: branding.secondaryColor,
     theme_color: branding.primaryColor,
-    ...(icon
-      ? {
-          icons: [
-            {
-              src: icon,
-              sizes: "any",
-              purpose: "any maskable",
-            },
-          ],
-        }
-      : {}),
+    icons: [
+      {
+        src: icon,
+        sizes: "any",
+        purpose: "any",
+      },
+    ],
   };
 }

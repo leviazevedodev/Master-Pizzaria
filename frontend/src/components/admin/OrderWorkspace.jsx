@@ -75,7 +75,8 @@ export function OrderViewTabs(props) {
 }
 
 function OrderCountdown({ order, now }) {
-  if (["DELIVERED", "CANCELED"].includes(order.status)) return null;
+  if (["SCHEDULED", "DELIVERED", "CANCELED"].includes(order.status))
+    return null;
   const timer = kitchenCountdown(
     { ...order, status: "PREPARING" },
     now,

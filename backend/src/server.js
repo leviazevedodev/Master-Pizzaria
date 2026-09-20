@@ -3983,8 +3983,12 @@ app.get("/api/me/orders/:id/reorder", auth, async (req, res) => {
       cartKey: `reorder-${Date.now()}-${item.id}`,
       productId: item.product.id,
       name: availableFlavors.length
-        ? `${item.product.name} • ${availableFlavors.map((f) => f.name).join(" / ")}`
-        : item.product.name,
+        ? [availableFlavors.map((flavor) => flavor.name).join(" / "), savedSize?.size?.name]
+            .filter(Boolean)
+            .join(" • ")
+        : [item.product.name, savedSize?.size?.name]
+            .filter(Boolean)
+            .join(" • "),
       price: currentPrice + optionsTotal,
       image: item.product.image,
       quantity: item.quantity,
@@ -4662,11 +4666,10 @@ app.post(
     );
     const itemNote = cleanText(item?.notes, 140) || null;
     const displayName = [
-      base.name,
-      chosenSize?.size?.name,
       chosenFlavors.length
-        ? chosenFlavors.map((f) => f.name).join(" / ")
-        : null,
+        ? chosenFlavors.map((flavor) => flavor.name).join(" / ")
+        : base.name,
+      chosenSize?.size?.name,
     ]
       .filter(Boolean)
       .join(" • ");

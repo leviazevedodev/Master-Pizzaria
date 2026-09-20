@@ -48,13 +48,16 @@ const MenuPage = lazy(() => import("./pages/MenuPage"));
 const PaymentReturnPage = lazy(() => import("./pages/PaymentReturnPage"));
 const TrackOrderPage = lazy(() => import("./pages/TrackOrderPage"));
 
-const PUBLIC_CACHE_KEY = "master-pizza-public-cache-v26";
+const PUBLIC_CACHE_KEY = "master-pizza-public-cache-v27";
 const PUBLIC_REFRESH_SIGNAL = "master-pizza-public-refresh";
+const PUBLIC_CACHE_MAX_AGE = 24 * 60 * 60 * 1000;
 
 function readPublicCache() {
   return readStoredJson(localStorage, PUBLIC_CACHE_KEY, null, (cached) =>
     Boolean(
       cached?.settings &&
+        Number.isFinite(Number(cached.savedAt)) &&
+        Date.now() - Number(cached.savedAt) <= PUBLIC_CACHE_MAX_AGE &&
         Array.isArray(cached.products) &&
         Array.isArray(cached.categories) &&
         Array.isArray(cached.subcategories) &&
@@ -108,9 +111,7 @@ export default function App() {
   const [storeHours, setStoreHours] = useState(
     initialPublic?.storeHours || DEMO_STORE_HOURS,
   );
-  const [settings, setSettings] = useState(
-    initialPublic?.settings || DEMO_SETTINGS,
-  );
+  const [settings, setSettings] = useState(DEMO_SETTINGS);
   const [highlights, setHighlights] = useState(
     initialPublic?.highlights || {
       campaigns: [],
@@ -120,7 +121,8 @@ export default function App() {
       newProductIds: [],
     },
   );
-  const [publicReady, setPublicReady] = useState(Boolean(initialPublic));
+  const [publicReady, setPublicReady] = useState(false);
+  const [brandingReady, setBrandingReady] = useState(false);
   const [publicError, setPublicError] = useState("");
   const [session, setSessionState] = useState(null);
   const [sessionReady, setSessionReady] = useState(false);
@@ -130,6 +132,7 @@ export default function App() {
   const publicLoadInProgress = useRef(false);
 
   useEffect(() => {
+    if (!brandingReady) return undefined;
     const branding = buildBranding(settings, {
       origin: window.location.origin,
       pathname: location.pathname,
@@ -139,9 +142,14 @@ export default function App() {
     });
     applyBrandingToDocument(document, branding);
 
-    const manifestLink = document.head.querySelector('link[rel="manifest"]');
+    let manifestLink = document.head.querySelector('link[rel="manifest"]');
     let manifestUrl = "";
-    if (manifestLink && window.URL?.createObjectURL) {
+    if (!manifestLink) {
+      manifestLink = document.createElement("link");
+      manifestLink.setAttribute("rel", "manifest");
+      document.head.appendChild(manifestLink);
+    }
+    if (window.URL?.createObjectURL) {
       manifestUrl = window.URL.createObjectURL(
         new Blob([JSON.stringify(buildDynamicManifest(branding))], {
           type: "application/manifest+json",
@@ -152,7 +160,7 @@ export default function App() {
     return () => {
       if (manifestUrl) window.URL.revokeObjectURL(manifestUrl);
     };
-  }, [location.pathname, settings]);
+  }, [brandingReady, location.pathname, settings]);
   useEffect(() => {
     if (!publicReady || !("serviceWorker" in navigator)) return undefined;
 
@@ -220,6 +228,12 @@ export default function App() {
         api.get("/settings"),
         api.get("/store-hours"),
       ]);
+      const currentSettings = settingsRes.data || DEMO_SETTINGS;
+      setSettings(currentSettings);
+      setStoreHours(hoursRes.data || []);
+      setBrandingReady(true);
+      if (initialPublic) setPublicReady(true);
+      setPublicError("");
       const [categoriesRes, subsRes] = await Promise.all([
         api.get("/categories"),
         api.get("/subcategories"),
@@ -234,7 +248,7 @@ export default function App() {
         categories: categoriesRes.data || [],
         subcategories: subsRes.data || [],
         promotions: promotionsRes.data || [],
-        settings: settingsRes.data || DEMO_SETTINGS,
+        settings: currentSettings,
         storeHours: hoursRes.data || [],
         highlights: highlightsRes.data || {},
         savedAt: Date.now(),
@@ -251,8 +265,20 @@ export default function App() {
       setPublicReady(true);
       return true;
     } catch {
-      if (!initialPublic)
+      if (initialPublic && window.navigator.onLine === false) {
+        setProducts(initialPublic.products);
+        setCategories(initialPublic.categories);
+        setSubcategories(initialPublic.subcategories);
+        setPromotions(initialPublic.promotions);
+        setSettings(initialPublic.settings);
+        setStoreHours(initialPublic.storeHours);
+        setHighlights(initialPublic.highlights || {});
+        setBrandingReady(true);
+        setPublicReady(true);
+        setPublicError("Sem internet. Exibindo a última versão salva neste aparelho.");
+      } else {
         setPublicError("Ainda estamos conectando ao sistema da loja.");
+      }
       return false;
     } finally {
       publicLoadInProgress.current = false;
@@ -282,10 +308,12 @@ export default function App() {
       if (event.key === PUBLIC_REFRESH_SIGNAL) refresh();
     };
     window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
     window.addEventListener("storage", onStorage);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
       window.removeEventListener("storage", onStorage);
       document.removeEventListener("visibilitychange", onVisibility);
     };
@@ -443,11 +471,19 @@ export default function App() {
       <div className="public-boot">
         <div className="public-boot-card">
           <img
-            src={mediaUrl(settings.logoImage) || "/images/store-placeholder.svg"}
-            alt={settings.storeName || "Pizzaria"}
+            src={
+              brandingReady
+                ? mediaUrl(settings.logoImage) || "/images/store-placeholder.svg"
+                : "/images/store-placeholder.svg"
+            }
+            alt={brandingReady ? settings.storeName || "Pizzaria" : "Pizzaria"}
           />
           <span className="public-boot-spinner" />
-          <h1>Carregando {settings.storeName || "a pizzaria"}</h1>
+          <h1>
+            {brandingReady
+              ? `Carregando ${settings.storeName || "a pizzaria"}`
+              : "Carregando a pizzaria"}
+          </h1>
           <p>
             {publicError ||
               "Buscando cardápio, horários e informações atualizadas da loja..."}
@@ -476,6 +512,11 @@ export default function App() {
           }
           menuPath={digitalTableMode ? "/cardapio-digital" : "/cardapio"}
         />
+      )}
+      {publicError && (
+        <div className="public-data-notice" role="status">
+          {publicError}
+        </div>
       )}
       <Suspense
         fallback={

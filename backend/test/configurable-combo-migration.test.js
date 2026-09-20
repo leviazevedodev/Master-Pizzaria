@@ -33,10 +33,12 @@ test("regras comerciais e limites recebem constraints no banco", () => {
   assert.match(sql, /ComboSlotModifierRule_pricingRule_check/);
 });
 
-test("instalação nova cria o combo padrão como combo fixo nos dois formatos", () => {
+test("instalação nova mantém apenas o combo configurável saudável", () => {
   assert.match(seed, /isCombo:\s*Boolean\(product\.isCombo\)/);
-  assert.match(seed, /createdProductIds\.has\(defaultCombo\.id\)/);
-  assert.match(seed, /tx\.comboItem\.createMany/);
+  assert.doesNotMatch(seed, /const defaultCombo = bySlug\["combo-master"\]/);
+  assert.match(seed, /createdProductIds\.has\(choiceCombo\.id\)/);
   assert.match(seed, /tx\.comboSlot\.create/);
+  assert.match(seed, /type:\s*"CONFIGURABLE_PIZZA"/);
   assert.match(seed, /type:\s*"FIXED_PRODUCT"/);
+  assert.match(seed, /type:\s*"PRODUCT_CHOICE"/);
 });

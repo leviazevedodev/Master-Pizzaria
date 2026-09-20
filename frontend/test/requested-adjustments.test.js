@@ -59,6 +59,7 @@ test("cozinha oculta prontos e fullscreen ignora o tema claro", async () => {
   assert.match(kitchen, /Ocultar prontos/);
   assert.match(kitchen, /Mostrar prontos/);
   assert.match(kitchen, /master-pizza-kitchen-show-ready/);
+  assert.match(kitchen, /order\.status === "SCHEDULED"/);
   assert.match(
     operationsCss,
     /\.admin-shell:not\(\.admin-dark\) \.kitchen-page\.focus-screen/,
@@ -72,7 +73,7 @@ test("pedidos usam relógio e deixam de exibir alertas de atenção", async () =
   ]);
 
   assert.match(workspace, /kitchenCountdown/);
-  assert.match(workspace, /\["DELIVERED", "CANCELED"\]\.includes\(order\.status\)/);
+  assert.match(workspace, /\["SCHEDULED", "DELIVERED", "CANCELED"\]\.includes\(order\.status\)/);
   assert.doesNotMatch(workspace, /deadline-alert|attention-pulse/);
   assert.doesNotMatch(dashboard, /Em alerta de prazo|Prazo atrasado/);
 });
@@ -86,7 +87,9 @@ test("instalação PWA, Facebook e fila de entregadores ficam nos locais definid
   ]);
 
   assert.match(header, /beforeinstallprompt/);
-  assert.match(header, /Adicionar à tela inicial/);
+  assert.match(header, /Instalar \{storeName\}/);
+  assert.match(header, /Adicionar à Tela de Início/);
+  assert.match(header, /showIosInstall/);
   assert.match(footer, /facebookName/);
   assert.match(store, /Nome no Facebook/);
   assert.doesNotMatch(store, /Fila inteligente de entregadores/);

@@ -14,6 +14,7 @@ test("produção permite somente os recursos necessários do Card Payment Brick"
     assert.match(policy, /script-src[^;]*https:\/\/sdk\.mercadopago\.com/);
     assert.match(policy, /frame-src[^;]*https:\/\/\*\.mercadopago\.com/);
     assert.match(policy, /img-src[^;]*blob:/);
+    assert.match(policy, /manifest-src[^;]*blob:/);
     assert.doesNotMatch(policy, /script-src[^;]*'unsafe-eval'/);
     assert.doesNotMatch(policy, /script-src[^;]*blob:/);
   }

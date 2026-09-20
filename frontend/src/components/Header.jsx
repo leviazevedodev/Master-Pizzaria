@@ -5,7 +5,9 @@ import {
   Download,
   Menu,
   Phone,
+  Share2,
   ShoppingBag,
+  SquarePlus,
   UserRound,
   X,
 } from "lucide-react";
@@ -21,6 +23,7 @@ export default function Header({
 }) {
   const [open, setOpen] = useState(false);
   const [installPrompt, setInstallPrompt] = useState(null);
+  const [showIosInstall, setShowIosInstall] = useState(false);
   const [installed, setInstalled] = useState(() =>
     Boolean(
       window.matchMedia?.("(display-mode: standalone)")?.matches ||
@@ -44,7 +47,21 @@ export default function Header({
       : `${today.label}: ${today.openTime}–${today.closeTime}`
     : settings?.openingHours;
   const isOpen = Boolean(settings?.isOpen);
-  const storeName = settings?.storeName || "Pizzaria";
+  const storeName = String(settings?.storeName || "").trim() || "Pizzaria";
+  const storeLogo =
+    mediaUrl(settings?.logoImage) || "/images/store-placeholder.svg";
+  const isIos = useMemo(() => {
+    const agent = window.navigator.userAgent || "";
+    return (
+      /iphone|ipad|ipod/i.test(agent) ||
+      (window.navigator.platform === "MacIntel" &&
+        window.navigator.maxTouchPoints > 1)
+    );
+  }, []);
+  const showInstallAction =
+    settings?.pwaEnabled !== false &&
+    !installed &&
+    Boolean(isIos || installPrompt);
 
   useEffect(() => {
     const captureInstall = (event) => {
@@ -64,13 +81,11 @@ export default function Header({
   }, []);
 
   async function installApp() {
+    if (isIos) {
+      setShowIosInstall(true);
+      return;
+    }
     if (!installPrompt) {
-      const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
-      window.alert(
-        isIos
-          ? "No Safari, toque em Compartilhar e depois em ‘Adicionar à Tela de Início’."
-          : "Abra o menu do navegador e escolha ‘Instalar aplicativo’ ou ‘Adicionar à tela inicial’.",
-      );
       return;
     }
     try {
@@ -83,7 +98,9 @@ export default function Header({
   }
 
   return (
-    <header className="topbar">
+    <header
+      className={`topbar ${showInstallAction ? "has-install-action" : ""}`}
+    >
       <div className="container nav">
         <div className="brand-status-wrap">
           <Link
@@ -93,9 +110,7 @@ export default function Header({
             aria-label={`${storeName} - início`}
           >
             <img
-              src={
-                mediaUrl(settings?.logoImage) || "/images/store-placeholder.svg"
-              }
+              src={storeLogo}
               alt={storeName}
             />
           </Link>
@@ -132,17 +147,17 @@ export default function Header({
           </Link>
         </nav>
         <div className="nav-actions">
-          {settings?.pwaEnabled !== false && !installed && (
-            <button
-              type="button"
-              className="install-app-button"
-              onClick={installApp}
-              title={`Adicionar ${storeName} à tela inicial`}
-            >
-              <Download size={17} />
-              <span>Adicionar à tela inicial</span>
-            </button>
-          )}
+          {showInstallAction && (
+              <button
+                type="button"
+                className="install-app-button"
+                onClick={installApp}
+                title={`Instalar ${storeName}`}
+              >
+                <Download size={17} />
+                <span>Instalar {storeName}</span>
+              </button>
+            )}
           {String(settings?.phone || "").trim() && (
             <a
               className="phone-link"
@@ -184,6 +199,64 @@ export default function Header({
           </button>
         </div>
       </div>
+      {showIosInstall && (
+        <div
+          className="pwa-install-backdrop"
+          role="presentation"
+          onMouseDown={(event) =>
+            event.target === event.currentTarget && setShowIosInstall(false)
+          }
+        >
+          <section
+            className="pwa-install-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pwa-install-title"
+          >
+            <button
+              type="button"
+              className="pwa-install-close"
+              onClick={() => setShowIosInstall(false)}
+              aria-label="Fechar tutorial de instalação"
+            >
+              <X size={20} />
+            </button>
+            <img src={storeLogo} alt="" />
+            <span>Instalar aplicativo</span>
+            <h2 id="pwa-install-title">Instalar {storeName}</h2>
+            <p>
+              Adicione <strong>{storeName}</strong> à sua Tela de Início.
+            </p>
+            <ol>
+              <li>
+                <Share2 size={21} />
+                <span>
+                  Toque em <strong>Compartilhar</strong> no Safari.
+                </span>
+              </li>
+              <li>
+                <SquarePlus size={21} />
+                <span>
+                  Escolha <strong>Adicionar à Tela de Início</strong>.
+                </span>
+              </li>
+              <li>
+                <Download size={21} />
+                <span>
+                  Toque em <strong>Adicionar</strong>.
+                </span>
+              </li>
+            </ol>
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={() => setShowIosInstall(false)}
+            >
+              Entendi
+            </button>
+          </section>
+        </div>
+      )}
     </header>
   );
 }

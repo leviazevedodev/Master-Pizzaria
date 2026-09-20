@@ -92,6 +92,7 @@ function beep() {
 }
 
 function KitchenCountdown({ order, now, fallbackMinutes }) {
+  if (order.status === "SCHEDULED") return null;
   const timer = kitchenCountdown(order, now, fallbackMinutes);
   return (
     <div

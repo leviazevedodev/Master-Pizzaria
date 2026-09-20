@@ -117,18 +117,6 @@ const products = [
     image: "/images/products/brownie-master.webp",
   },
   {
-    name: "Combo Master",
-    slug: "combo-master",
-    description:
-      "Escolha os sabores da pizza e leve Guaraná 2L + Brownie Master.",
-    price: 74.8,
-    category: "combos",
-    isCombo: true,
-    badge: "Combo",
-    sortOrder: 11,
-    image: "/images/products/combo-calabresa-guarana-brownie.webp",
-  },
-  {
     name: "Combo Escolha Master",
     slug: "combo-escolha-master",
     description:
@@ -581,9 +569,8 @@ async function main() {
       savedProducts[index],
     ]),
   );
-  const defaultCombo = bySlug["combo-master"];
   const choiceCombo = bySlug["combo-escolha-master"];
-  for (const combo of [defaultCombo, choiceCombo]) {
+  for (const combo of [choiceCombo]) {
     if (combo && (!combo.isCombo || combo.categoryId !== categoryMap.combos))
       await prisma.product.update({
         where: { id: combo.id },
@@ -593,65 +580,6 @@ async function main() {
           subcategoryId: null,
         },
       });
-  }
-  if (createdProductIds.has(defaultCombo.id) || forceDefaults) {
-    const defaultComboItems = [
-      {
-        product: bySlug.calabresa,
-        sizeId: sizeMap.media.id,
-        quantity: 1,
-      },
-      { product: bySlug["guarana-2l"], sizeId: null, quantity: 1 },
-      { product: bySlug["brownie-master"], sizeId: null, quantity: 1 },
-    ];
-    await prisma.$transaction(async (tx) => {
-      if (forceDefaults) {
-        await tx.comboSlot.deleteMany({ where: { comboId: defaultCombo.id } });
-        await tx.comboItem.deleteMany({ where: { comboId: defaultCombo.id } });
-      }
-      await tx.comboItem.createMany({
-        data: defaultComboItems.map((entry, sortOrder) => ({
-          comboId: defaultCombo.id,
-          productId: entry.product.id,
-          sizeId: entry.sizeId,
-          quantity: entry.quantity,
-          sortOrder,
-        })),
-      });
-      await tx.comboSlot.create({
-        data: {
-          comboId: defaultCombo.id,
-          type: "CONFIGURABLE_PIZZA",
-          name: "Escolha sua pizza",
-          quantity: 1,
-          sortOrder: 0,
-          baseProductId: bySlug.calabresa.id,
-          sizeId: sizeMap.media.id,
-          flavorScope: "ALL",
-          maxFlavors: sizeMap.media.maxFlavors,
-          allowModifiers: true,
-          modifierPricingMode: "NORMAL",
-        },
-      });
-      for (const [sortOrder, entry] of defaultComboItems.slice(1).entries())
-        await tx.comboSlot.create({
-          data: {
-            comboId: defaultCombo.id,
-            type: "FIXED_PRODUCT",
-            name: entry.product.name,
-            quantity: entry.quantity,
-            sortOrder: sortOrder + 1,
-            products: {
-              create: {
-                productId: entry.product.id,
-                sizeId: entry.sizeId,
-                priceAdjustment: 0,
-                sortOrder: 0,
-              },
-            },
-          },
-        });
-    });
   }
   if (createdProductIds.has(choiceCombo.id) || forceDefaults) {
     await prisma.$transaction(async (tx) => {
@@ -712,22 +640,13 @@ async function main() {
   }
   const desiredPromotions = [
     {
-      productId: bySlug["combo-master"].id,
-      title: "Combo Master",
-      subtitle: "Pizza configurável + Guaraná 2L + Brownie Master.",
-      image: "/images/products/combo-calabresa-guarana-brownie.webp",
-      originalPrice: 74.8,
-      promoPrice: 59.9,
-      sortOrder: 1,
-    },
-    {
       productId: bySlug["frango-cremoso"].id,
       title: "Frango Cremoso em oferta",
       subtitle: "Uma das favoritas da casa com preço especial.",
       image: "/images/products/frango-cremoso.webp",
       originalPrice: 49.9,
       promoPrice: 42.9,
-      sortOrder: 2,
+      sortOrder: 1,
     },
     {
       productId: bySlug["sorvete"].id,
@@ -736,7 +655,7 @@ async function main() {
       image: "/images/products/sorvete.webp",
       originalPrice: 12.9,
       promoPrice: 9.9,
-      sortOrder: 3,
+      sortOrder: 2,
     },
   ];
   if (catalogWasEmpty || forceDefaults)
@@ -782,7 +701,8 @@ async function main() {
   }
 
   const defaultSettings = {
-    storeName: "Master Pizzaria",
+    storeName: "Pizzaria",
+    shortName: "Pizzaria",
     phone: "+5579988725557",
     whatsappPrimary: "+5579988725557",
     whatsappSecondary: "+5579988725557",

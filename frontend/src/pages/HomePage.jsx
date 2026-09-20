@@ -119,7 +119,7 @@ export default function HomePage({
                 Pedir agora <ArrowRight size={18} />
               </a>
               <a className="ghost-btn" href="#sobre">
-                Conhecer {settings.shortName || settings.storeName || "a loja"}
+                Conhecer {settings.storeName || "a loja"}
               </a>
             </div>
             <div className="hero-perks">
@@ -280,7 +280,7 @@ export default function HomePage({
           <div className="section-heading">
             <div>
               <span className="eyebrow dark">
-                Cardápio {settings.shortName || settings.storeName || "da loja"}
+                Cardápio {settings.storeName || "da loja"}
               </span>
               <h2>{settings.menuTitle || "Escolha o seu próximo favorito."}</h2>
               <p>{settings.menuSubtitle}</p>

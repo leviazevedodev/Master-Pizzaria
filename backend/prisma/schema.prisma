@@ -840,8 +840,8 @@ model WhatsAppOutbox {
 
 model BusinessSettings {
   id                           String              @id @default("default")
-  storeName                    String              @default("Master Pizzaria")
-  shortName                    String              @default("Master")
+  storeName                    String              @default("Pizzaria")
+  shortName                    String              @default("Pizzaria")
   slogan                       String              @default("Pizza artesanal, feita na hora")
   timezone                     String              @default("America/Maceio")
   phone                        String              @default("+5579988725557")

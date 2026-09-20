@@ -607,7 +607,7 @@ export default function StoreSettings({
               onChange={(e) =>
                 setSettings({ ...settings, facebookName: e.target.value })
               }
-              placeholder="Ex.: Master Pizzaria"
+              placeholder="Ex.: Pizzaria do João"
             />
           </label>
           <label>

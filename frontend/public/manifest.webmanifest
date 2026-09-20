@@ -1,1 +1,1 @@
-{"name":"Cardápio online","short_name":"Cardápio","start_url":"/","display":"standalone","background_color":"#f6f3ee","theme_color":"#e31b23","icons":[{"src":"/images/store-placeholder.svg","sizes":"any","type":"image/svg+xml"}]}
+{"name":"Pizzaria","short_name":"Pizzaria","start_url":"/","scope":"/","display":"standalone","background_color":"#111214","theme_color":"#e31b23","icons":[{"src":"/images/store-placeholder.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}]}

@@ -137,7 +137,7 @@ export default function AuthPage({
             alt={settings.storeName || "Pizzaria"}
           />
           <span className="eyebrow">
-            Conta {settings.shortName || settings.storeName || "da pizzaria"}
+            Conta {settings.storeName || "da pizzaria"}
           </span>
           <h1>Seu pedido fica ainda mais fácil na próxima vez.</h1>
           <p>

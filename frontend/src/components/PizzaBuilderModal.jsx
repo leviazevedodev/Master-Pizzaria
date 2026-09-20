@@ -308,9 +308,10 @@ function LegacyPizzaBuilderModal({
       notes.trim().toLowerCase(),
     ].join("::");
     const label = [
-      baseProduct.name,
+      chosen.length
+        ? chosen.map((flavor) => flavor.name).join(" / ")
+        : baseProduct.name,
       selectedSize?.name,
-      chosen.length > 1 ? chosen.map((f) => f.name).join(" / ") : null,
     ]
       .filter(Boolean)
       .join(" • ");

@@ -17675,6 +17675,126 @@ html.dark-mode textarea {
   cursor: pointer;
 }
 
+.pwa-install-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(5, 6, 7, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.pwa-install-dialog {
+  position: relative;
+  width: min(420px, 100%);
+  padding: 30px;
+  border: 1px solid #e6e0d7;
+  border-radius: 26px;
+  background: #fff;
+  color: #17191c;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.35);
+  text-align: center;
+}
+
+.pwa-install-dialog > img {
+  width: 82px;
+  height: 82px;
+  margin-bottom: 12px;
+  border-radius: 20px;
+  object-fit: contain;
+  background: #f7f4ef;
+}
+
+.pwa-install-dialog > span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pwa-install-dialog h2 {
+  margin: 7px 0 8px;
+  font-size: clamp(1.55rem, 5vw, 2rem);
+}
+
+.pwa-install-dialog p {
+  margin: 0;
+  color: #555b62;
+  line-height: 1.55;
+}
+
+.pwa-install-dialog ol {
+  display: grid;
+  gap: 10px;
+  margin: 22px 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: pwa-step;
+  text-align: left;
+}
+
+.pwa-install-dialog li {
+  counter-increment: pwa-step;
+  display: grid;
+  grid-template-columns: 30px 24px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #f7f4ef;
+}
+
+.pwa-install-dialog li::before {
+  content: counter(pwa-step);
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--brand-primary, var(--red));
+  color: #fff;
+  font-weight: 900;
+}
+
+.pwa-install-dialog li > svg {
+  color: var(--brand-primary, var(--red));
+}
+
+.pwa-install-dialog .primary-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.pwa-install-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: #f0ece6;
+  color: #25282c;
+  cursor: pointer;
+}
+
+.public-data-notice {
+  position: relative;
+  z-index: 20;
+  padding: 9px 16px;
+  background: #fff3cd;
+  color: #694f00;
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-align: center;
+}
+
 .reward-history-card {
   padding: 24px;
   margin-bottom: 24px;
@@ -17759,8 +17879,37 @@ html.dark-mode textarea {
 }
 
 @media (max-width: 980px) {
-  .install-app-button span {
+  .install-app-button {
+    max-width: 180px;
+    font-size: 0.74rem;
+    line-height: 1.1;
+  }
+}
+
+@media (max-width: 520px) {
+  .topbar.has-install-action .brand-status-wrap .brand img {
+    width: 72px;
+  }
+
+  .topbar.has-install-action .store-live-status,
+  .topbar.has-install-action .account-button {
     display: none;
+  }
+
+  .topbar.has-install-action .install-app-button {
+    max-width: 132px;
+    min-height: 38px;
+    padding: 0 9px;
+  }
+
+  .topbar.has-install-action .install-app-button span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pwa-install-dialog {
+    padding: 26px 18px 20px;
   }
 }
 

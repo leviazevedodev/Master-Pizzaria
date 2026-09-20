@@ -1,5 +1,13 @@
 import React, { useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Pizza, Plus, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  EyeOff,
+  Pizza,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { money } from "../lib/format";
 
 let slotSequence = 0;
@@ -280,9 +288,9 @@ export default function ComboSlotEditor({
             className="icon-action combo-slot-expand"
             onClick={() => setExpanded((value) => !value)}
             aria-expanded={expanded}
-            aria-label={expanded ? "Recolher item" : "Configurar item"}
+            aria-label={expanded ? "Ocultar configuração" : "Mostrar configuração"}
           >
-            <ChevronDown size={16} />
+            {expanded ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
           <button type="button" className="icon-action" disabled={!canMoveUp} onClick={() => onMove(-1)} aria-label="Mover item para cima">
             <ChevronUp size={15} />

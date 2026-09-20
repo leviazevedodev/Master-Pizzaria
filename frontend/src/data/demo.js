@@ -251,22 +251,6 @@ export const DEMO_PRODUCTS = [
     sortOrder: 7,
   },
   {
-    id: "demo-combo",
-    name: "Combo Master",
-    slug: "combo-master",
-    description:
-      "Escolha os sabores da pizza e leve Guaraná 2L + Brownie Master.",
-    price: 59.9,
-    basePrice: 74.8,
-    compareAtPrice: 74.8,
-    image: "/images/products/combo-calabresa-guarana-brownie.webp",
-    badge: "Combo",
-    isCombo: true,
-    category: DEMO_CATEGORIES[1],
-    categoryId: "cat-combos",
-    sortOrder: 11,
-  },
-  {
     id: "demo-combo-escolha",
     name: "Combo Escolha Master",
     slug: "combo-escolha-master",
@@ -339,13 +323,6 @@ const fixedSlot = (comboId, product, sortOrder) => ({
   flavorRules: [],
   modifierRules: [],
 });
-const demoMasterCombo = DEMO_PRODUCTS.find((product) => product.id === "demo-combo");
-demoMasterCombo.comboMode = "CONFIGURABLE";
-demoMasterCombo.comboSlots = [
-  configurablePizzaSlot(demoMasterCombo.id),
-  fixedSlot(demoMasterCombo.id, demoDrinks[0], 1),
-  fixedSlot(demoMasterCombo.id, demoBrownie, 2),
-];
 const demoChoiceCombo = DEMO_PRODUCTS.find((product) => product.id === "demo-combo-escolha");
 demoChoiceCombo.comboMode = "CONFIGURABLE";
 demoChoiceCombo.comboSlots = [
@@ -372,19 +349,6 @@ demoChoiceCombo.comboSlots = [
 export const DEMO_FLAVORS = flavorProducts;
 
 export const DEMO_PROMOTIONS = [
-  {
-    id: "promo-combo",
-    title: "Combo Master",
-    subtitle: "Pizza configurável + Guaraná 2L + Brownie Master.",
-    image: "/images/products/combo-calabresa-guarana-brownie.webp",
-    originalPrice: 74.8,
-    promoPrice: 59.9,
-    active: true,
-    activeNow: true,
-    sortOrder: 1,
-    productId: "demo-combo",
-    product: DEMO_PRODUCTS.find((p) => p.id === "demo-combo"),
-  },
   {
     id: "promo-frango",
     title: "Frango Cremoso em oferta",
@@ -414,7 +378,7 @@ export const DEMO_PROMOTIONS = [
 ];
 
 export const DEMO_SETTINGS = {
-  storeName: "Sua Pizzaria",
+  storeName: "Pizzaria",
   shortName: "Pizzaria",
   slogan: "Pizza artesanal, feita na hora",
   phone: "",

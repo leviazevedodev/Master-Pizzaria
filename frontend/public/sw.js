@@ -1,5 +1,5 @@
-const CACHE = "master-pizza-static-v7";
-const APP_SHELL = ["/", "/manifest.webmanifest"];
+const CACHE = "master-pizza-static-v8";
+const APP_SHELL = ["/"];
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
@@ -38,11 +38,22 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (
-    !["script", "style", "image", "font", "manifest"].includes(
-      request.destination,
-    )
-  )
+  if (request.destination === "image" || request.destination === "manifest") {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok && response.type === "basic")
+            caches
+              .open(CACHE)
+              .then((cache) => cache.put(request, response.clone()));
+          return response;
+        })
+        .catch(() => caches.match(request)),
+    );
+    return;
+  }
+
+  if (!["script", "style", "font"].includes(request.destination))
     return;
   event.respondWith(
     caches.match(request).then(
