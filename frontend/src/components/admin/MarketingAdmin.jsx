@@ -38,17 +38,23 @@ export default function MarketingAdmin({
   const headers = authHeaders(session.token);
   const [campaigns, setCampaigns] = useState([]);
   const [reviews, setReviews] = useState([]);
+  const [reviewStats, setReviewStats] = useState({
+    deliveredOrdersCount: 0,
+    pendingReviewsCount: 0,
+  });
   const [form, setForm] = useState(EMPTY_CAMPAIGN);
   const [saving, setSaving] = useState(false);
 
   async function load() {
     try {
-      const [campaignResponse, reviewResponse] = await Promise.all([
+      const [campaignResponse, reviewResponse, reviewStatsResponse] = await Promise.all([
         api.get("/admin/campaigns", headers),
         api.get("/admin/reviews", headers),
+        api.get("/admin/reviews/stats", headers),
       ]);
       setCampaigns(campaignResponse.data || []);
       setReviews(reviewResponse.data || []);
+      setReviewStats(reviewStatsResponse.data || {});
     } catch (error) {
       fail?.(error, "Não foi possível carregar marketing e avaliações.");
     }
@@ -64,6 +70,8 @@ export default function MarketingAdmin({
       const fields = [
         "publicReviewsEnabled",
         "reviewCollectionEnabled",
+        "deliveredOrdersCounterEnabled",
+        "homeCatalogLayout",
         "bestSellersEnabled",
         "newProductsEnabled",
         "newProductDays",
@@ -152,6 +160,18 @@ export default function MarketingAdmin({
     }
   }
 
+  async function removeReview(review) {
+    if (!window.confirm("Excluir esta avaliação definitivamente?")) return;
+    try {
+      await api.delete(`/admin/reviews/${review.id}`, headers);
+      notify?.("Avaliação excluída.");
+      await load();
+      await onChanged?.();
+    } catch (error) {
+      fail?.(error, "Não foi possível excluir a avaliação.");
+    }
+  }
+
   const set = (field, value) => setSettings((current) => ({ ...current, [field]: value }));
   const toggle = (field, label) => (
     <label className="switch-label">
@@ -169,10 +189,13 @@ export default function MarketingAdmin({
         <div className="marketing-toggle-grid">
           {toggle("reviewCollectionEnabled", "Coletar avaliações após a entrega")}
           {toggle("publicReviewsEnabled", "Exibir avaliações aprovadas no site")}
+          {toggle("deliveredOrdersCounterEnabled", "Exibir total de clientes satisfeitos")}
           {toggle("bestSellersEnabled", "Exibir os mais pedidos")}
           {toggle("newProductsEnabled", "Destacar novidades")}
         </div>
         <div className="settings-grid">
+          <label>Exibição do cardápio na página inicial<select value={settings.homeCatalogLayout || "GRID"} onChange={(event) => set("homeCatalogLayout", event.target.value)}><option value="GRID">Grade atual</option><option value="CAROUSEL">Trilhos horizontais com setas</option></select></label>
+          <div className="satisfied-customers-admin-card"><small>Contagem automática atual</small><b>{Number(reviewStats.deliveredOrdersCount || 0)} pedidos entregues</b><span>Prévia no site: “Mais de {Number(reviewStats.deliveredOrdersCount || 0)} clientes satisfeitos”</span><span>{Number(reviewStats.pendingReviewsCount || 0)} avaliações pendentes ou ocultas na retenção.</span></div>
           <label>Programa de recompensa<select value={settings.rewardsMode || "DISABLED"} onChange={(event) => set("rewardsMode", event.target.value)}><option value="DISABLED">Desativado</option><option value="POINTS">Pontos</option><option value="CASHBACK">Cashback</option></select></label>
           <label>Dias como novidade<input type="number" min="1" max="365" value={settings.newProductDays || 30} onChange={(event) => set("newProductDays", Number(event.target.value))} /></label>
           {settings.rewardsMode === "POINTS" && <><label>Pontos por real<input type="number" min="0" step="0.1" value={settings.loyaltyPointsPerReal || 0} onChange={(event) => set("loyaltyPointsPerReal", Number(event.target.value))} /></label><label>Pontos para resgate<input type="number" min="1" value={settings.loyaltyRewardPoints || 500} onChange={(event) => set("loyaltyRewardPoints", Number(event.target.value))} /></label><label>Valor do resgate<input type="number" min="0" step="0.01" value={settings.loyaltyRewardValue || 0} onChange={(event) => set("loyaltyRewardValue", Number(event.target.value))} /></label></>}
@@ -223,9 +246,9 @@ export default function MarketingAdmin({
       </form>
 
       <section className="admin-panel settings-form marketing-reviews-panel">
-        <div className="panel-title"><div><span>Moderação</span><h2>Avaliações de pedidos entregues</h2><p>Somente as aprovadas aparecem publicamente.</p></div><Star /></div>
+        <div className="panel-title"><div><span>Moderação</span><h2>Avaliações de pedidos entregues</h2><p>Somente as aprovadas aparecem publicamente. Pendentes ou ocultas são excluídas automaticamente após 30 dias; aprovadas permanecem até a exclusão manual.</p></div><Star /></div>
         <div className="review-admin-list">
-          {reviews.map((review) => <article key={review.id}><div><span>{review.deliveryRating ? `Entrega: ${"★".repeat(review.deliveryRating)}${"☆".repeat(5 - review.deliveryRating)} • ` : ""}Comida: {"★".repeat(review.foodRating || review.rating)}{"☆".repeat(5 - (review.foodRating || review.rating))}</span><b>{review.customerName || "Cliente"}</b><p>{review.comment || "Sem comentário."}</p><small>Status: {review.status}</small></div><div>{review.status !== "APPROVED" && <button className="primary-btn" onClick={() => moderate(review, "APPROVED")}><Check size={15} /> Aprovar</button>}{review.status !== "HIDDEN" && <button className="ghost-dark-btn" onClick={() => moderate(review, "HIDDEN")}><EyeOff size={15} /> Ocultar</button>}</div></article>)}
+          {reviews.map((review) => <article key={review.id}><div><span>{review.deliveryRating ? `Entrega: ${"★".repeat(review.deliveryRating)}${"☆".repeat(5 - review.deliveryRating)} • ` : ""}Comida: {"★".repeat(review.foodRating || review.rating)}{"☆".repeat(5 - (review.foodRating || review.rating))}</span><b>{review.customerName || "Cliente"}</b><p>{review.comment || "Sem comentário."}</p><small>Status: {review.status}</small></div><div>{review.status !== "APPROVED" && <button className="primary-btn" onClick={() => moderate(review, "APPROVED")}><Check size={15} /> Aprovar</button>}{review.status !== "HIDDEN" && <button className="ghost-dark-btn" onClick={() => moderate(review, "HIDDEN")}><EyeOff size={15} /> Ocultar</button>}<button className="subtle-danger" onClick={() => removeReview(review)} title="Excluir avaliação"><Trash2 size={15} /></button></div></article>)}
           {!reviews.length && <p className="empty-inline">Nenhuma avaliação recebida.</p>}
         </div>
       </section>

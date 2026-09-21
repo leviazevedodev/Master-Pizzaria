@@ -4,6 +4,7 @@ const DAY_MS = 24 * HOUR_MS;
 export const RETENTION_POLICY = Object.freeze({
   tableSessionsMs: 12 * HOUR_MS,
   abandonedSessionMs: 14 * DAY_MS,
+  unapprovedReviewsMs: 30 * DAY_MS,
   technicalLogsMs: 7 * DAY_MS,
   personalDataMonths: 6,
   financialDataYears: 5,
@@ -23,6 +24,9 @@ export function retentionCutoffs(now = new Date()) {
     tableSessions: new Date(current.getTime() - RETENTION_POLICY.tableSessionsMs),
     abandonedSessions: new Date(
       current.getTime() - RETENTION_POLICY.abandonedSessionMs,
+    ),
+    unapprovedReviews: new Date(
+      current.getTime() - RETENTION_POLICY.unapprovedReviewsMs,
     ),
     technicalLogs: new Date(
       current.getTime() - RETENTION_POLICY.technicalLogsMs,

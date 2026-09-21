@@ -38,6 +38,8 @@ test("separa configurações operacionais, de entrega e da loja", () => {
   assert.equal(
     permission("/settings", "PATCH", {
       publicReviewsEnabled: true,
+      deliveredOrdersCounterEnabled: true,
+      homeCatalogLayout: "CAROUSEL",
       rewardsMode: "POINTS",
     }),
     "promotions",
@@ -47,6 +49,7 @@ test("separa configurações operacionais, de entrega e da loja", () => {
 test("marketing e moderação usam a permissão de promoções", () => {
   assert.equal(permission("/campaigns"), "promotions");
   assert.equal(permission("/reviews/review-1", "PATCH"), "promotions");
+  assert.equal(permission("/reviews/review-1", "DELETE"), "promotions");
   assert.equal(
     permission("/flavors/flavor-1/promotion", "PATCH"),
     "promotions",

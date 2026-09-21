@@ -1594,8 +1594,8 @@ function Clock3Fallback() {
 
 const CARD_PAYMENT_CUSTOMIZATION = Object.freeze({
   paymentMethods: {
+    minInstallments: 1,
     maxInstallments: 12,
-    types: { included: ["credit_card", "debit_card"] },
   },
 });
 
@@ -1604,8 +1604,10 @@ function EmbeddedPaymentStep({ payment, payerEmail, onApproved, onRetry }) {
   const [paymentMessage, setPaymentMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [cardSdkReady, setCardSdkReady] = useState(false);
   const onApprovedRef = useRef(onApproved);
   const cardRequestRef = useRef(null);
+  const cardReadyRef = useRef(false);
   const order = payment.order;
   const isPix = payment.type === "PIX";
   const qrImage = payment.qrCodeBase64
@@ -1622,6 +1624,33 @@ function EmbeddedPaymentStep({ payment, payerEmail, onApproved, onRetry }) {
   useEffect(() => {
     onApprovedRef.current = onApproved;
   }, [onApproved]);
+
+  useEffect(() => {
+    if (isPix) return undefined;
+    const publicKey = String(payment.publicKey || "").trim();
+    cardReadyRef.current = false;
+    setCardSdkReady(false);
+    setPaymentError("");
+    if (!publicKey) {
+      setPaymentMessage("");
+      setPaymentError(
+        "A chave pública do pagamento não foi carregada. Volte e tente novamente.",
+      );
+      return undefined;
+    }
+    initMercadoPago(publicKey, { locale: "pt-BR" });
+    setCardSdkReady(true);
+    setPaymentMessage("Carregando o formulário seguro do cartão...");
+    const timeout = window.setTimeout(() => {
+      if (!cardReadyRef.current) {
+        setPaymentMessage("");
+        setPaymentError(
+          "O formulário do cartão demorou para carregar. Verifique a conexão e tente novamente.",
+        );
+      }
+    }, 15_000);
+    return () => window.clearTimeout(timeout);
+  }, [isPix, payment.publicKey, order.trackingCode]);
 
   async function copyPix() {
     try {
@@ -1692,9 +1721,18 @@ function EmbeddedPaymentStep({ payment, payerEmail, onApproved, onRetry }) {
     }
   }
 
-  const handleCardReady = useCallback(() => setPaymentMessage(""), []);
+  const handleCardReady = useCallback(() => {
+    cardReadyRef.current = true;
+    setPaymentError("");
+    setPaymentMessage("");
+  }, []);
   const handleCardError = useCallback((brickError) => {
-    const detail = brickError?.message || brickError?.cause;
+    cardReadyRef.current = false;
+    setPaymentMessage("");
+    const detail =
+      brickError?.message ||
+      brickError?.cause?.message ||
+      (typeof brickError?.cause === "string" ? brickError.cause : "");
     setPaymentError(
       detail
         ? `Não foi possível carregar o cartão: ${String(detail)}`
@@ -1766,14 +1804,19 @@ function EmbeddedPaymentStep({ payment, payerEmail, onApproved, onRetry }) {
                   </small>
                 </div>
               </div>
-              <CardPayment
-                key={`${order.trackingCode}-${payment.amount}`}
-                initialization={cardInitialization}
-                customization={CARD_PAYMENT_CUSTOMIZATION}
-                onSubmit={submitCard}
-                onReady={handleCardReady}
-                onError={handleCardError}
-              />
+              {cardSdkReady ? (
+                <CardPayment
+                  key={`${order.trackingCode}-${payment.amount}-${payment.publicKey}`}
+                  initialization={cardInitialization}
+                  customization={CARD_PAYMENT_CUSTOMIZATION}
+                  locale="pt-BR"
+                  onSubmit={submitCard}
+                  onReady={handleCardReady}
+                  onError={handleCardError}
+                />
+              ) : (
+                <div className="card-brick-loading" aria-hidden="true" />
+              )}
             </div>
           )}
 

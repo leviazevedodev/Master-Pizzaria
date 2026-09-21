@@ -878,6 +878,7 @@ model BusinessSettings {
   menuTitle                    String              @default("Escolha o seu próximo favorito.")
   menuSubtitle                 String              @default("Sabores clássicos e especiais, preparados quando você pede.")
   homeProductLimit             Int                 @default(8)
+  homeCatalogLayout            String              @default("GRID")
   deliveryEnabled              Boolean             @default(true)
   pickupEnabled                Boolean             @default(true)
   schedulingEnabled            Boolean             @default(true)
@@ -935,6 +936,7 @@ model BusinessSettings {
   footerText                   String              @default("Pizza artesanal com pedido simples, acompanhamento e atendimento próximo.")
   publicReviewsEnabled         Boolean             @default(false)
   reviewCollectionEnabled      Boolean             @default(true)
+  deliveredOrdersCounterEnabled Boolean            @default(true)
   bestSellersEnabled           Boolean             @default(true)
   newProductsEnabled           Boolean             @default(true)
   newProductDays               Int                 @default(30)
@@ -975,7 +977,7 @@ model Coupon {
 
 model Review {
   id             String   @id @default(cuid())
-  orderId        String   @unique
+  orderId        String?  @unique
   customerName   String?
   rating         Int
   foodRating     Int?
@@ -986,7 +988,7 @@ model Review {
   hiddenAt       DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
-  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order          Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
   @@index([status, createdAt])

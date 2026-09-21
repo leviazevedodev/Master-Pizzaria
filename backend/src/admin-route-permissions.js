@@ -23,6 +23,8 @@ const DELIVERY_SETTING_FIELDS = new Set([
 const MARKETING_SETTING_FIELDS = new Set([
   "publicReviewsEnabled",
   "reviewCollectionEnabled",
+  "deliveredOrdersCounterEnabled",
+  "homeCatalogLayout",
   "bestSellersEnabled",
   "newProductsEnabled",
   "newProductDays",

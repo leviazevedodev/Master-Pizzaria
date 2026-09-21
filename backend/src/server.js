@@ -515,6 +515,7 @@ const serializePublicSettings = (settings) => {
     "menuTitle",
     "menuSubtitle",
     "homeProductLimit",
+    "homeCatalogLayout",
     "deliveryEnabled",
     "pickupEnabled",
     "schedulingEnabled",
@@ -548,6 +549,7 @@ const serializePublicSettings = (settings) => {
     "pwaEnabled",
     "publicReviewsEnabled",
     "reviewCollectionEnabled",
+    "deliveredOrdersCounterEnabled",
     "bestSellersEnabled",
     "newProductsEnabled",
     "newProductDays",
@@ -10485,6 +10487,14 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
       });
     data.homeProductLimit = v;
   }
+  if (req.body?.homeCatalogLayout !== undefined) {
+    const value = String(req.body.homeCatalogLayout || "").toUpperCase();
+    if (!["GRID", "CAROUSEL"].includes(value))
+      return res.status(400).json({
+        message: "Escolha uma exibição válida para o cardápio da página inicial.",
+      });
+    data.homeCatalogLayout = value;
+  }
   if (req.body?.customPaymentMethods !== undefined) {
     if (!Array.isArray(req.body.customPaymentMethods))
       return res.status(400).json({
@@ -10530,6 +10540,7 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
     "digitalMenuEnabled",
     "publicReviewsEnabled",
     "reviewCollectionEnabled",
+    "deliveredOrdersCounterEnabled",
     "bestSellersEnabled",
     "newProductsEnabled",
     "initialSetupCompleted",
@@ -11189,7 +11200,14 @@ const optionalDate = (value) => {
 app.get("/api/highlights", optionalAuth, async (req, res) => {
   const settings = await getSettings();
   const now = new Date();
-  const [campaignRows, reviewRows, reviewAggregate, bestSellerRows, newRows] =
+  const [
+    campaignRows,
+    reviewRows,
+    reviewAggregate,
+    bestSellerRows,
+    newRows,
+    deliveredOrdersCount,
+  ] =
     await Promise.all([
       prisma.campaign.findMany({
         where: {
@@ -11212,6 +11230,8 @@ app.get("/api/highlights", optionalAuth, async (req, res) => {
       settings.publicReviewsEnabled
         ? prisma.review.aggregate({
             where: { status: "APPROVED" },
+            // rating sempre recebe a nota da comida nas avaliações novas e
+            // preserva a média das avaliações legadas sem foodRating.
             _avg: { rating: true },
             _count: { _all: true },
           })
@@ -11233,6 +11253,9 @@ app.get("/api/highlights", optionalAuth, async (req, res) => {
             take: 100,
           })
         : [],
+      settings.deliveredOrdersCounterEnabled
+        ? prisma.order.count({ where: { status: "DELIVERED" } })
+        : 0,
     ]);
   const bestIds = bestSellerRows.map((row) => row.productId);
   const bestProducts = bestIds.length
@@ -11248,9 +11271,7 @@ app.get("/api/highlights", optionalAuth, async (req, res) => {
       ? reviewRows.map((row) => ({
           id: row.id,
           customerName: row.customerName || "Cliente",
-          rating: row.rating,
-          foodRating: row.foodRating,
-          deliveryRating: row.deliveryRating,
+          foodRating: row.foodRating || row.rating,
           comment: row.comment,
           createdAt: row.createdAt,
         }))
@@ -11268,6 +11289,7 @@ app.get("/api/highlights", optionalAuth, async (req, res) => {
     newProductIds: newRows
       .filter((product) => productIsNew(product, settings, now))
       .map((product) => product.id),
+    deliveredOrdersCount: Number(deliveredOrdersCount || 0),
   });
 });
 
@@ -11305,6 +11327,13 @@ app.get("/api/me/rewards", auth, async (req, res) => {
   });
 });
 
+app.get("/api/admin/reviews/stats", auth, admin, async (req, res) => {
+  const [deliveredOrdersCount, pendingReviewsCount] = await Promise.all([
+    prisma.order.count({ where: { status: "DELIVERED" } }),
+    prisma.review.count({ where: { status: { not: "APPROVED" } } }),
+  ]);
+  res.json({ deliveredOrdersCount, pendingReviewsCount });
+});
 app.get("/api/admin/reviews", auth, admin, async (req, res) => {
   const status = cleanText(req.query?.status, 20).toUpperCase();
   const rows = await prisma.review.findMany({
@@ -11317,7 +11346,14 @@ app.get("/api/admin/reviews", auth, admin, async (req, res) => {
     orderBy: { createdAt: "desc" },
     take: 250,
   });
-  res.json(rows.map((row) => ({ ...row, order: { ...row.order, total: Number(row.order.total) } })));
+  res.json(
+    rows.map((row) => ({
+      ...row,
+      order: row.order
+        ? { ...row.order, total: Number(row.order.total) }
+        : null,
+    })),
+  );
 });
 app.patch("/api/admin/reviews/:id", auth, admin, async (req, res) => {
   const status = cleanText(req.body?.status, 20).toUpperCase();
@@ -11334,6 +11370,13 @@ app.patch("/api/admin/reviews/:id", auth, admin, async (req, res) => {
   });
   await writeAdminLog(req, "MODERATE_REVIEW", "Review", row.id, { status });
   res.json(row);
+});
+app.delete("/api/admin/reviews/:id", auth, admin, async (req, res) => {
+  const row = await prisma.review.delete({ where: { id: req.params.id } });
+  await writeAdminLog(req, "DELETE_REVIEW", "Review", row.id, {
+    status: row.status,
+  });
+  res.status(204).end();
 });
 
 app.get("/api/admin/campaigns", auth, admin, async (req, res) => {
@@ -11742,7 +11785,9 @@ async function deleteExpiredOrders(cutoff) {
     if (!rows.length) break;
     const ids = rows.map((row) => row.id);
     await prisma.$transaction([
-      prisma.review.deleteMany({ where: { orderId: { in: ids } } }),
+      prisma.review.deleteMany({
+        where: { orderId: { in: ids }, status: { not: "APPROVED" } },
+      }),
       prisma.whatsAppOutbox.deleteMany({ where: { orderId: { in: ids } } }),
       prisma.inventoryMovement.deleteMany({ where: { orderId: { in: ids } } }),
       prisma.order.deleteMany({ where: { id: { in: ids } } }),
@@ -11758,6 +11803,28 @@ async function runDataRetention(now = new Date()) {
   const summary = {
     tableSessions: await archiveExpiredTableSessions(cutoffs.tableSessions),
   };
+  summary.unapprovedReviews = (
+    await prisma.review.deleteMany({
+      where: {
+        OR: [
+          {
+            status: "PENDING",
+            createdAt: { lt: cutoffs.unapprovedReviews },
+          },
+          {
+            status: "HIDDEN",
+            OR: [
+              { hiddenAt: { lt: cutoffs.unapprovedReviews } },
+              {
+                hiddenAt: null,
+                updatedAt: { lt: cutoffs.unapprovedReviews },
+              },
+            ],
+          },
+        ],
+      },
+    })
+  ).count;
   const orderPersonalFields = [
     "postalCode",
     "street",

@@ -15,5 +15,8 @@ test("Card Payment Brick mantém configuração e callbacks estáveis", async ()
   assert.match(source, /onApprovedRef\.current\?\.\(data\)/);
   assert.match(source, /Pagamento reiniciado pelo cliente/);
   assert.match(source, /onReady=\{handleCardReady\}/);
+  assert.match(source, /locale="pt-BR"/);
+  assert.match(source, /setCardSdkReady\(true\)/);
+  assert.doesNotMatch(source, /types:\s*\{\s*included:/);
   assert.doesNotMatch(source, /onReady=\{\(\) => setPaymentMessage/);
 });

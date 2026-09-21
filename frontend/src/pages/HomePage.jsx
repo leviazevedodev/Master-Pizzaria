@@ -2,6 +2,8 @@ import React, { useMemo, useState } from "react";
 import {
   ArrowRight,
   ChefHat,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   CreditCard,
   Flame,
@@ -22,6 +24,40 @@ import MotoIcon from "../components/MotoIcon";
 import Footer from "../components/Footer";
 import { mediaUrl } from "../lib/api";
 import { money } from "../lib/format";
+
+function HorizontalRail({ title, subtitle, className = "", children }) {
+  const trackRef = React.useRef(null);
+  const move = (direction) => {
+    const track = trackRef.current;
+    if (!track) return;
+    track.scrollBy({
+      left: direction * Math.max(280, track.clientWidth * 0.82),
+      behavior: "smooth",
+    });
+  };
+
+  return (
+    <section className="storefront-rail" aria-label={title}>
+      <div className="storefront-rail-heading">
+        <div>
+          <h3>{title}</h3>
+          {subtitle && <p>{subtitle}</p>}
+        </div>
+        <div className="storefront-rail-controls">
+          <button type="button" onClick={() => move(-1)} aria-label={`Voltar em ${title}`}>
+            <ChevronLeft size={19} />
+          </button>
+          <button type="button" onClick={() => move(1)} aria-label={`Avançar em ${title}`}>
+            <ChevronRight size={19} />
+          </button>
+        </div>
+      </div>
+      <div ref={trackRef} className={`storefront-rail-track ${className}`}>
+        {children}
+      </div>
+    </section>
+  );
+}
 
 export default function HomePage({
   products,
@@ -72,6 +108,30 @@ export default function HomePage({
     Math.max(4, Number(settings.homeProductLimit || 8)),
   );
   const visibleProducts = filtered.slice(0, homeLimit);
+  const carouselMode = settings.homeCatalogLayout === "CAROUSEL";
+  const carouselRails = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    const matchingProducts = products.filter((product) =>
+      !term ||
+      `${product.name} ${product.description || ""}`
+        .toLowerCase()
+        .includes(term),
+    );
+    return [
+      { id: "todos", name: "Todos", products: matchingProducts },
+      ...categories.map((item) => ({
+        id: item.id,
+        name: item.name,
+        slug: item.slug,
+        products: matchingProducts.filter(
+          (product) =>
+            product.categoryId === item.id ||
+            product.category?.id === item.id ||
+            product.category?.slug === item.slug,
+        ),
+      })),
+    ].filter((rail) => rail.products.length > 0);
+  }, [products, categories, search]);
   const heroProduct = products.find((item) => item.featured) || products[0];
   const heroImage =
     mediaUrl(settings.heroImage) || mediaUrl(heroProduct?.image);
@@ -101,6 +161,31 @@ export default function HomePage({
     setCategory(slug);
     setSubcategory("todos");
   }
+  const promotionCards = promotions.slice(0, 6).map((promo) => (
+    <article className="promotion-card" key={promo.id}>
+      <div className="promotion-image">
+        <img
+          src={mediaUrl(promo.image) || mediaUrl(promo.product?.image)}
+          alt={promo.title}
+        />
+        <span>
+          <Tag size={14} /> Oferta
+        </span>
+      </div>
+      <div className="promotion-content">
+        <small>{promo.product?.category?.name || "Promoção"}</small>
+        <h3>{promo.title}</h3>
+        {promo.subtitle && <p>{promo.subtitle}</p>}
+        <div className="promotion-price">
+          <del>{money(promo.originalPrice)}</del>
+          <strong>{money(promo.promoPrice)}</strong>
+        </div>
+        <button className="primary-btn" onClick={() => onAdd(promo.product)}>
+          Adicionar <ArrowRight size={16} />
+        </button>
+      </div>
+    </article>
+  ));
 
   return (
     <>
@@ -233,38 +318,17 @@ export default function HomePage({
                 <p>{settings.promotionsSubtitle}</p>
               </div>
             </div>
-            <div className="promotion-grid">
-              {promotions.slice(0, 6).map((promo) => (
-                <article className="promotion-card" key={promo.id}>
-                  <div className="promotion-image">
-                    <img
-                      src={
-                        mediaUrl(promo.image) || mediaUrl(promo.product?.image)
-                      }
-                      alt={promo.title}
-                    />
-                    <span>
-                      <Tag size={14} /> Oferta
-                    </span>
-                  </div>
-                  <div className="promotion-content">
-                    <small>{promo.product?.category?.name || "Promoção"}</small>
-                    <h3>{promo.title}</h3>
-                    {promo.subtitle && <p>{promo.subtitle}</p>}
-                    <div className="promotion-price">
-                      <del>{money(promo.originalPrice)}</del>
-                      <strong>{money(promo.promoPrice)}</strong>
-                    </div>
-                    <button
-                      className="primary-btn"
-                      onClick={() => onAdd(promo.product)}
-                    >
-                      Adicionar <ArrowRight size={16} />
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
+            {carouselMode ? (
+              <HorizontalRail
+                title="Ofertas"
+                subtitle="Arraste para o lado ou use as setas para navegar."
+                className="promotion-horizontal-track"
+              >
+                {promotionCards}
+              </HorizontalRail>
+            ) : (
+              <div className="promotion-grid">{promotionCards}</div>
+            )}
             {promotions.length > 6 && (
               <div className="view-all-wrap">
                 <p>Mostrando 6 de {promotions.length} ofertas.</p>
@@ -294,71 +358,102 @@ export default function HomePage({
               />
             </label>
           </div>
-          <div className="category-tabs">
-            <button
-              className={category === "todos" ? "active" : ""}
-              onClick={() => chooseCategory("todos")}
-            >
-              Todos
-            </button>
-            {categories.map((item) => (
-              <button
-                key={item.id}
-                className={category === item.slug ? "active" : ""}
-                onClick={() => chooseCategory(item.slug)}
-              >
-                {item.name}
-              </button>
-            ))}
-          </div>
-          {activeSubs.length > 0 && (
-            <div className="subcategory-tabs">
-              <button
-                className={subcategory === "todos" ? "active" : ""}
-                onClick={() => setSubcategory("todos")}
-              >
-                Todos da categoria
-              </button>
-              {activeSubs.map((item) => (
-                <button
-                  key={item.id}
-                  className={subcategory === item.slug ? "active" : ""}
-                  onClick={() => setSubcategory(item.slug)}
+          {carouselMode ? (
+            <div className="storefront-catalog-rails">
+              {carouselRails.map((rail) => (
+                <HorizontalRail
+                  key={rail.id}
+                  title={rail.name}
+                  subtitle={`${rail.products.length} ${rail.products.length === 1 ? "produto" : "produtos"}`}
+                  className="product-horizontal-track"
                 >
-                  {item.name}
-                </button>
+                  {rail.products.map((product) => (
+                    <ProductCard
+                      key={`${rail.id}-${product.id}`}
+                      product={product}
+                      onAdd={onAdd}
+                      isNew={(highlights.newProductIds || []).includes(product.id)}
+                    />
+                  ))}
+                </HorizontalRail>
               ))}
+              {carouselRails.length === 0 && (
+                <div className="empty-state">
+                  <Search />
+                  <h3>Nada por aqui</h3>
+                  <p>Tente buscar outro nome ou ingrediente.</p>
+                </div>
+              )}
             </div>
-          )}
-          <div className="product-grid">
-            {visibleProducts.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                onAdd={onAdd}
-                isNew={(highlights.newProductIds || []).includes(product.id)}
-              />
-            ))}
-          </div>
-          {filtered.length === 0 && (
-            <div className="empty-state">
-              <Search />
-              <h3>Nada por aqui</h3>
-              <p>Tente outro nome ou selecione outra categoria.</p>
-            </div>
-          )}
-          {filtered.length > homeLimit && (
-            <div className="view-all-wrap">
-              <p>
-                Mostrando {homeLimit} de {filtered.length} produtos.
-              </p>
-              <Link
-                className="ghost-dark-btn view-all-btn"
-                to={`/cardapio${category !== "todos" ? `?categoria=${category}` : ""}`}
-              >
-                Ver mais produtos do catálogo <ArrowRight size={17} />
-              </Link>
-            </div>
+          ) : (
+            <>
+              <div className="category-tabs">
+                <button
+                  className={category === "todos" ? "active" : ""}
+                  onClick={() => chooseCategory("todos")}
+                >
+                  Todos
+                </button>
+                {categories.map((item) => (
+                  <button
+                    key={item.id}
+                    className={category === item.slug ? "active" : ""}
+                    onClick={() => chooseCategory(item.slug)}
+                  >
+                    {item.name}
+                  </button>
+                ))}
+              </div>
+              {activeSubs.length > 0 && (
+                <div className="subcategory-tabs">
+                  <button
+                    className={subcategory === "todos" ? "active" : ""}
+                    onClick={() => setSubcategory("todos")}
+                  >
+                    Todos da categoria
+                  </button>
+                  {activeSubs.map((item) => (
+                    <button
+                      key={item.id}
+                      className={subcategory === item.slug ? "active" : ""}
+                      onClick={() => setSubcategory(item.slug)}
+                    >
+                      {item.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="product-grid">
+                {visibleProducts.map((product) => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    onAdd={onAdd}
+                    isNew={(highlights.newProductIds || []).includes(product.id)}
+                  />
+                ))}
+              </div>
+              {filtered.length === 0 && (
+                <div className="empty-state">
+                  <Search />
+                  <h3>Nada por aqui</h3>
+                  <p>Tente outro nome ou selecione outra categoria.</p>
+                </div>
+              )}
+              {filtered.length > homeLimit && (
+                <div className="view-all-wrap">
+                  <p>
+                    Mostrando {homeLimit} de {filtered.length} produtos.
+                  </p>
+                  <Link
+                    className="ghost-dark-btn view-all-btn"
+                    to={`/cardapio${category !== "todos" ? `?categoria=${category}` : ""}`}
+                  >
+                    Ver mais produtos do catálogo <ArrowRight size={17} />
+                  </Link>
+                </div>
+              )}
+            </>
           )}
         </section>
 
@@ -384,36 +479,33 @@ export default function HomePage({
           </section>
         )}
 
-        {(highlights.reviews || []).length > 0 && (
+        {settings.publicReviewsEnabled &&
+          ((highlights.reviews || []).length > 0 ||
+            settings.deliveredOrdersCounterEnabled) && (
           <section className="reviews-public-section container">
+            {settings.deliveredOrdersCounterEnabled && (
+              <div className="satisfied-customers-public">
+                Mais de {Number(highlights.deliveredOrdersCount || 0)} clientes satisfeitos
+              </div>
+            )}
             <div className="section-heading">
               <div>
-                <span className="eyebrow dark">Avaliações verificadas</span>
-                <h2>Quem pediu conta como foi.</h2>
-                <p>
-                  Média da comida: {Number(highlights.reviewSummary?.average || 0).toFixed(1)} de 5 em {highlights.reviewSummary?.count || 0} avaliações.
-                </p>
+                <h2>Avaliações</h2>
+                {(highlights.reviews || []).length > 0 && (
+                  <p>
+                    Média: {Number(highlights.reviewSummary?.average || 0).toFixed(1)} de 5 em {highlights.reviewSummary?.count || 0} avaliações.
+                  </p>
+                )}
               </div>
             </div>
             <div className="reviews-public-grid">
               {highlights.reviews.map((review) => (
                 <article key={review.id}>
                   <div className="review-category-scores">
-                    {review.deliveryRating && (
-                      <div className="review-score-row">
-                        <small>Entrega</small>
-                        <span className="review-stars" aria-label={`Entrega: ${review.deliveryRating} de 5 estrelas`}>
-                          {Array.from({ length: 5 }, (_, index) => (
-                            <Star key={index} size={17} fill={index < review.deliveryRating ? "currentColor" : "none"} />
-                          ))}
-                        </span>
-                      </div>
-                    )}
                     <div className="review-score-row">
-                      <small>Comida</small>
-                      <span className="review-stars" aria-label={`Comida: ${review.foodRating || review.rating} de 5 estrelas`}>
+                      <span className="review-stars" aria-label={`Avaliação: ${review.foodRating} de 5 estrelas`}>
                         {Array.from({ length: 5 }, (_, index) => (
-                          <Star key={index} size={17} fill={index < (review.foodRating || review.rating) ? "currentColor" : "none"} />
+                          <Star key={index} size={17} fill={index < review.foodRating ? "currentColor" : "none"} />
                         ))}
                       </span>
                     </div>

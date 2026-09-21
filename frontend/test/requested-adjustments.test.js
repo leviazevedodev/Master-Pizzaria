@@ -31,7 +31,7 @@ test("marketing reúne cupons e promoções também aceita sabores", async () =>
   );
 });
 
-test("avaliação usa estrelas, entrega antes de comida e respeita pedido avaliado", async () => {
+test("avaliação usa estrelas, coleta entrega antes de comida e publica só comida", async () => {
   const [tracking, home] = await Promise.all([
     source("../src/pages/TrackOrderPage.jsx"),
     source("../src/pages/HomePage.jsx"),
@@ -45,9 +45,24 @@ test("avaliação usa estrelas, entrega antes de comida e respeita pedido avalia
   assert.match(tracking, /!order\.reviewed/);
   assert.match(tracking, /foodRating:\s*0/);
   assert.match(tracking, /deliveryRating:\s*0/);
-  assert.match(home, /Média da comida/);
-  assert.match(home, /Entrega:/);
-  assert.match(home, /Comida:/);
+  assert.match(home, /<h2>Avaliações<\/h2>/);
+  assert.match(home, /review\.foodRating/);
+  assert.doesNotMatch(home, /review\.deliveryRating/);
+});
+
+test("vitrine oferece trilhos dinâmicos e contador de entregues", async () => {
+  const [home, marketing] = await Promise.all([
+    source("../src/pages/HomePage.jsx"),
+    source("../src/components/admin/MarketingAdmin.jsx"),
+  ]);
+
+  assert.match(home, /homeCatalogLayout === "CAROUSEL"/);
+  assert.match(home, /categories\.map/);
+  assert.match(home, /scrollBy/);
+  assert.match(home, /Mais de \{Number\(highlights\.deliveredOrdersCount/);
+  assert.match(marketing, /deliveredOrdersCounterEnabled/);
+  assert.match(marketing, /Trilhos horizontais com setas/);
+  assert.match(marketing, /Excluir esta avaliação definitivamente/);
 });
 
 test("cozinha oculta prontos e fullscreen ignora o tema claro", async () => {
