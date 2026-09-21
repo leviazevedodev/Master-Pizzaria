@@ -65,6 +65,32 @@ test("vitrine oferece trilhos dinâmicos e contador de entregues", async () => {
   assert.match(marketing, /Excluir esta avaliação definitivamente/);
 });
 
+test("trilhos usam setas laterais condicionais e incluem favoritos e avaliações", async () => {
+  const [home, styles, app, toast, store] = await Promise.all([
+    source("../src/pages/HomePage.jsx"),
+    source("../src/styles.css"),
+    source("../src/App.jsx"),
+    source("../src/components/Toast.jsx"),
+    source("../src/components/admin/StoreSettings.jsx"),
+  ]);
+
+  assert.match(home, /track\.scrollWidth > track\.clientWidth/);
+  assert.match(home, /hasOverflow &&/);
+  assert.match(home, /left: direction > 0 \? 0 : maximum/);
+  assert.match(home, /className="storefront-rail-arrow previous"/);
+  assert.match(home, /className="storefront-rail-arrow next"/);
+  assert.match(home, /title="Favoritos dos clientes"[\s\S]*product-horizontal-track/);
+  assert.match(home, /title="Avaliações"[\s\S]*review-horizontal-track/);
+  assert.match(home, /<b>Facebook<\/b>[\s\S]*facebookName/);
+  assert.match(styles, /\.storefront-rail-arrow\.previous[\s\S]*left: 9px/);
+  assert.match(styles, /\.storefront-rail-arrow\.next[\s\S]*right: 9px/);
+  assert.match(toast, /avoid-floating-bag/);
+  assert.match(app, /avoidFloatingBag=\{/);
+  assert.match(styles, /\.toast\.avoid-floating-bag/);
+  assert.match(store, /"Ícone do aplicativo"/);
+  assert.match(store, /maxWidth: 512/);
+});
+
 test("cozinha oculta prontos e fullscreen ignora o tema claro", async () => {
   const [kitchen, operationsCss] = await Promise.all([
     source("../src/components/admin/advanced/KitchenAdmin.jsx"),

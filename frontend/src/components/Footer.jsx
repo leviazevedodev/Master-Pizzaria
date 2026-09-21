@@ -75,13 +75,23 @@ export default function Footer({ settings }) {
               rel="noreferrer"
             >
               <Instagram size={14} />
-              {instagramName || "Instagram"}
+              <span className="footer-social-copy">
+                <b>Instagram</b>
+                {instagramName && <small>{instagramName}</small>}
+              </span>
             </a>
           )}
-          {facebookUrl && (
-            <a href={facebookUrl} target="_blank" rel="noreferrer">
+          {(facebookUrl || facebookName) && (
+            <a
+              href={facebookUrl || undefined}
+              target={facebookUrl ? "_blank" : undefined}
+              rel={facebookUrl ? "noreferrer" : undefined}
+            >
               <Facebook size={14} />
-              {facebookName || "Facebook"}
+              <span className="footer-social-copy">
+                <b>Facebook</b>
+                {facebookName && <small>{facebookName}</small>}
+              </span>
             </a>
           )}
         </div>

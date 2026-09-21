@@ -25,11 +25,49 @@ import Footer from "../components/Footer";
 import { mediaUrl } from "../lib/api";
 import { money } from "../lib/format";
 
-function HorizontalRail({ title, subtitle, className = "", children }) {
+function HorizontalRail({
+  title,
+  subtitle,
+  className = "",
+  hideHeading = false,
+  children,
+}) {
   const trackRef = React.useRef(null);
+  const [hasOverflow, setHasOverflow] = useState(false);
+  const childCount = React.Children.count(children);
+  const measureOverflow = React.useCallback(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    setHasOverflow(track.scrollWidth > track.clientWidth + 2);
+  }, []);
+
+  React.useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return undefined;
+    const frame = window.requestAnimationFrame(measureOverflow);
+    const observer = new ResizeObserver(measureOverflow);
+    observer.observe(track);
+    track.addEventListener("load", measureOverflow, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      track.removeEventListener("load", measureOverflow, true);
+    };
+  }, [childCount, measureOverflow]);
+
   const move = (direction) => {
     const track = trackRef.current;
     if (!track) return;
+    const maximum = Math.max(0, track.scrollWidth - track.clientWidth);
+    const atStart = track.scrollLeft <= 2;
+    const atEnd = track.scrollLeft >= maximum - 2;
+    if ((direction > 0 && atEnd) || (direction < 0 && atStart)) {
+      track.scrollTo({
+        left: direction > 0 ? 0 : maximum,
+        behavior: "smooth",
+      });
+      return;
+    }
     track.scrollBy({
       left: direction * Math.max(280, track.clientWidth * 0.82),
       behavior: "smooth",
@@ -38,22 +76,38 @@ function HorizontalRail({ title, subtitle, className = "", children }) {
 
   return (
     <section className="storefront-rail" aria-label={title}>
-      <div className="storefront-rail-heading">
-        <div>
-          <h3>{title}</h3>
-          {subtitle && <p>{subtitle}</p>}
+      {!hideHeading && (
+        <div className="storefront-rail-heading">
+          <div>
+            <h3>{title}</h3>
+            {subtitle && <p>{subtitle}</p>}
+          </div>
         </div>
-        <div className="storefront-rail-controls">
-          <button type="button" onClick={() => move(-1)} aria-label={`Voltar em ${title}`}>
-            <ChevronLeft size={19} />
-          </button>
-          <button type="button" onClick={() => move(1)} aria-label={`Avançar em ${title}`}>
-            <ChevronRight size={19} />
-          </button>
+      )}
+      <div className="storefront-rail-track-wrap">
+        {hasOverflow && (
+          <>
+            <button
+              className="storefront-rail-arrow previous"
+              type="button"
+              onClick={() => move(-1)}
+              aria-label={`Voltar em ${title}`}
+            >
+              <ChevronLeft size={19} />
+            </button>
+            <button
+              className="storefront-rail-arrow next"
+              type="button"
+              onClick={() => move(1)}
+              aria-label={`Avançar em ${title}`}
+            >
+              <ChevronRight size={19} />
+            </button>
+          </>
+        )}
+        <div ref={trackRef} className={`storefront-rail-track ${className}`}>
+          {children}
         </div>
-      </div>
-      <div ref={trackRef} className={`storefront-rail-track ${className}`}>
-        {children}
       </div>
     </section>
   );
@@ -149,7 +203,12 @@ export default function HomePage({
   const facebookUrl = String(settings.facebookUrl || "").trim();
   const facebookName = String(settings.facebookName || "").trim();
   const hasSocial = Boolean(
-    whatsapp1 || whatsapp2 || instagramUrl || instagramName || facebookUrl,
+    whatsapp1 ||
+      whatsapp2 ||
+      instagramUrl ||
+      instagramName ||
+      facebookUrl ||
+      facebookName,
   );
   const payments = [
     settings.cashPaymentEnabled && "Dinheiro",
@@ -466,7 +525,11 @@ export default function HomePage({
                 <p>Produtos que mais chegaram às mesas e casas da região.</p>
               </div>
             </div>
-            <div className="product-grid">
+            <HorizontalRail
+              title="Favoritos dos clientes"
+              className="product-horizontal-track"
+              hideHeading
+            >
               {highlights.bestSellers.slice(0, 4).map((product) => (
                 <ProductCard
                   key={product.id}
@@ -475,7 +538,7 @@ export default function HomePage({
                   isNew={(highlights.newProductIds || []).includes(product.id)}
                 />
               ))}
-            </div>
+            </HorizontalRail>
           </section>
         )}
 
@@ -498,23 +561,29 @@ export default function HomePage({
                 )}
               </div>
             </div>
-            <div className="reviews-public-grid">
-              {highlights.reviews.map((review) => (
-                <article key={review.id}>
-                  <div className="review-category-scores">
-                    <div className="review-score-row">
-                      <span className="review-stars" aria-label={`Avaliação: ${review.foodRating} de 5 estrelas`}>
-                        {Array.from({ length: 5 }, (_, index) => (
-                          <Star key={index} size={17} fill={index < review.foodRating ? "currentColor" : "none"} />
-                        ))}
-                      </span>
+            {(highlights.reviews || []).length > 0 && (
+              <HorizontalRail
+                title="Avaliações"
+                className="review-horizontal-track"
+                hideHeading
+              >
+                {highlights.reviews.map((review) => (
+                  <article key={review.id}>
+                    <div className="review-category-scores">
+                      <div className="review-score-row">
+                        <span className="review-stars" aria-label={`Avaliação: ${review.foodRating} de 5 estrelas`}>
+                          {Array.from({ length: 5 }, (_, index) => (
+                            <Star key={index} size={17} fill={index < review.foodRating ? "currentColor" : "none"} />
+                          ))}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  {review.comment && <p>“{review.comment}”</p>}
-                  <b>{review.customerName || "Cliente"}</b>
-                </article>
-              ))}
-            </div>
+                    {review.comment && <p>“{review.comment}”</p>}
+                    <b>{review.customerName || "Cliente"}</b>
+                  </article>
+                ))}
+              </HorizontalRail>
+            )}
           </section>
         )}
 
@@ -647,7 +716,8 @@ export default function HomePage({
                         target="_blank"
                         rel="noreferrer"
                       >
-                        <MessageCircle /> WhatsApp
+                        <MessageCircle />
+                        <span><b>WhatsApp</b></span>
                       </a>
                     )}
                     {whatsapp2 && (
@@ -656,7 +726,8 @@ export default function HomePage({
                         target="_blank"
                         rel="noreferrer"
                       >
-                        <MessageCircle /> WhatsApp 2
+                        <MessageCircle />
+                        <span><b>WhatsApp 2</b></span>
                       </a>
                     )}
                     {(instagramUrl || instagramName) && (
@@ -668,13 +739,24 @@ export default function HomePage({
                         target="_blank"
                         rel="noreferrer"
                       >
-                        <Instagram /> Instagram{" "}
-                        {instagramName && <span>{instagramName}</span>}
+                        <Instagram />
+                        <span>
+                          <b>Instagram</b>
+                          {instagramName && <small>{instagramName}</small>}
+                        </span>
                       </a>
                     )}
-                    {facebookUrl && (
-                      <a href={facebookUrl} target="_blank" rel="noreferrer">
-                        <Facebook /> {facebookName || "Facebook"}
+                    {(facebookUrl || facebookName) && (
+                      <a
+                        href={facebookUrl || undefined}
+                        target={facebookUrl ? "_blank" : undefined}
+                        rel={facebookUrl ? "noreferrer" : undefined}
+                      >
+                        <Facebook />
+                        <span>
+                          <b>Facebook</b>
+                          {facebookName && <small>{facebookName}</small>}
+                        </span>
                       </a>
                     )}
                   </div>

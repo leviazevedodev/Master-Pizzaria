@@ -84,7 +84,8 @@ test("manifest acompanha nome, cores e ícone da marca", () => {
   assert.equal(manifest.name, "Pizzaria Azul");
   assert.equal(manifest.short_name, "Pizzaria Azul");
   assert.equal(manifest.theme_color, "#0055aa");
-  assert.equal(manifest.icons[0].src, "https://azul.example/logo.png");
+  assert.equal(manifest.icons[0].src, "https://azul.example/icon.png");
+  assert.equal(manifest.icons[0].sizes, "512x512");
   assert.equal(manifest.icons[0].purpose, "any");
 });
 

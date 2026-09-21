@@ -37,10 +37,11 @@ export function buildBranding(settings = {}, context = {}) {
   const requestedCanonical = safePublicUrl(settings.seoCanonicalUrl);
   const canonical = requestedCanonical || safePublicUrl(pathname, origin);
   const logo = safePublicUrl(context.logoUrl || settings.logoImage, origin);
-  const favicon = safePublicUrl(
-    context.faviconUrl || settings.faviconImage || logo,
+  const appIcon = safePublicUrl(
+    context.faviconUrl || settings.faviconImage,
     origin,
   );
+  const favicon = appIcon || logo;
   const shareImage = safePublicUrl(
     context.shareImageUrl || settings.shareImage || logo,
     origin,
@@ -87,6 +88,7 @@ export function buildBranding(settings = {}, context = {}) {
     description,
     canonical,
     logo,
+    appIcon,
     favicon,
     shareImage,
     primaryColor,
@@ -179,7 +181,7 @@ export function applyBrandingToDocument(documentRef, branding) {
     ensureLink(documentRef, "icon").setAttribute("href", branding.favicon);
   ensureLink(documentRef, "apple-touch-icon").setAttribute(
     "href",
-    branding.logo || "/images/store-placeholder.svg",
+    branding.appIcon || branding.logo || "/images/store-placeholder.svg",
   );
   if (branding.canonical)
     ensureLink(documentRef, "canonical").setAttribute(
@@ -204,7 +206,7 @@ export function applyBrandingToDocument(documentRef, branding) {
 
 export function buildDynamicManifest(branding) {
   const icon =
-    branding.logo || "/images/store-placeholder.svg";
+    branding.appIcon || branding.logo || "/images/store-placeholder.svg";
   return {
     id: "/",
     name: branding.storeName,
@@ -217,7 +219,7 @@ export function buildDynamicManifest(branding) {
     icons: [
       {
         src: icon,
-        sizes: "any",
+        sizes: branding.appIcon ? "512x512" : "any",
         purpose: "any",
       },
     ],

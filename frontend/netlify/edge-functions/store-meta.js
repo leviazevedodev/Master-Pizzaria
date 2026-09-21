@@ -89,6 +89,11 @@ function storeIdentity(settings, apiUrl, siteUrl) {
     clean(settings?.heroSubtitle, `Cardápio online de ${storeName}.`),
   );
   const logo = publicMediaUrl(settings?.logoImage, apiUrl, siteUrl);
+  const squareIcon = publicMediaUrl(
+    settings?.faviconImage,
+    apiUrl,
+    siteUrl,
+  );
   const shareImage =
     publicMediaUrl(settings?.shareImage, apiUrl, siteUrl) || logo;
   return {
@@ -97,7 +102,11 @@ function storeIdentity(settings, apiUrl, siteUrl) {
     socialTitle: storeName,
     description,
     logo,
-    icon: logo || safeHttpUrl("/images/store-placeholder.svg", siteUrl),
+    icon:
+      squareIcon ||
+      logo ||
+      safeHttpUrl("/images/store-placeholder.svg", siteUrl),
+    hasSquareIcon: Boolean(squareIcon),
     shareImage,
     primaryColor: safeColor(settings?.primaryColor, "#e31b23"),
     secondaryColor: safeColor(settings?.secondaryColor, "#111214"),
@@ -118,7 +127,7 @@ function manifestResponse(identity) {
       icons: [
         {
           src: identity.icon,
-          sizes: "any",
+          sizes: identity.hasSquareIcon ? "512x512" : "any",
           purpose: "any",
         },
       ],

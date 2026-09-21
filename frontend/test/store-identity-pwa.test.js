@@ -37,7 +37,7 @@ test("manifesto e compartilhamento recebem a identidade configurada no servidor"
   assert.match(edge, /VITE_API_URL/);
   assert.match(edge, /WhatsApp/);
   assert.match(edge, /short_name: identity\.storeName/);
-  assert.match(edge, /icon: logo \|\| safeHttpUrl/);
+  assert.match(edge, /squareIcon\s*\|\|\s*logo\s*\|\|\s*safeHttpUrl/);
   assert.match(edge, /og:title/);
   assert.doesNotMatch(html, /<title>Cardápio online<\/title>/);
   assert.match(serviceWorker, /request\.destination === "image"/);
@@ -55,6 +55,7 @@ test("endpoint de manifesto usa nome e logo atuais da API", async () => {
         storeName: "Pizzaria Ex",
         seoTitle: "Cardápio Online",
         logoImage: "/api/uploads/logo-ex.png",
+        faviconImage: "/api/uploads/logo-ex-quadrada.webp",
         primaryColor: "#112233",
       }),
       { status: 200, headers: { "content-type": "application/json" } },
@@ -68,7 +69,8 @@ test("endpoint de manifesto usa nome e logo atuais da API", async () => {
     const manifest = await response.json();
     assert.equal(manifest.name, "Pizzaria Ex");
     assert.equal(manifest.short_name, "Pizzaria Ex");
-    assert.equal(manifest.icons[0].src, "https://api.example/api/uploads/logo-ex.png");
+    assert.equal(manifest.icons[0].src, "https://api.example/api/uploads/logo-ex-quadrada.webp");
+    assert.equal(manifest.icons[0].sizes, "512x512");
 
     const preview = await storeMeta(
       new Request("https://pizzaria.example/", {

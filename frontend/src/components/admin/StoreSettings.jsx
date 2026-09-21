@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Activity, Clock3, CreditCard, ImagePlus, MapPin, PackagePlus, Palette, Plus, Route, Save, Settings, ShieldCheck, Trash2, Upload, Users } from "lucide-react";
 import { mediaUrl } from "../../lib/api";
 
@@ -43,6 +43,7 @@ export default function StoreSettings({
   uploadError,
 }) {
   const [newPaymentName, setNewPaymentName] = useState("");
+  const pwaIconBackfill = useRef("");
   const standardTablePayments = [
     ["CASH", "Dinheiro"],
     ["PIX", "Pix"],
@@ -100,18 +101,29 @@ export default function StoreSettings({
           : [...methods, value],
       };
     });
-  const uploadSetting = (key, file) => {
+  const uploadSetting = async (key, file) => {
+    if (!file) return;
     const config = {
       logoImage: [
         "Logo do site",
         { aspect: 16 / 7, fit: "contain", padding: 0.04 },
       ],
-      faviconImage: ["Ícone do site", 1],
+      faviconImage: [
+        "Ícone do site",
+        {
+          aspect: 1,
+          fit: "contain",
+          padding: 0.12,
+          maxWidth: 512,
+          maxHeight: 512,
+          outputType: "image/png",
+        },
+      ],
       shareImage: ["Imagem de compartilhamento", 40 / 21],
       heroImage: ["Imagem principal da home", 1 / 1.05],
       aboutImage: ["Imagem da seção Sobre", 4 / 3],
     }[key] || ["Imagem do site", 1];
-    uploadMedia(
+    await uploadMedia(
       file,
       async (url) => {
         const savedUrl = saveUploadedSetting
@@ -122,12 +134,68 @@ export default function StoreSettings({
       config[0],
       config[1],
     );
+    if (key === "logoImage") {
+      const iconConfig = {
+        aspect: 1,
+        fit: "contain",
+        padding: 0.12,
+        maxWidth: 512,
+        maxHeight: 512,
+        outputType: "image/png",
+      };
+      await uploadMedia(
+        file,
+        async (url) => {
+          const savedUrl = saveUploadedSetting
+            ? await saveUploadedSetting("faviconImage", url)
+            : url;
+          setSettings((current) => ({
+            ...current,
+            faviconImage: savedUrl,
+          }));
+        },
+        "Ícone do aplicativo",
+        iconConfig,
+      );
+    }
   };
   const selectSettingFile = (key, event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     uploadSetting(key, file);
   };
+  useEffect(() => {
+    const logoUrl = mediaUrl(settings.logoImage);
+    if (
+      !logoUrl ||
+      settings.faviconImage ||
+      pwaIconBackfill.current === logoUrl
+    )
+      return undefined;
+    pwaIconBackfill.current = logoUrl;
+    let cancelled = false;
+    const createMissingIcon = async () => {
+      try {
+        const response = await fetch(logoUrl);
+        if (!response.ok) return;
+        const blob = await response.blob();
+        if (cancelled || !blob.type.startsWith("image/")) return;
+        const extension =
+          blob.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+        await uploadSetting(
+          "faviconImage",
+          new File([blob], `logo-pwa.${extension}`, { type: blob.type }),
+        );
+      } catch {
+        // Uma URL externa pode bloquear leitura por CORS; o próximo upload da logo
+        // ainda cria o ícone quadrado automaticamente.
+      }
+    };
+    createMissingIcon();
+    return () => {
+      cancelled = true;
+    };
+  }, [settings.logoImage, settings.faviconImage]);
   function useDeviceLocation() {
     if (!navigator.geolocation)
       return window.alert("Este navegador não disponibiliza localização.");

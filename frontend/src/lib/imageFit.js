@@ -22,6 +22,7 @@ export async function fitImageFile(
     maxHeight = 1200,
     padding = 0,
     fit = "cover",
+    outputType = "image/webp",
   } = {},
 ) {
   if (!file) return null;
@@ -58,7 +59,11 @@ export async function fitImageFile(
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(img, x, y, drawW, drawH);
   const blob = await new Promise((resolve) =>
-    canvas.toBlob(resolve, "image/webp", 0.86),
+    canvas.toBlob(
+      resolve,
+      outputType,
+      outputType === "image/png" ? undefined : 0.86,
+    ),
   );
   if (!blob) throw new Error("Não foi possível ajustar a imagem.");
   const base =
@@ -66,5 +71,6 @@ export async function fitImageFile(
       .replace(/\.[^.]+$/g, "")
       .replace(/[^a-z0-9_-]+/gi, "-")
       .slice(0, 60) || "imagem";
-  return new File([blob], `${base}-ajustada.webp`, { type: "image/webp" });
+  const extension = outputType === "image/png" ? "png" : "webp";
+  return new File([blob], `${base}-ajustada.${extension}`, { type: outputType });
 }

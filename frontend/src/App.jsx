@@ -137,7 +137,7 @@ export default function App() {
       origin: window.location.origin,
       pathname: location.pathname,
       logoUrl: mediaUrl(settings.logoImage),
-      faviconUrl: mediaUrl(settings.faviconImage || settings.logoImage),
+      faviconUrl: mediaUrl(settings.faviconImage),
       shareImageUrl: mediaUrl(settings.shareImage || settings.logoImage),
     });
     applyBrandingToDocument(document, branding);
@@ -701,7 +701,15 @@ export default function App() {
           />
         )}
       {!hidePublicHeader && !digitalTableMode && <FloatingOrdersButton />}
-      <Toast message={toast} onClose={() => setToast("")} />
+      <Toast
+        message={toast}
+        onClose={() => setToast("")}
+        avoidFloatingBag={
+          cartCount > 0 &&
+          !hidePublicHeader &&
+          !["/carrinho", "/checkout"].includes(location.pathname)
+        }
+      />
     </div>
   );
 }
