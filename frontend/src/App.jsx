@@ -111,7 +111,9 @@ export default function App() {
   const [storeHours, setStoreHours] = useState(
     initialPublic?.storeHours || DEMO_STORE_HOURS,
   );
-  const [settings, setSettings] = useState(DEMO_SETTINGS);
+  const [settings, setSettings] = useState(
+    initialPublic?.settings || DEMO_SETTINGS,
+  );
   const [highlights, setHighlights] = useState(
     initialPublic?.highlights || {
       campaigns: [],
@@ -121,8 +123,8 @@ export default function App() {
       newProductIds: [],
     },
   );
-  const [publicReady, setPublicReady] = useState(false);
-  const [brandingReady, setBrandingReady] = useState(false);
+  const [publicReady, setPublicReady] = useState(Boolean(initialPublic));
+  const [brandingReady, setBrandingReady] = useState(Boolean(initialPublic));
   const [publicError, setPublicError] = useState("");
   const [session, setSessionState] = useState(null);
   const [sessionReady, setSessionReady] = useState(false);
@@ -130,6 +132,8 @@ export default function App() {
   const [builderProduct, setBuilderProduct] = useState(null);
   const toastTimer = useRef(null);
   const publicLoadInProgress = useRef(false);
+  const publicSnapshotRef = useRef(initialPublic);
+  const lastPublicRefreshAt = useRef(0);
 
   useEffect(() => {
     if (!brandingReady) return undefined;
@@ -220,37 +224,52 @@ export default function App() {
 
   const loadPublicData = useCallback(async () => {
     if (publicLoadInProgress.current) return false;
+    if (
+      publicSnapshotRef.current &&
+      Date.now() - lastPublicRefreshAt.current < 10_000
+    )
+      return true;
     publicLoadInProgress.current = true;
+    lastPublicRefreshAt.current = Date.now();
     try {
-      // O pool gratuito do Neon é pequeno. Carregar em etapas evita que uma
-      // única tela ocupe todas as conexões e derrube a autenticação do painel.
-      const [settingsRes, hoursRes] = await Promise.all([
-        api.get("/settings"),
-        api.get("/store-hours"),
-      ]);
-      const currentSettings = settingsRes.data || DEMO_SETTINGS;
-      setSettings(currentSettings);
-      setStoreHours(hoursRes.data || []);
-      setBrandingReady(true);
-      if (initialPublic) setPublicReady(true);
-      setPublicError("");
-      const [categoriesRes, subsRes] = await Promise.all([
-        api.get("/categories"),
-        api.get("/subcategories"),
-      ]);
-      const productsRes = await api.get("/products");
-      const [promotionsRes, highlightsRes] = await Promise.all([
-        api.get("/promotions"),
-        api.get("/highlights", authHeaders(session?.token)),
-      ]);
+      let publicData;
+      try {
+        ({ data: publicData } = await api.get("/public/bootstrap"));
+      } catch (error) {
+        if (error.response?.status !== 404) throw error;
+        // Compatibilidade durante uma publicação em que o frontend novo
+        // fique disponível alguns instantes antes do backend.
+        const [settingsRes, hoursRes] = await Promise.all([
+          api.get("/settings"),
+          api.get("/store-hours"),
+        ]);
+        const [categoriesRes, subsRes] = await Promise.all([
+          api.get("/categories"),
+          api.get("/subcategories"),
+        ]);
+        const productsRes = await api.get("/products");
+        const [promotionsRes, highlightsRes] = await Promise.all([
+          api.get("/promotions"),
+          api.get("/highlights"),
+        ]);
+        publicData = {
+          products: productsRes.data,
+          categories: categoriesRes.data,
+          subcategories: subsRes.data,
+          promotions: promotionsRes.data,
+          settings: settingsRes.data,
+          storeHours: hoursRes.data,
+          highlights: highlightsRes.data,
+        };
+      }
       const snapshot = {
-        products: productsRes.data || [],
-        categories: categoriesRes.data || [],
-        subcategories: subsRes.data || [],
-        promotions: promotionsRes.data || [],
-        settings: currentSettings,
-        storeHours: hoursRes.data || [],
-        highlights: highlightsRes.data || {},
+        products: publicData?.products || [],
+        categories: publicData?.categories || [],
+        subcategories: publicData?.subcategories || [],
+        promotions: publicData?.promotions || [],
+        settings: publicData?.settings || DEMO_SETTINGS,
+        storeHours: publicData?.storeHours || [],
+        highlights: publicData?.highlights || {},
         savedAt: Date.now(),
       };
       setProducts(snapshot.products);
@@ -260,22 +279,20 @@ export default function App() {
       setSettings(snapshot.settings);
       setStoreHours(snapshot.storeHours);
       setHighlights(snapshot.highlights);
+      publicSnapshotRef.current = snapshot;
       writePublicCache(snapshot);
       setPublicError("");
+      setBrandingReady(true);
       setPublicReady(true);
       return true;
     } catch {
-      if (initialPublic && window.navigator.onLine === false) {
-        setProducts(initialPublic.products);
-        setCategories(initialPublic.categories);
-        setSubcategories(initialPublic.subcategories);
-        setPromotions(initialPublic.promotions);
-        setSettings(initialPublic.settings);
-        setStoreHours(initialPublic.storeHours);
-        setHighlights(initialPublic.highlights || {});
+      const cached = publicSnapshotRef.current;
+      if (cached) {
         setBrandingReady(true);
         setPublicReady(true);
-        setPublicError("Sem internet. Exibindo a última versão salva neste aparelho.");
+        setPublicError(
+          "Atualização temporariamente indisponível. Exibindo a última versão salva.",
+        );
       } else {
         setPublicError("Ainda estamos conectando ao sistema da loja.");
       }
@@ -283,7 +300,7 @@ export default function App() {
     } finally {
       publicLoadInProgress.current = false;
     }
-  }, [initialPublic, session?.token]);
+  }, []);
 
   useEffect(() => {
     if (!hidePublicHeader) loadPublicData();
@@ -448,6 +465,7 @@ export default function App() {
     [cart],
   );
   const handleCatalogChanged = useCallback(async () => {
+    lastPublicRefreshAt.current = 0;
     await loadPublicData();
     try {
       localStorage.setItem(PUBLIC_REFRESH_SIGNAL, String(Date.now()));
@@ -466,7 +484,15 @@ export default function App() {
     onAdd: handleAddProduct,
   };
 
-  if (!sessionReady || (!hidePublicHeader && !publicReady))
+  const sessionSensitivePath = [
+    "/minha-conta",
+    "/seus-pedidos",
+    "/gestao",
+  ].includes(location.pathname);
+  if (
+    (sessionSensitivePath && !sessionReady) ||
+    (!hidePublicHeader && !publicReady)
+  )
     return (
       <div className="public-boot">
         <div className="public-boot-card">

@@ -1,4 +1,4 @@
-const CACHE = "master-pizza-static-v8";
+const CACHE = "master-pizza-static-v9";
 const APP_SHELL = ["/"];
 
 self.addEventListener("install", (event) => {
@@ -34,7 +34,20 @@ self.addEventListener("fetch", (event) => {
     return;
 
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request).catch(() => caches.match("/")));
+    event.respondWith(
+      Promise.race([
+        fetch(request).then((response) => {
+          if (response.ok)
+            caches
+              .open(CACHE)
+              .then((cache) => cache.put("/", response.clone()));
+          return response;
+        }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("navigation-timeout")), 3000),
+        ),
+      ]).catch(() => caches.match("/")),
+    );
     return;
   }
 

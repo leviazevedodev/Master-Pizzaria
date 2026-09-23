@@ -3193,10 +3193,15 @@ app.get("/api/flavors", async (req, res) => {
   });
   res.json(rows.map(serializePublicFlavor));
 });
-app.get("/api/products", async (req, res) => {
-  const category = cleanText(req.query.category, 60);
-  const subcategory = cleanText(req.query.subcategory, 60);
-  const search = cleanText(req.query.search, 80);
+async function loadPublicProducts({
+  category = "",
+  subcategory = "",
+  search = "",
+  settings: providedSettings = null,
+} = {}) {
+  const settingsPromise = providedSettings
+    ? Promise.resolve(providedSettings)
+    : getSettings();
   const [products, flavorProducts, settings] = await Promise.all([
     prisma.product.findMany({
       where: {
@@ -3228,7 +3233,7 @@ app.get("/api/products", async (req, res) => {
       include: productInclude,
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     }),
-    getSettings(),
+    settingsPromise,
   ]);
   const now = new Date();
   const timezone = settings.timezone || "America/Maceio";
@@ -3237,19 +3242,27 @@ app.get("/api/products", async (req, res) => {
       isProductAvailableAt(product, now, timezone) &&
       comboIsAvailableAt(product, now, timezone),
   );
-  res.json(
-    products
-      .filter(
-        (product) =>
-          isProductAvailableAt(product, now, timezone) &&
-          comboIsAvailableAt(product, now, timezone),
-      )
-      .map((product) =>
-        attachProductFlavorOptions(
-          serializePublicProduct(product),
-          activeFlavorProducts,
-        ),
+  return products
+    .filter(
+      (product) =>
+        isProductAvailableAt(product, now, timezone) &&
+        comboIsAvailableAt(product, now, timezone),
+    )
+    .map((product) =>
+      attachProductFlavorOptions(
+        serializePublicProduct(product),
+        activeFlavorProducts,
       ),
+    );
+}
+
+app.get("/api/products", async (req, res) => {
+  res.json(
+    await loadPublicProducts({
+      category: cleanText(req.query.category, 60),
+      subcategory: cleanText(req.query.subcategory, 60),
+      search: cleanText(req.query.search, 80),
+    }),
   );
 });
 
@@ -3313,8 +3326,13 @@ app.post("/api/combos/:id/quote", trackingRateLimit, async (req, res) => {
   }
 });
 
-app.get("/api/promotions", async (req, res) => {
-  const now = new Date();
+async function loadPublicPromotions({
+  settings: providedSettings = null,
+  now = new Date(),
+} = {}) {
+  const settingsPromise = providedSettings
+    ? Promise.resolve(providedSettings)
+    : getSettings();
   const [rows, flavorProducts, settings] = await Promise.all([
     prisma.promotion.findMany({
       where: {
@@ -3343,27 +3361,29 @@ app.get("/api/promotions", async (req, res) => {
       include: productInclude,
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     }),
-    getSettings(),
+    settingsPromise,
   ]);
   const timezone = settings.timezone || "America/Maceio";
   const activeFlavorProducts = flavorProducts.filter((product) =>
     isProductAvailableAt(product, now, timezone),
   );
-  res.json(
-    rows
-      .filter(
-        (row) =>
-          isProductAvailableAt(row.product, now, timezone) &&
-          comboIsAvailableAt(row.product, now, timezone),
-      )
-      .map((row) => ({
-        ...serializePublicPromotion(row),
-        product: attachProductFlavorOptions(
-          serializePublicProduct(row.product),
-          activeFlavorProducts,
-        ),
-      })),
-  );
+  return rows
+    .filter(
+      (row) =>
+        isProductAvailableAt(row.product, now, timezone) &&
+        comboIsAvailableAt(row.product, now, timezone),
+    )
+    .map((row) => ({
+      ...serializePublicPromotion(row),
+      product: attachProductFlavorOptions(
+        serializePublicProduct(row.product),
+        activeFlavorProducts,
+      ),
+    }));
+}
+
+app.get("/api/promotions", async (req, res) => {
+  res.json(await loadPublicPromotions());
 });
 
 app.get("/api/address/cep/:cep", geoRateLimit, async (req, res) => {
@@ -5724,6 +5744,14 @@ app.get(
     });
   },
 );
+
+app.use("/api/admin", (req, res, next) => {
+  if (req.method !== "GET" && req.method !== "HEAD")
+    res.on("finish", () => {
+      if (res.statusCode < 400) publicBootstrapCache.clear();
+    });
+  next();
+});
 
 app.use("/api/admin", auth, admin, adminRateLimit, (req, res, next) => {
   const needed = permissionNeededForAdminRequest(req);
@@ -11197,9 +11225,13 @@ const optionalDate = (value) => {
   return Number.isNaN(date.getTime()) ? undefined : date;
 };
 
-app.get("/api/highlights", optionalAuth, async (req, res) => {
-  const settings = await getSettings();
-  const now = new Date();
+async function loadPublicHighlights({
+  settings: providedSettings = null,
+  availableProducts = null,
+  now = new Date(),
+} = {}) {
+  const settings = providedSettings || (await getSettings());
+  const productsAreSerialized = Array.isArray(availableProducts);
   const [
     campaignRows,
     reviewRows,
@@ -11246,26 +11278,30 @@ app.get("/api/highlights", optionalAuth, async (req, res) => {
           })
         : [],
       settings.newProductsEnabled
-        ? prisma.product.findMany({
-            where: { available: true, deletedAt: null },
-            select: { id: true, isNew: true, createdAt: true },
-            orderBy: { createdAt: "desc" },
-            take: 100,
-          })
+        ? productsAreSerialized
+          ? availableProducts
+          : prisma.product.findMany({
+              where: { available: true, deletedAt: null },
+              select: { id: true, isNew: true, createdAt: true },
+              orderBy: { createdAt: "desc" },
+              take: 100,
+            })
         : [],
       settings.deliveredOrdersCounterEnabled
         ? prisma.order.count({ where: { status: "DELIVERED" } })
         : 0,
     ]);
   const bestIds = bestSellerRows.map((row) => row.productId);
-  const bestProducts = bestIds.length
-    ? await prisma.product.findMany({
-        where: { id: { in: bestIds }, available: true, deletedAt: null },
-        include: productInclude,
-      })
-    : [];
+  const bestProducts = productsAreSerialized
+    ? availableProducts.filter((product) => bestIds.includes(product.id))
+    : bestIds.length
+      ? await prisma.product.findMany({
+          where: { id: { in: bestIds }, available: true, deletedAt: null },
+          include: productInclude,
+        })
+      : [];
   const productById = new Map(bestProducts.map((product) => [product.id, product]));
-  res.json({
+  return {
     campaigns: campaignRows.filter((row) => campaignIsActive(row, now)).map(serializeCampaign),
     reviews: settings.publicReviewsEnabled
       ? reviewRows.map((row) => ({
@@ -11285,12 +11321,85 @@ app.get("/api/highlights", optionalAuth, async (req, res) => {
     bestSellers: bestIds
       .map((id) => productById.get(id))
       .filter(Boolean)
-      .map(serializePublicProduct),
+      .map((product) =>
+        productsAreSerialized ? product : serializePublicProduct(product),
+      ),
     newProductIds: newRows
       .filter((product) => productIsNew(product, settings, now))
       .map((product) => product.id),
     deliveredOrdersCount: Number(deliveredOrdersCount || 0),
+  };
+}
+
+app.get("/api/highlights", optionalAuth, async (req, res) => {
+  res.json(await loadPublicHighlights());
+});
+
+const publicBootstrapCache = createAsyncTtlCache({
+  ttlMs: 10_000,
+  maxEntries: 1,
+});
+
+async function loadPublicBootstrap() {
+  let settings = await getSettings();
+  settings = await autoCloseStoreIfNeeded(settings);
+  const [storeHours, categories, subcategories] = await Promise.all([
+    ensureStoreHours(),
+    prisma.category.findMany({
+      where: { active: true },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    }),
+    prisma.subcategory.findMany({
+      where: { active: true },
+      include: { category: true },
+      orderBy: [
+        { category: { sortOrder: "asc" } },
+        { sortOrder: "asc" },
+        { name: "asc" },
+      ],
+    }),
+  ]);
+  const products = await loadPublicProducts({ settings });
+  const promotions = products
+    .filter((product) => product.promotion)
+    .sort(
+      (a, b) =>
+        Number(a.promotion.sortOrder || 0) -
+        Number(b.promotion.sortOrder || 0),
+    )
+    .slice(0, 12)
+    .map((product) => ({ ...product.promotion, product }));
+  const highlights = await loadPublicHighlights({
+    settings,
+    availableProducts: products,
   });
+  return {
+    products,
+    categories,
+    subcategories,
+    promotions,
+    settings: serializePublicSettings(settings),
+    storeHours,
+    highlights,
+  };
+}
+
+app.get("/api/public/bootstrap", async (req, res) => {
+  const startedAt = performance.now();
+  const payload = await publicBootstrapCache.get(
+    "default",
+    loadPublicBootstrap,
+  );
+  res.setHeader(
+    "Cache-Control",
+    "public, max-age=10, stale-while-revalidate=50",
+  );
+  res.removeHeader("Pragma");
+  res.setHeader(
+    "Server-Timing",
+    `public-bootstrap;dur=${(performance.now() - startedAt).toFixed(1)}`,
+  );
+  res.json(payload);
 });
 
 app.get("/api/me/rewards", auth, async (req, res) => {

@@ -5,13 +5,14 @@ import storeMeta from "../netlify/edge-functions/store-meta.js";
 
 const source = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-test("identidade antiga não libera a página antes de consultar a configuração", async () => {
+test("cache público libera a página imediatamente e atualiza em segundo plano", async () => {
   const app = await source("../src/App.jsx");
 
   assert.match(app, /master-pizza-public-cache-v27/);
-  assert.match(app, /const \[publicReady, setPublicReady\] = useState\(false\)/);
-  assert.match(app, /const \[brandingReady, setBrandingReady\] = useState\(false\)/);
-  assert.match(app, /setSettings\(currentSettings\);[\s\S]*setBrandingReady\(true\)/);
+  assert.match(app, /useState\(Boolean\(initialPublic\)\)/);
+  assert.match(app, /initialPublic\?\.settings \|\| DEMO_SETTINGS/);
+  assert.match(app, /api\.get\("\/public\/bootstrap"\)/);
+  assert.match(app, /publicSnapshotRef\.current = snapshot/);
   assert.match(app, /window\.addEventListener\("online", refresh\)/);
 });
 
