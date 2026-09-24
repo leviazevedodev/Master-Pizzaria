@@ -279,7 +279,7 @@ export default function AdminPage({
       staffRole: "STAFF",
       permissions: ["overview", "orders"],
     });
-  const headers = authHeaders(session.token);
+  const headers = useMemo(() => authHeaders(session.token), [session.token]);
   useEffect(() => {
     if (!availableTabs.some(([id]) => id === tab))
       setTab(availableTabs[0]?.[0] || "overview");
@@ -1955,6 +1955,8 @@ export default function AdminPage({
             }
             imageUploading={imageUploading}
             uploadError={error}
+            headers={headers}
+            notify={notify}
           />
         )}
         {tab === "management" && isOwner && (

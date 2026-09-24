@@ -64,6 +64,7 @@ export function permissionNeededForAdminRequest(req) {
   if (path.startsWith("/delivery-areas")) return "delivery";
   if (path.startsWith("/map/deliveries")) return "orders";
   if (path.startsWith("/cash")) return "operations";
+  if (path.startsWith("/compre-sem-fila")) return "settings";
   if (path.startsWith("/goals") || path.startsWith("/operations-intelligence"))
     return "reports";
   if (

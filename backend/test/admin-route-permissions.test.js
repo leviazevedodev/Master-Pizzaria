@@ -56,6 +56,18 @@ test("marketing e moderação usam a permissão de promoções", () => {
   );
 });
 
+test("integração Compre Sem Fila exige permissão de configurações", () => {
+  assert.equal(permission("/compre-sem-fila/status"), "settings");
+  assert.equal(
+    permission("/compre-sem-fila/products/sync", "POST"),
+    "settings",
+  );
+  assert.equal(
+    permission("/compre-sem-fila/orders/sync", "POST"),
+    "settings",
+  );
+});
+
 test("nega por padrão qualquer rota administrativa sem mapeamento", () => {
   assert.equal(permission("/rota-nova-sem-permissao"), null);
 });

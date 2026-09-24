@@ -1,4 +1,4 @@
-# Master Pizzaria Profissional v2.28.0
+# Master Pizzaria Profissional v2.30.0
 
 Aplicação de cardápio e gestão de pizzaria com React, Express, PostgreSQL e Prisma. Inclui pedidos, entrega/retirada, atendimento em mesas, agendamento, Pix e cartões transparentes pelo Mercado Pago, recuperação de senha por e-mail, painel administrativo, cozinha, garçons, entregadores, estoque, promoções, cupons e relatórios.
 
@@ -62,6 +62,29 @@ Em **Cardápio → Combos**, cadastre o nome, a foto, o preço e os produtos que
 Novas configurações de entrega usam **Exceções fixas**, **Km da saída: 10**, **Valor da saída: R$ 4,00** e **Km excedente: R$ 1,00**. A atualização dos padrões não sobrescreve as taxas já configuradas na loja.
 
 O QR Code impresso abre a rota pública isolada `/cardapio-digital`. Nela, o cliente escolhe os produtos, informa o próprio nome e vê somente mesas livres. O pedido entra como atendimento presencial nas filas **Recebidos**, **Em preparação**, **Pronto para servir** e **Aguardando fechamento**; o pagamento continua sendo baixado somente no fechamento da mesa. O acesso pode ser desativado em **Cardápio → Impressão**.
+
+## Compre Sem Fila
+
+A integração com o Compre Sem Fila fica desativada por padrão. Configure no backend:
+
+```env
+CSF_ENABLED=true
+CSF_STORE_ID=identificacao-da-loja
+CSF_API_KEY=chave-fornecida-pela-csf
+CSF_PRODUCT_SYNC_ENABLED=false
+CSF_ORDER_SYNC_ENABLED=false
+CSF_PRODUCT_SYNC_INTERVAL_MINUTES=20
+CSF_ORDER_SYNC_INTERVAL_SECONDS=60
+CSF_LOG_SYNC_ENABLED=false
+```
+
+Depois de aplicar a migration `20260923000000_compre_sem_fila_integration`, abra **Loja → Compre Sem Fila** para consultar a situação, sincronizar o catálogo e vincular os IDs dos produtos.
+
+Produtos com tamanhos são enviados como itens separados. Cada vínculo recebe um código interno numérico e um EAN-13 estável; um código de barras real pode ser informado pelo painel. Produtos sem controle de estoque usam `CSF_UNLIMITED_STOCK`, cujo padrão é 999.
+
+A sincronização automática de produtos respeita o intervalo mínimo de 20 minutos descrito pela API v4. A importação de pedidos valida todos os campos antes de criar a venda. Respostas sem cliente, endereço de entrega, forma de pagamento, itens, preços ou totais ficam registradas como pendentes de mapeamento. Assim que o fornecedor disponibilizar o JSON completo, novos nomes de campos podem ser adicionados ao normalizador sem alterar o banco ou o fluxo operacional.
+
+O endpoint opcional de logs permanece desligado até `CSF_LOG_SYNC_ENABLED=true`. As credenciais nunca são enviadas para esse domínio de logs. Payloads externos são removidos pela rotina de retenção após uma semana.
 
 ## Cardápio para impressão
 

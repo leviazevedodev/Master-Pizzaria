@@ -76,6 +76,11 @@ import {
   publicReviewSummary,
   rewardsMode,
 } from "./growth.js";
+import { readCompreSemFilaConfig } from "./compre-sem-fila.js";
+import {
+  createCompreSemFilaService,
+  registerCompreSemFilaAdminRoutes,
+} from "./compre-sem-fila-service.js";
 
 dotenv.config({ quiet: true });
 
@@ -117,6 +122,7 @@ const NOMINATIM_BASE_URL = (
 const OSRM_BASE_URL = (
   process.env.OSRM_BASE_URL || "https://router.project-osrm.org"
 ).replace(/\/$/, "");
+const COMPRE_SEM_FILA_CONFIG = readCompreSemFilaConfig(process.env);
 const MERCADOPAGO_PUBLIC_READY = Boolean(
   MERCADOPAGO_ACCESS_TOKEN &&
     MERCADOPAGO_PUBLIC_KEY &&
@@ -479,6 +485,11 @@ const serializeSettings = (settings) => ({
   passwordEmailConfigured: RESEND_READY,
   publicMenuUrl: PUBLIC_MENU_URL,
   whatsappWebhookConfigured: Boolean(WHATSAPP_WEBHOOK_URL),
+  compreSemFilaConfigured: COMPRE_SEM_FILA_CONFIG.configured,
+  compreSemFilaEnabled: COMPRE_SEM_FILA_CONFIG.enabled,
+  compreSemFilaProductSyncEnabled:
+    COMPRE_SEM_FILA_CONFIG.productSyncEnabled,
+  compreSemFilaOrderSyncEnabled: COMPRE_SEM_FILA_CONFIG.orderSyncEnabled,
 });
 const serializePublicSettings = (settings) => {
   const row = serializeSettings(settings);
@@ -5695,6 +5706,7 @@ app.post(
     queueWhatsApp(serializeOrder(canceled), "STATUS_CHANGED", "Cancelado pelo cliente").catch(
       () => {},
     );
+    compreSemFilaService.pushOrderStatus(canceled).catch(() => {});
     res.json({
       ...serialized,
       refundIssued: serialized.paymentStatus === "REFUNDED",
@@ -5815,6 +5827,20 @@ app.use("/api/admin", auth, admin, adminRateLimit, (req, res, next) => {
     code: "ADMIN_PERMISSION_DENIED",
     message: "Seu usuário não tem permissão para esta área do painel.",
   });
+});
+
+const compreSemFilaService = createCompreSemFilaService({
+  prisma,
+  config: COMPRE_SEM_FILA_CONFIG,
+  getSettings,
+  writeTechnicalLog: (event, error, details) =>
+    writeTechnicalLog(event, error, null, details),
+});
+registerCompreSemFilaAdminRoutes({
+  app,
+  auth,
+  admin,
+  service: compreSemFilaService,
 });
 
 const tableOrderInclude = {
@@ -7131,6 +7157,7 @@ app.patch("/api/admin/orders/:id/status", auth, admin, async (req, res) => {
         "STATUS_CHANGED",
         labels[status] || status,
       ).catch(() => {});
+    compreSemFilaService.pushOrderStatus(serializedResult).catch(() => {});
   }
   res.json(serializedResult);
 });
@@ -10995,6 +11022,9 @@ app.get("/api/admin/health", auth, admin, async (req, res) => {
     mercadoPago: MERCADOPAGO_PUBLIC_READY,
     passwordEmail: RESEND_READY,
     whatsapp: Boolean(WHATSAPP_WEBHOOK_URL),
+    compreSemFila:
+      COMPRE_SEM_FILA_CONFIG.enabled &&
+      COMPRE_SEM_FILA_CONFIG.configured,
     timestamp: new Date(),
     uptimeSeconds: Math.round(process.uptime()),
   });
@@ -12027,6 +12057,17 @@ async function runDataRetention(now = new Date()) {
       where: { createdAt: { lt: cutoffs.technicalLogs } },
     })
   ).count;
+  summary.compreSemFilaSyncRuns = (
+    await prisma.compreSemFilaSyncRun.deleteMany({
+      where: { startedAt: { lt: cutoffs.technicalLogs } },
+    })
+  ).count;
+  summary.compreSemFilaPayloads = await prisma.$executeRaw`
+    UPDATE "CompreSemFilaOrder"
+    SET "payload" = NULL
+    WHERE "payload" IS NOT NULL
+      AND "updatedAt" < ${cutoffs.technicalLogs}
+  `;
   summary.tableClosures = (
     await prisma.tableClosureRecord.deleteMany({
       where: { closedAt: { lt: cutoffs.financialData } },
@@ -12047,6 +12088,7 @@ async function runAutomationCycle() {
   try {
     await autoCloseStoreIfNeeded();
     await activateDueScheduledOrders();
+    compreSemFilaService.runScheduledSyncs().catch(() => {});
     if (Date.now() - lastRetentionRunAt >= RETENTION_INTERVAL_MS) {
       lastRetentionRunAt = Date.now();
       await runDataRetention().catch((error) => {

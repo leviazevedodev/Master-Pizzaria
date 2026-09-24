@@ -58,47 +58,47 @@ enum DeliveryPricingMode {
 }
 
 model User {
-  id                String               @id @default(cuid())
-  name              String
-  email             String               @unique
-  phone             String?              @unique
-  passwordHash      String
-  sessionVersion    Int                  @default(0)
-  isAdmin           Boolean              @default(false)
-  adminPermissions  Json?
-  staffRole         String?
-  staffActive       Boolean              @default(true)
-  postalCode        String?
-  street            String?
-  addressNumber     String?
-  complement        String?
-  neighborhood      String?
-  city              String?
-  state             String?
-  referencePoint    String?
-  adminNote         String?
-  customerBlocked   Boolean              @default(false)
-  lastLoginAt       DateTime?
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
-  birthday          DateTime?
+  id                  String               @id @default(cuid())
+  name                String
+  email               String               @unique
+  phone               String?              @unique
+  passwordHash        String
+  sessionVersion      Int                  @default(0)
+  isAdmin             Boolean              @default(false)
+  adminPermissions    Json?
+  staffRole           String?
+  staffActive         Boolean              @default(true)
+  postalCode          String?
+  street              String?
+  addressNumber       String?
+  complement          String?
+  neighborhood        String?
+  city                String?
+  state               String?
+  referencePoint      String?
+  adminNote           String?
+  customerBlocked     Boolean              @default(false)
+  lastLoginAt         DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  birthday            DateTime?
   birthdayBenefitYear Int?
-  loyaltyPoints     Int                  @default(0)
-  cashbackBalance   Decimal              @default(0) @db.Decimal(10, 2)
-  inviteCode        String?              @unique
-  referredByUserId  String?
-  twoFactorEnabled  Boolean              @default(false)
-  twoFactorSecret   String?
-  marketingOptIn    Boolean              @default(false)
-  orders            Order[]
-  resetTokens       PasswordResetToken[]
-  media             MediaAsset[]
-  favoriteAddresses CustomerAddress[]
-  productFavorites  ProductFavorite[]
-  rewardTransactions RewardTransaction[]
-  courierOrders     Order[]              @relation("CourierOrders")
-  referredByUser    User?                @relation("UserReferrals", fields: [referredByUserId], references: [id], onDelete: SetNull)
-  referrals         User[]               @relation("UserReferrals")
+  loyaltyPoints       Int                  @default(0)
+  cashbackBalance     Decimal              @default(0) @db.Decimal(10, 2)
+  inviteCode          String?              @unique
+  referredByUserId    String?
+  twoFactorEnabled    Boolean              @default(false)
+  twoFactorSecret     String?
+  marketingOptIn      Boolean              @default(false)
+  orders              Order[]
+  resetTokens         PasswordResetToken[]
+  media               MediaAsset[]
+  favoriteAddresses   CustomerAddress[]
+  productFavorites    ProductFavorite[]
+  rewardTransactions  RewardTransaction[]
+  courierOrders       Order[]              @relation("CourierOrders")
+  referredByUser      User?                @relation("UserReferrals", fields: [referredByUserId], references: [id], onDelete: SetNull)
+  referrals           User[]               @relation("UserReferrals")
 
   @@index([createdAt])
   @@index([isAdmin, lastLoginAt, updatedAt])
@@ -150,78 +150,78 @@ model Subcategory {
 }
 
 model FlavorGroup {
-  id          String    @id @default(cuid())
+  id          String                     @id @default(cuid())
   name        String
   slug        String
   description String?
   categoryId  String
-  active      Boolean   @default(true)
-  sortOrder   Int       @default(0)
-  category    Category  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  active      Boolean                    @default(true)
+  sortOrder   Int                        @default(0)
+  category    Category                   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   flavors     Flavor[]
   comboRules  ComboSlotFlavorGroupRule[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
 
   @@unique([categoryId, slug])
   @@index([categoryId, active, sortOrder])
 }
 
 model Flavor {
-  id                String            @id @default(cuid())
-  name              String            @unique
-  slug              String            @unique
-  description       String            @default("")
-  ingredients       Json              @default("[]")
+  id                String                @id @default(cuid())
+  name              String                @unique
+  slug              String                @unique
+  description       String                @default("")
+  ingredients       Json                  @default("[]")
   groupId           String?
-  sourceProductId   String?           @unique
-  price             Decimal           @db.Decimal(10, 2)
-  promoPrice        Decimal?          @db.Decimal(10, 2)
-  promoActive       Boolean           @default(false)
+  sourceProductId   String?               @unique
+  price             Decimal               @db.Decimal(10, 2)
+  promoPrice        Decimal?              @db.Decimal(10, 2)
+  promoActive       Boolean               @default(false)
   promoStartAt      DateTime?
   promoEndAt        DateTime?
   image             String?
-  active            Boolean           @default(true)
-  featured          Boolean           @default(false)
-  allowHalfAndHalf  Boolean           @default(true)
-  sortOrder         Int               @default(0)
-  stockTracked      Boolean           @default(false)
-  stockQuantity     Int               @default(0)
-  stockLowThreshold Int               @default(5)
-  group             FlavorGroup?      @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  sourceProduct     Product?          @relation("FlavorSourceProduct", fields: [sourceProductId], references: [id], onDelete: SetNull)
+  active            Boolean               @default(true)
+  featured          Boolean               @default(false)
+  allowHalfAndHalf  Boolean               @default(true)
+  sortOrder         Int                   @default(0)
+  stockTracked      Boolean               @default(false)
+  stockQuantity     Int                   @default(0)
+  stockLowThreshold Int                   @default(5)
+  group             FlavorGroup?          @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  sourceProduct     Product?              @relation("FlavorSourceProduct", fields: [sourceProductId], references: [id], onDelete: SetNull)
   sizes             FlavorSize[]
   products          ProductFlavor[]
   comboRules        ComboSlotFlavorRule[]
   orderItems        OrderItemFlavor[]
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 
   @@index([active, sortOrder])
   @@index([groupId, active, sortOrder])
 }
 
 model Product {
-  id                   String                 @id @default(cuid())
+  id                   String                     @id @default(cuid())
   name                 String
-  slug                 String                 @unique
+  slug                 String                     @unique
   description          String
-  price                Decimal                @db.Decimal(10, 2)
+  price                Decimal                    @db.Decimal(10, 2)
   image                String?
   badge                String?
-  featured             Boolean                @default(false)
-  isNew                Boolean                @default(false)
-  available            Boolean                @default(true)
-  sortOrder            Int                    @default(0)
-  allowFlavorSplit     Boolean                @default(false)
-  isFlavorOption       Boolean                @default(false)
-  isCombo              Boolean                @default(false)
-  maxFlavors           Int                    @default(1)
-  flavorPricingMode    String                 @default("MAX")
-  stockTracked         Boolean                @default(false)
-  stockQuantity        Int                    @default(0)
-  stockLowThreshold    Int                    @default(5)
-  costPrice            Decimal                @default(0) @db.Decimal(10, 2)
+  featured             Boolean                    @default(false)
+  isNew                Boolean                    @default(false)
+  available            Boolean                    @default(true)
+  sortOrder            Int                        @default(0)
+  allowFlavorSplit     Boolean                    @default(false)
+  isFlavorOption       Boolean                    @default(false)
+  isCombo              Boolean                    @default(false)
+  maxFlavors           Int                        @default(1)
+  flavorPricingMode    String                     @default("MAX")
+  stockTracked         Boolean                    @default(false)
+  stockQuantity        Int                        @default(0)
+  stockLowThreshold    Int                        @default(5)
+  costPrice            Decimal                    @default(0) @db.Decimal(10, 2)
   pausedUntil          DateTime?
   availableDays        Json?
   availableStartTime   String?
@@ -229,25 +229,26 @@ model Product {
   removableIngredients Json?
   deletedAt            DateTime?
   categoryId           String
-  category             Category               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  category             Category                   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   subcategoryId        String?
-  subcategory          Subcategory?           @relation(fields: [subcategoryId], references: [id], onDelete: SetNull)
+  subcategory          Subcategory?               @relation(fields: [subcategoryId], references: [id], onDelete: SetNull)
   productFlavors       ProductFlavor[]
   modifierGroups       ProductModifierGroup[]
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
   items                OrderItem[]
-  legacyOrderFlavors   OrderItemFlavor[]      @relation("LegacyProductFlavor")
+  legacyOrderFlavors   OrderItemFlavor[]          @relation("LegacyProductFlavor")
   promotion            Promotion?
   recipeItems          ProductInventoryItem[]
   productSizes         ProductSize[]
-  comboItems           ComboItem[]            @relation("ComboProduct")
-  includedInCombos     ComboItem[]            @relation("ComboComponent")
-  comboSlots           ComboSlot[]            @relation("ComboSlots")
-  comboSlotTemplates   ComboSlot[]            @relation("ComboSlotBaseProduct")
+  comboItems           ComboItem[]                @relation("ComboProduct")
+  includedInCombos     ComboItem[]                @relation("ComboComponent")
+  comboSlots           ComboSlot[]                @relation("ComboSlots")
+  comboSlotTemplates   ComboSlot[]                @relation("ComboSlotBaseProduct")
   comboSlotChoices     ComboSlotProduct[]
-  centralFlavor        Flavor?                @relation("FlavorSourceProduct")
+  centralFlavor        Flavor?                    @relation("FlavorSourceProduct")
   favorites            ProductFavorite[]
+  compreSemFilaLinks   CompreSemFilaProductLink[]
 
   @@index([categoryId, available, deletedAt])
   @@index([subcategoryId, available])
@@ -258,12 +259,12 @@ model Product {
 model ComboItem {
   comboId   String
   productId String
-  quantity  Int     @default(1)
-  sortOrder Int     @default(0)
+  quantity  Int        @default(1)
+  sortOrder Int        @default(0)
   sizeId    String?
   size      PizzaSize? @relation(fields: [sizeId], references: [id], onDelete: Restrict)
-  combo     Product @relation("ComboProduct", fields: [comboId], references: [id], onDelete: Cascade)
-  product   Product @relation("ComboComponent", fields: [productId], references: [id], onDelete: Restrict)
+  combo     Product    @relation("ComboProduct", fields: [comboId], references: [id], onDelete: Cascade)
+  product   Product    @relation("ComboComponent", fields: [productId], references: [id], onDelete: Restrict)
 
   @@id([comboId, productId])
   @@index([productId])
@@ -352,36 +353,37 @@ model ComboSlotModifierRule {
 }
 
 model PizzaSize {
-  id         String        @id @default(cuid())
-  name       String        @unique
-  slug       String        @unique
-  diameterCm Int?
-  maxFlavors Int           @default(4)
-  sortOrder  Int           @default(0)
-  active     Boolean       @default(true)
-  products   ProductSize[]
-  flavors    FlavorSize[]
-  comboItems ComboItem[]
-  comboSlots ComboSlot[]
-  comboSlotProducts ComboSlotProduct[]
-  orderItems OrderItem[]
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  id                 String                     @id @default(cuid())
+  name               String                     @unique
+  slug               String                     @unique
+  diameterCm         Int?
+  maxFlavors         Int                        @default(4)
+  sortOrder          Int                        @default(0)
+  active             Boolean                    @default(true)
+  products           ProductSize[]
+  flavors            FlavorSize[]
+  comboItems         ComboItem[]
+  comboSlots         ComboSlot[]
+  comboSlotProducts  ComboSlotProduct[]
+  orderItems         OrderItem[]
+  compreSemFilaLinks CompreSemFilaProductLink[]
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
 
   @@index([active, sortOrder])
 }
 
 model FlavorSize {
-  flavorId   String
-  sizeId     String
+  flavorId    String
+  sizeId      String
   pricingMode String    @default("FIXED")
-  price      Decimal    @default(0) @db.Decimal(10, 2)
-  available  Boolean    @default(true)
-  sortOrder  Int        @default(0)
-  flavor     Flavor     @relation(fields: [flavorId], references: [id], onDelete: Cascade)
-  size       PizzaSize  @relation(fields: [sizeId], references: [id], onDelete: Restrict)
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
+  price       Decimal   @default(0) @db.Decimal(10, 2)
+  available   Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  flavor      Flavor    @relation(fields: [flavorId], references: [id], onDelete: Cascade)
+  size        PizzaSize @relation(fields: [sizeId], references: [id], onDelete: Restrict)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@id([flavorId, sizeId])
   @@index([sizeId, available])
@@ -451,26 +453,26 @@ model ModifierGroup {
 }
 
 model ModifierOption {
-  id                String            @id @default(cuid())
+  id                String                  @id @default(cuid())
   groupId           String
   name              String
   description       String?
-  price             Decimal           @default(0) @db.Decimal(10, 2)
-  promoPrice        Decimal?          @db.Decimal(10, 2)
-  promoActive       Boolean           @default(false)
+  price             Decimal                 @default(0) @db.Decimal(10, 2)
+  promoPrice        Decimal?                @db.Decimal(10, 2)
+  promoActive       Boolean                 @default(false)
   promoStartAt      DateTime?
   promoEndAt        DateTime?
   image             String?
-  active            Boolean           @default(true)
-  sortOrder         Int               @default(0)
-  stockTracked      Boolean           @default(false)
-  stockQuantity     Int               @default(0)
-  stockLowThreshold Int               @default(5)
-  group             ModifierGroup     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  active            Boolean                 @default(true)
+  sortOrder         Int                     @default(0)
+  stockTracked      Boolean                 @default(false)
+  stockQuantity     Int                     @default(0)
+  stockLowThreshold Int                     @default(5)
+  group             ModifierGroup           @relation(fields: [groupId], references: [id], onDelete: Cascade)
   orderItems        OrderItemOption[]
   comboRules        ComboSlotModifierRule[]
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
 
   @@unique([groupId, name])
   @@index([groupId, active, sortOrder])
@@ -578,73 +580,74 @@ model TableSession {
 }
 
 model Order {
-  id                   String               @id @default(cuid())
-  trackingCode         String               @unique @default(uuid())
-  customerName         String
-  customerPhone        String
-  fulfillmentType      FulfillmentType      @default(DELIVERY)
-  postalCode           String?
-  street               String?
-  addressNumber        String?
-  complement           String?
-  neighborhood         String?
-  city                 String?
-  state                String?
-  latitude             Decimal?             @db.Decimal(10, 7)
-  longitude            Decimal?             @db.Decimal(10, 7)
-  distanceKm           Decimal?             @db.Decimal(10, 2)
-  deliveryAreaId       String?
-  deliveryArea         DeliveryArea?        @relation(fields: [deliveryAreaId], references: [id], onDelete: SetNull)
-  notes                String?
-  referencePoint       String?
-  subtotal             Decimal              @db.Decimal(10, 2)
-  deliveryFee          Decimal              @db.Decimal(10, 2)
-  total                Decimal              @db.Decimal(10, 2)
-  discountAmount       Decimal              @default(0) @db.Decimal(10, 2)
-  couponCode           String?
-  cashbackUsed         Decimal              @default(0) @db.Decimal(10, 2)
-  cashbackEarned       Decimal              @default(0) @db.Decimal(10, 2)
-  orderOrigin          String               @default("SITE")
-  tableId              String?
-  table                RestaurantTable?     @relation(fields: [tableId], references: [id], onDelete: SetNull)
-  tableSessionId       String?
-  tableSession         TableSession?        @relation(fields: [tableSessionId], references: [id], onDelete: SetNull)
-  createdByStaffId     String?
-  createdByStaffName   String?
-  readyAt              DateTime?
-  outForDeliveryAt     DateTime?
-  deliveredAt          DateTime?
-  rewardsProcessedAt   DateTime?
+  id                     String               @id @default(cuid())
+  trackingCode           String               @unique @default(uuid())
+  customerName           String
+  customerPhone          String
+  fulfillmentType        FulfillmentType      @default(DELIVERY)
+  postalCode             String?
+  street                 String?
+  addressNumber          String?
+  complement             String?
+  neighborhood           String?
+  city                   String?
+  state                  String?
+  latitude               Decimal?             @db.Decimal(10, 7)
+  longitude              Decimal?             @db.Decimal(10, 7)
+  distanceKm             Decimal?             @db.Decimal(10, 2)
+  deliveryAreaId         String?
+  deliveryArea           DeliveryArea?        @relation(fields: [deliveryAreaId], references: [id], onDelete: SetNull)
+  notes                  String?
+  referencePoint         String?
+  subtotal               Decimal              @db.Decimal(10, 2)
+  deliveryFee            Decimal              @db.Decimal(10, 2)
+  total                  Decimal              @db.Decimal(10, 2)
+  discountAmount         Decimal              @default(0) @db.Decimal(10, 2)
+  couponCode             String?
+  cashbackUsed           Decimal              @default(0) @db.Decimal(10, 2)
+  cashbackEarned         Decimal              @default(0) @db.Decimal(10, 2)
+  orderOrigin            String               @default("SITE")
+  tableId                String?
+  table                  RestaurantTable?     @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  tableSessionId         String?
+  tableSession           TableSession?        @relation(fields: [tableSessionId], references: [id], onDelete: SetNull)
+  createdByStaffId       String?
+  createdByStaffName     String?
+  readyAt                DateTime?
+  outForDeliveryAt       DateTime?
+  deliveredAt            DateTime?
+  rewardsProcessedAt     DateTime?
   birthdayBenefitApplied Boolean              @default(false)
-  paymentMethod        PaymentMethod
-  paymentMethodLabel   String?
-  paymentStatus        PaymentStatus        @default(CASH_PENDING)
-  paymentProvider      String?
-  paymentExternalId    String?
-  paymentPreferenceId  String?
-  paymentUrl           String?
-  paidAt               DateTime?
-  scheduledAt          DateTime?
-  acceptedAt           DateTime?
-  estimatedDeliveryMin Int                  @default(30)
-  estimatedDeliveryMax Int                  @default(45)
-  changeFor            Decimal?             @db.Decimal(10, 2)
-  status               OrderStatus          @default(RECEIVED)
-  cancelReason         String?
-  stockApplied         Boolean              @default(false)
-  stockSnapshot        Json?
-  assignedCourierId    String?
-  assignedCourier      User?                @relation("CourierOrders", fields: [assignedCourierId], references: [id], onDelete: SetNull)
-  printedAt            DateTime?
-  kitchenSeenAt        DateTime?
-  userId               String?
-  user                 User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
-  items                OrderItem[]
-  history              OrderStatusHistory[]
-  review               Review?
-  rewardTransactions   RewardTransaction[]
+  paymentMethod          PaymentMethod
+  paymentMethodLabel     String?
+  paymentStatus          PaymentStatus        @default(CASH_PENDING)
+  paymentProvider        String?
+  paymentExternalId      String?
+  paymentPreferenceId    String?
+  paymentUrl             String?
+  paidAt                 DateTime?
+  scheduledAt            DateTime?
+  acceptedAt             DateTime?
+  estimatedDeliveryMin   Int                  @default(30)
+  estimatedDeliveryMax   Int                  @default(45)
+  changeFor              Decimal?             @db.Decimal(10, 2)
+  status                 OrderStatus          @default(RECEIVED)
+  cancelReason           String?
+  stockApplied           Boolean              @default(false)
+  stockSnapshot          Json?
+  assignedCourierId      String?
+  assignedCourier        User?                @relation("CourierOrders", fields: [assignedCourierId], references: [id], onDelete: SetNull)
+  printedAt              DateTime?
+  kitchenSeenAt          DateTime?
+  userId                 String?
+  user                   User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  items                  OrderItem[]
+  history                OrderStatusHistory[]
+  review                 Review?
+  rewardTransactions     RewardTransaction[]
+  compreSemFilaOrder     CompreSemFilaOrder?
 
   @@index([status, createdAt])
   @@index([paymentStatus, createdAt])
@@ -659,23 +662,23 @@ model Order {
 }
 
 model OrderItem {
-  id        String            @id @default(cuid())
-  orderId   String
-  productId String
-  name      String
-  quantity  Int
-  unitPrice Decimal           @db.Decimal(10, 2)
-  order     Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product   Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
-  notes     String?
-  sizeId    String?
-  sizeName  String?
-  comboItems Json?
-  sizePrice Decimal?          @db.Decimal(10, 2)
+  id             String            @id @default(cuid())
+  orderId        String
+  productId      String
+  name           String
+  quantity       Int
+  unitPrice      Decimal           @db.Decimal(10, 2)
+  order          Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product        Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  notes          String?
+  sizeId         String?
+  sizeName       String?
+  comboItems     Json?
+  sizePrice      Decimal?          @db.Decimal(10, 2)
   priceBreakdown Json?
-  size      PizzaSize?        @relation(fields: [sizeId], references: [id], onDelete: SetNull)
-  flavors   OrderItemFlavor[]
-  options   OrderItemOption[]
+  size           PizzaSize?        @relation(fields: [sizeId], references: [id], onDelete: SetNull)
+  flavors        OrderItemFlavor[]
+  options        OrderItemOption[]
 
   @@index([orderId])
   @@index([productId])
@@ -839,119 +842,119 @@ model WhatsAppOutbox {
 }
 
 model BusinessSettings {
-  id                           String              @id @default("default")
-  storeName                    String              @default("Pizzaria")
-  shortName                    String              @default("Pizzaria")
-  slogan                       String              @default("Pizza artesanal, feita na hora")
-  timezone                     String              @default("America/Maceio")
-  phone                        String              @default("+5579988725557")
-  whatsappPrimary              String              @default("+5579988725557")
-  whatsappSecondary            String              @default("+5579988725557")
-  whatsappSecondaryVisible     Boolean             @default(false)
-  instagram                    String              @default("leviazevedo.dev")
-  instagramUrl                 String              @default("https://www.instagram.com/leviazevedo.dev")
-  address                      String              @default("São Cristóvão-SE")
-  openingHours                 String              @default("Consulte o horário pelo WhatsApp")
-  deliveryFee                  Decimal             @default(4.00) @db.Decimal(10, 2)
-  freeDeliveryThreshold        Decimal             @default(0.00) @db.Decimal(10, 2)
-  defaultMinimumOrder          Decimal             @default(0.00) @db.Decimal(10, 2)
-  deliveryPricingMode          DeliveryPricingMode @default(AREA)
-  deliveryHybridEnabled        Boolean             @default(true)
-  deliveryPricePerKm           Decimal             @default(1.00) @db.Decimal(10, 2)
-  deliveryMinimumKm            Decimal             @default(10.00) @db.Decimal(10, 2)
-  deliveryMinimumFee           Decimal             @default(4.00) @db.Decimal(10, 2)
-  deliveryMaxDistanceKm        Decimal             @default(15.00) @db.Decimal(10, 2)
-  storePostalCode              String?
-  storeLatitude                Decimal?            @db.Decimal(10, 7)
-  storeLongitude               Decimal?            @db.Decimal(10, 7)
-  storeGoogleMapsUrl           String?
-  estimatedDeliveryMin         Int                 @default(30)
-  estimatedDeliveryMax         Int                 @default(45)
-  lateWarningMinutes           Int                 @default(30)
-  storeCoordinatesCep          String?
-  storeGeoSource               String?
-  storeGeoAddressKey           String?
-  heroTitle                    String              @default("Pizza artesanal, feita para impressionar.")
-  heroSubtitle                 String              @default("Massa leve, ingredientes selecionados e forno quente. Seu pedido chega bonito, saboroso e do jeito certo.")
-  heroStampTitle               String              @default("Massa artesanal")
-  heroStampText                String              @default("preparo cuidadoso em cada pedido")
-  menuTitle                    String              @default("Escolha o seu próximo favorito.")
-  menuSubtitle                 String              @default("Sabores clássicos e especiais, preparados quando você pede.")
-  homeProductLimit             Int                 @default(8)
-  homeCatalogLayout            String              @default("GRID")
-  deliveryEnabled              Boolean             @default(true)
-  pickupEnabled                Boolean             @default(true)
-  schedulingEnabled            Boolean             @default(true)
-  isOpen                       Boolean             @default(true)
-  manualOpenUntilDate          String?
-  manualOpenUntilMinutes       Int?
-  cashPaymentEnabled           Boolean             @default(true)
-  onlinePaymentEnabled         Boolean             @default(false)
-  customPaymentMethods         Json                @default("[]")
-  tablePaymentMethods          Json                @default("[\"CASH\",\"PIX\",\"CREDIT\",\"DEBIT\"]")
-  digitalMenuEnabled           Boolean             @default(true)
-  browserNotificationsEnabled  Boolean             @default(true)
-  newOrderSoundEnabled         Boolean             @default(true)
-  autoPrintEnabled             Boolean             @default(false)
-  whatsappAutoEnabled          Boolean             @default(false)
-  whatsappOrderCreatedTemplate String              @default("Olá {cliente}! Recebemos seu pedido #{pedido}. Total: {total}.")
-  whatsappStatusTemplate       String              @default("Pedido #{pedido}: {status}.")
-  smartCourierQueueEnabled     Boolean             @default(true)
-  kitchenCapacityPerSlot       Int                 @default(12)
-  kitchenSlotMinutes           Int                 @default(30)
-  courierMaxActiveOrders       Int                 @default(3)
-  customerDailyOrderLimit      Int                 @default(5)
-  loyaltyEnabled               Boolean             @default(true)
-  loyaltyPointsPerReal         Decimal             @default(1) @db.Decimal(10, 2)
-  loyaltyRewardPoints          Int                 @default(500)
-  loyaltyRewardValue           Decimal             @default(20) @db.Decimal(10, 2)
-  cashbackEnabled              Boolean             @default(false)
-  cashbackPercent              Decimal             @default(2) @db.Decimal(5, 2)
-  darkModeEnabled              Boolean             @default(false)
-  pwaEnabled                   Boolean             @default(true)
-  offlinePanelEnabled          Boolean             @default(true)
-  cartRecommendationsEnabled   Boolean             @default(true)
-  vipMinOrders                 Int                 @default(8)
-  vipMinSpend                  Decimal             @default(400.00) @db.Decimal(10, 2)
-  inactiveCustomerDays         Int                 @default(60)
-  logoImage                    String?
-  faviconImage                 String?
-  shareImage                   String?
-  primaryColor                 String              @default("#e31b23")
-  secondaryColor               String              @default("#111214")
-  accentColor                  String              @default("#ff323a")
-  seoTitle                     String?
-  seoDescription               String?
-  seoCanonicalUrl              String?
-  facebookName                 String?
-  facebookUrl                  String?
-  heroEyebrow                  String              @default("Artesanal • feita na hora")
-  heroImage                    String?
-  aboutEyebrow                 String              @default("Sobre a Master")
-  aboutTitle                   String              @default("Pedido simples, atendimento próximo e pizza levada a sério.")
-  aboutText                    String              @default("Encontre seu pedido, escolha sabores, decida entre entrega ou retirada e acompanhe tudo de forma simples.")
-  aboutImage                   String?
-  promotionsTitle              String              @default("Ofertas em destaque")
-  promotionsSubtitle           String              @default("Promoções selecionadas pela loja por tempo limitado.")
-  footerText                   String              @default("Pizza artesanal com pedido simples, acompanhamento e atendimento próximo.")
-  publicReviewsEnabled         Boolean             @default(false)
-  reviewCollectionEnabled      Boolean             @default(true)
-  deliveredOrdersCounterEnabled Boolean            @default(true)
-  bestSellersEnabled           Boolean             @default(true)
-  newProductsEnabled           Boolean             @default(true)
-  newProductDays               Int                 @default(30)
-  rewardsMode                  String              @default("POINTS")
-  birthdayCampaignEnabled      Boolean             @default(false)
-  birthdayDiscountType         String              @default("PERCENT")
-  birthdayDiscountValue        Decimal             @default(10) @db.Decimal(10, 2)
-  birthdayMinimumOrder         Decimal             @default(0) @db.Decimal(10, 2)
-  birthdayValidityDays         Int                 @default(7)
-  referralEnabled              Boolean             @default(false)
-  referralReferrerReward       Decimal             @default(10) @db.Decimal(10, 2)
-  referralNewCustomerReward    Decimal             @default(5) @db.Decimal(10, 2)
-  referralMinimumOrder         Decimal             @default(30) @db.Decimal(10, 2)
-  initialSetupCompleted        Boolean             @default(false)
-  updatedAt                    DateTime            @updatedAt
+  id                            String              @id @default("default")
+  storeName                     String              @default("Pizzaria")
+  shortName                     String              @default("Pizzaria")
+  slogan                        String              @default("Pizza artesanal, feita na hora")
+  timezone                      String              @default("America/Maceio")
+  phone                         String              @default("+5579988725557")
+  whatsappPrimary               String              @default("+5579988725557")
+  whatsappSecondary             String              @default("+5579988725557")
+  whatsappSecondaryVisible      Boolean             @default(false)
+  instagram                     String              @default("leviazevedo.dev")
+  instagramUrl                  String              @default("https://www.instagram.com/leviazevedo.dev")
+  address                       String              @default("São Cristóvão-SE")
+  openingHours                  String              @default("Consulte o horário pelo WhatsApp")
+  deliveryFee                   Decimal             @default(4.00) @db.Decimal(10, 2)
+  freeDeliveryThreshold         Decimal             @default(0.00) @db.Decimal(10, 2)
+  defaultMinimumOrder           Decimal             @default(0.00) @db.Decimal(10, 2)
+  deliveryPricingMode           DeliveryPricingMode @default(AREA)
+  deliveryHybridEnabled         Boolean             @default(true)
+  deliveryPricePerKm            Decimal             @default(1.00) @db.Decimal(10, 2)
+  deliveryMinimumKm             Decimal             @default(10.00) @db.Decimal(10, 2)
+  deliveryMinimumFee            Decimal             @default(4.00) @db.Decimal(10, 2)
+  deliveryMaxDistanceKm         Decimal             @default(15.00) @db.Decimal(10, 2)
+  storePostalCode               String?
+  storeLatitude                 Decimal?            @db.Decimal(10, 7)
+  storeLongitude                Decimal?            @db.Decimal(10, 7)
+  storeGoogleMapsUrl            String?
+  estimatedDeliveryMin          Int                 @default(30)
+  estimatedDeliveryMax          Int                 @default(45)
+  lateWarningMinutes            Int                 @default(30)
+  storeCoordinatesCep           String?
+  storeGeoSource                String?
+  storeGeoAddressKey            String?
+  heroTitle                     String              @default("Pizza artesanal, feita para impressionar.")
+  heroSubtitle                  String              @default("Massa leve, ingredientes selecionados e forno quente. Seu pedido chega bonito, saboroso e do jeito certo.")
+  heroStampTitle                String              @default("Massa artesanal")
+  heroStampText                 String              @default("preparo cuidadoso em cada pedido")
+  menuTitle                     String              @default("Escolha o seu próximo favorito.")
+  menuSubtitle                  String              @default("Sabores clássicos e especiais, preparados quando você pede.")
+  homeProductLimit              Int                 @default(8)
+  homeCatalogLayout             String              @default("GRID")
+  deliveryEnabled               Boolean             @default(true)
+  pickupEnabled                 Boolean             @default(true)
+  schedulingEnabled             Boolean             @default(true)
+  isOpen                        Boolean             @default(true)
+  manualOpenUntilDate           String?
+  manualOpenUntilMinutes        Int?
+  cashPaymentEnabled            Boolean             @default(true)
+  onlinePaymentEnabled          Boolean             @default(false)
+  customPaymentMethods          Json                @default("[]")
+  tablePaymentMethods           Json                @default("[\"CASH\",\"PIX\",\"CREDIT\",\"DEBIT\"]")
+  digitalMenuEnabled            Boolean             @default(true)
+  browserNotificationsEnabled   Boolean             @default(true)
+  newOrderSoundEnabled          Boolean             @default(true)
+  autoPrintEnabled              Boolean             @default(false)
+  whatsappAutoEnabled           Boolean             @default(false)
+  whatsappOrderCreatedTemplate  String              @default("Olá {cliente}! Recebemos seu pedido #{pedido}. Total: {total}.")
+  whatsappStatusTemplate        String              @default("Pedido #{pedido}: {status}.")
+  smartCourierQueueEnabled      Boolean             @default(true)
+  kitchenCapacityPerSlot        Int                 @default(12)
+  kitchenSlotMinutes            Int                 @default(30)
+  courierMaxActiveOrders        Int                 @default(3)
+  customerDailyOrderLimit       Int                 @default(5)
+  loyaltyEnabled                Boolean             @default(true)
+  loyaltyPointsPerReal          Decimal             @default(1) @db.Decimal(10, 2)
+  loyaltyRewardPoints           Int                 @default(500)
+  loyaltyRewardValue            Decimal             @default(20) @db.Decimal(10, 2)
+  cashbackEnabled               Boolean             @default(false)
+  cashbackPercent               Decimal             @default(2) @db.Decimal(5, 2)
+  darkModeEnabled               Boolean             @default(false)
+  pwaEnabled                    Boolean             @default(true)
+  offlinePanelEnabled           Boolean             @default(true)
+  cartRecommendationsEnabled    Boolean             @default(true)
+  vipMinOrders                  Int                 @default(8)
+  vipMinSpend                   Decimal             @default(400.00) @db.Decimal(10, 2)
+  inactiveCustomerDays          Int                 @default(60)
+  logoImage                     String?
+  faviconImage                  String?
+  shareImage                    String?
+  primaryColor                  String              @default("#e31b23")
+  secondaryColor                String              @default("#111214")
+  accentColor                   String              @default("#ff323a")
+  seoTitle                      String?
+  seoDescription                String?
+  seoCanonicalUrl               String?
+  facebookName                  String?
+  facebookUrl                   String?
+  heroEyebrow                   String              @default("Artesanal • feita na hora")
+  heroImage                     String?
+  aboutEyebrow                  String              @default("Sobre a Master")
+  aboutTitle                    String              @default("Pedido simples, atendimento próximo e pizza levada a sério.")
+  aboutText                     String              @default("Encontre seu pedido, escolha sabores, decida entre entrega ou retirada e acompanhe tudo de forma simples.")
+  aboutImage                    String?
+  promotionsTitle               String              @default("Ofertas em destaque")
+  promotionsSubtitle            String              @default("Promoções selecionadas pela loja por tempo limitado.")
+  footerText                    String              @default("Pizza artesanal com pedido simples, acompanhamento e atendimento próximo.")
+  publicReviewsEnabled          Boolean             @default(false)
+  reviewCollectionEnabled       Boolean             @default(true)
+  deliveredOrdersCounterEnabled Boolean             @default(true)
+  bestSellersEnabled            Boolean             @default(true)
+  newProductsEnabled            Boolean             @default(true)
+  newProductDays                Int                 @default(30)
+  rewardsMode                   String              @default("POINTS")
+  birthdayCampaignEnabled       Boolean             @default(false)
+  birthdayDiscountType          String              @default("PERCENT")
+  birthdayDiscountValue         Decimal             @default(10) @db.Decimal(10, 2)
+  birthdayMinimumOrder          Decimal             @default(0) @db.Decimal(10, 2)
+  birthdayValidityDays          Int                 @default(7)
+  referralEnabled               Boolean             @default(false)
+  referralReferrerReward        Decimal             @default(10) @db.Decimal(10, 2)
+  referralNewCustomerReward     Decimal             @default(5) @db.Decimal(10, 2)
+  referralMinimumOrder          Decimal             @default(30) @db.Decimal(10, 2)
+  initialSetupCompleted         Boolean             @default(false)
+  updatedAt                     DateTime            @updatedAt
 }
 
 model Coupon {
@@ -976,19 +979,19 @@ model Coupon {
 }
 
 model Review {
-  id             String   @id @default(cuid())
-  orderId        String?  @unique
+  id             String    @id @default(cuid())
+  orderId        String?   @unique
   customerName   String?
   rating         Int
   foodRating     Int?
   deliveryRating Int?
   comment        String?
-  status         String   @default("PENDING")
+  status         String    @default("PENDING")
   approvedAt     DateTime?
   hiddenAt       DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  order          Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  order          Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
   @@index([status, createdAt])
@@ -1050,6 +1053,61 @@ model TechnicalLog {
   @@index([event, createdAt])
 }
 
+model CompreSemFilaProductLink {
+  id            Int        @id @default(autoincrement())
+  variantKey    String     @unique
+  productId     String
+  sizeId        String?
+  csfProductId  Int?       @unique
+  barcode       String?    @unique
+  enabled       Boolean    @default(true)
+  lastSyncedAt  DateTime?
+  lastSyncError String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  product       Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  size          PizzaSize? @relation(fields: [sizeId], references: [id], onDelete: SetNull)
+
+  @@index([productId])
+  @@index([sizeId])
+  @@index([enabled, lastSyncedAt])
+}
+
+model CompreSemFilaOrder {
+  id            String    @id @default(cuid())
+  csfOrderId    Int       @unique
+  orderId       String?   @unique
+  csfStatus     String
+  mappingStatus String    @default("PENDING")
+  payload       Json?
+  lastPulledAt  DateTime?
+  lastPushedAt  DateTime?
+  lastError     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  order         Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([mappingStatus, updatedAt])
+  @@index([csfStatus, updatedAt])
+}
+
+model CompreSemFilaSyncRun {
+  id          String    @id @default(cuid())
+  kind        String
+  status      String    @default("RUNNING")
+  source      String    @default("MANUAL")
+  processed   Int       @default(0)
+  succeeded   Int       @default(0)
+  failed      Int       @default(0)
+  details     Json?
+  error       String?
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([kind, startedAt])
+  @@index([status, startedAt])
+}
+
 model TableClosureRecord {
   id                 String             @id @default(cuid())
   sourceSessionId    String             @unique
@@ -1106,7 +1164,7 @@ model BusinessGoal {
 }
 
 model Campaign {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   name        String
   segment     String
   message     String
@@ -1118,10 +1176,10 @@ model Campaign {
   couponCode  String?
   startsAt    DateTime?
   endsAt      DateTime?
-  sortOrder   Int      @default(0)
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  sortOrder   Int       @default(0)
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([active, startsAt, endsAt, sortOrder])
 }

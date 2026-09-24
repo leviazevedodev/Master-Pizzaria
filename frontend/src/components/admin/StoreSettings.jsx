@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Activity, Clock3, CreditCard, ImagePlus, MapPin, PackagePlus, Palette, Plus, Route, Save, Settings, ShieldCheck, Trash2, Upload, Users } from "lucide-react";
 import { mediaUrl } from "../../lib/api";
+import CompreSemFilaIntegration from "./CompreSemFilaIntegration";
 
 function MediaUploadButton({ disabled, onChange, title, resolution, aspect, children }) {
   const inputRef = useRef(null);
@@ -41,6 +42,8 @@ export default function StoreSettings({
   uploadMedia,
   imageUploading,
   uploadError,
+  headers,
+  notify,
 }) {
   const [newPaymentName, setNewPaymentName] = useState("");
   const pwaIconBackfill = useRef("");
@@ -916,6 +919,7 @@ export default function StoreSettings({
             </div>
           )}
         </section>
+        <CompreSemFilaIntegration headers={headers} notify={notify} />
         <section className="store-customer-rules">
           <div className="panel-title compact">
             <div>

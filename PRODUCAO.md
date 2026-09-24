@@ -1,6 +1,6 @@
 # Publicação segura
 
-Guia de atualização e publicação da v2.28.0.
+Guia de atualização e publicação da v2.30.0.
 
 ## 1. Segredos e ambiente
 
@@ -41,6 +41,8 @@ Na v2.28.0, aplique também `20260912000000_operational_orders_and_combos`. Ela 
 
 Na v2.29.0, aplique `20260915000000_central_flavor_catalog`, `20260916000000_configurable_combo_slots` e `20260917000000_growth_white_label`. As migrations criam o catálogo central de sabores, convertem os sabores legados quando possível, adicionam pizzas configuráveis aos combos e incluem identidade, SEO, avaliações, favoritos, recompensas, campanhas e o wizard inicial. Instalações já configuradas são marcadas como concluídas e não voltam ao wizard.
 
+Na v2.30.0, aplique `20260923000000_compre_sem_fila_integration`. Ela adiciona somente tabelas e vínculos da integração com o Compre Sem Fila; pedidos e produtos existentes são preservados.
+
 Para atualização sem Docker, com `backend/.env` configurado:
 
 ```bash
@@ -80,6 +82,7 @@ Reexecutar o seed preserva senha, catálogo, horários, taxas e configurações.
 - No Mercado Pago, crie uma aplicação de **Checkout Transparente**, copie `MERCADOPAGO_PUBLIC_KEY` e `MERCADOPAGO_ACCESS_TOKEN`, configure a assinatura secreta em `MERCADOPAGO_WEBHOOK_SECRET` e cadastre `https://seu-dominio.com/api/payments/mercadopago/webhook` para eventos de pagamento. O cartão é tokenizado pelo componente oficial no navegador; o backend calcula o valor final e nunca aceita o valor enviado pelo cliente.
 - Para recuperação de senha, valide seu domínio no Resend, crie `RESEND_API_KEY` com permissão de envio e use um remetente do mesmo domínio em `EMAIL_FROM`, por exemplo `Master Pizzaria <contato@seudominio.com.br>`. O link é de uso único e expira em 30 minutos.
 - Em `/api/admin/health`, confirme `mercadoPago: true` e `passwordEmail: true` antes de liberar esses recursos.
+- Para o Compre Sem Fila, mantenha `CSF_ENABLED=false` até receber `CSF_STORE_ID` e `CSF_API_KEY` de homologação. Ative primeiro a sincronização manual de produtos, confira preços, estoque, códigos e vínculos no painel e somente então habilite `CSF_PRODUCT_SYNC_ENABLED`. Habilite `CSF_ORDER_SYNC_ENABLED` depois de validar um JSON real de pedido. Em `/api/admin/health`, confirme `compreSemFila: true`.
 
 ## 5. Antes de publicar
 
@@ -97,6 +100,8 @@ npm audit
 ```
 
 Também teste cadastro, login, recuperação de senha, pedido em dinheiro, pagamento online em ambiente de teste, cancelamento, baixa/restauração de estoque e permissões de cada função administrativa.
+
+Para o Compre Sem Fila, teste com credenciais de homologação: limite de 20 minutos dos produtos, produto simples, produto com tamanho, promoção ativa, estoque zerado, vínculo de ID, pedido repetido, pedido com produto não vinculado, payload incompleto e propagação dos status `accept`, `preparing`, `ready`, `retreat`, `finalize` e `cancel`.
 
 Para o atendimento presencial, valide ainda: criação e reativação de mesas, bloqueio de abertura duplicada, várias rodadas na mesma comanda, impressão e avanço pela cozinha, confirmação pelo garçom, cancelamento com motivo, pagamento em dinheiro com troco e liberação automática da mesa. Confirme com uma conta de entregador que nenhum pedido `DINE_IN` aparece na fila.
 

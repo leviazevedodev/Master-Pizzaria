@@ -1,5 +1,15 @@
 # Histórico de versões
 
+## 2.30.0 — Integração Compre Sem Fila
+
+- Adiciona cliente autenticado para as APIs de pedidos e produtos do Compre Sem Fila.
+- Sincroniza produtos e variações no formato v4 com preço, promoção, estoque, código interno e EAN-13 estável.
+- Respeita o intervalo mínimo de 20 minutos, impede execuções concorrentes e registra o histórico de cada sincronização.
+- Consulta pedidos externos, evita duplicações e só importa payloads que contenham cliente, entrega, pagamento, itens e totais reconhecíveis.
+- Mantém pedidos incompletos como pendentes de mapeamento, sem criar vendas incorretas no banco.
+- Vincula produtos locais aos IDs da CSF e envia as mudanças de status da operação.
+- Inclui controles administrativos, diagnóstico de configuração e retenção curta dos payloads externos.
+
 ## 2.29.0 — Sabores configuráveis, white-label e relacionamento
 
 - catálogo central de sabores e grupos, disponibilidade e preço por tamanho, regras de meio a meio e compatibilidade com os produtos legados;
