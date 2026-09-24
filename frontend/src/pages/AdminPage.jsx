@@ -341,7 +341,7 @@ export default function AdminPage({
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
       (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     setInstallHelp(isIOS
-      ? "No Safari, toque em Compartilhar e depois em Adicionar à Tela de Início. Abra este site no Safari se estiver usando outro navegador."
+      ? "No Safari, toque nos três pontos, depois em Compartilhar e em Adicionar à Tela de Início. Abra este site no Safari se estiver usando outro navegador."
       : "Abra o menu do Chrome ou Edge e escolha Instalar aplicativo ou Adicionar à tela inicial. Se a opção não aparecer, confira em Gestão 360° se Aplicativo instalável está ativado.");
   }
 

@@ -81,20 +81,22 @@ export default function TrackOrderPage({ session, settings = {} }) {
       ? [["SCHEDULED", "Agendado", CalendarClock], ...base]
       : base;
   }, [order?.fulfillmentType, order?.scheduledAt]);
-  async function load(value) {
+  async function load(value, silent = false) {
     if (!value) return;
-    setLoading(true);
-    setError("");
+    if (!silent) setLoading(true);
+    if (!silent) setError("");
     try {
       const { data } = await api.get(
         `/orders/track/${encodeURIComponent(value.trim())}`,
       );
       setOrder(data);
     } catch {
-      setOrder(null);
-      setError("Pedido não encontrado. Confira o código e tente novamente.");
+      if (!silent) {
+        setOrder(null);
+        setError("Pedido não encontrado. Confira o código e tente novamente.");
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
   useEffect(() => {
@@ -102,8 +104,17 @@ export default function TrackOrderPage({ session, settings = {} }) {
   }, [code]);
   useEffect(() => {
     if (!code) return undefined;
-    const timer = window.setInterval(() => load(code), 20000);
-    return () => window.clearInterval(timer);
+    const refresh = () => {
+      if (document.visibilityState === "visible") void load(code, true);
+    };
+    const timer = window.setInterval(refresh, 5000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, [code]);
   function submit(e) {
     e.preventDefault();
@@ -327,7 +338,6 @@ export default function TrackOrderPage({ session, settings = {} }) {
                     <MessageSquare />
                     <span>
                       <b>Como foi seu pedido?</b>
-                      <small>A avaliação só aparece no site depois de aprovada.</small>
                     </span>
                   </div>
                   <div className="review-rating-grid">

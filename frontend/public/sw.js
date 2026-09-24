@@ -1,4 +1,4 @@
-const CACHE = "master-pizza-static-v9";
+const CACHE = "master-pizza-static-v10";
 const APP_SHELL = ["/"];
 
 self.addEventListener("install", (event) => {
@@ -94,6 +94,27 @@ self.addEventListener("notificationclick", (event) => {
         return existing.focus();
       }
       return self.clients.openWindow(target);
+    }),
+  );
+});
+
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data?.json() || {};
+  } catch {
+    payload = { body: event.data?.text() || "O status do seu pedido mudou." };
+  }
+  const title = payload.title || "Pedido atualizado";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: payload.body || "O status do seu pedido mudou.",
+      icon: payload.icon || "/images/store-placeholder.svg",
+      badge: payload.badge || payload.icon || "/images/store-placeholder.svg",
+      tag: payload.tag || "master-pizzaria-order-status",
+      renotify: true,
+      vibrate: [250, 100, 250, 100, 400],
+      data: payload.data || { url: "/seus-pedidos" },
     }),
   );
 });

@@ -9,7 +9,6 @@ import {
   Eye,
   EyeOff,
   Printer,
-  RefreshCw,
   UtensilsCrossed,
   X,
 } from "lucide-react";
@@ -362,9 +361,6 @@ export function KitchenAdmin({
             </>
           ) : (
             <>
-              <span className="kitchen-auto-refresh">
-                <RefreshCw size={15} /> Atualização automática
-              </span>
               <button
                 className={
                   notificationsActive

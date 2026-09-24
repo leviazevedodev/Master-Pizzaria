@@ -1,4 +1,4 @@
-# Master Pizzaria Profissional v2.30.0
+# Master Pizzaria Profissional v2.31.0
 
 Aplicação de cardápio e gestão de pizzaria com React, Express, PostgreSQL e Prisma. Inclui pedidos, entrega/retirada, atendimento em mesas, agendamento, Pix e cartões transparentes pelo Mercado Pago, recuperação de senha por e-mail, painel administrativo, cozinha, garçons, entregadores, estoque, promoções, cupons e relatórios.
 

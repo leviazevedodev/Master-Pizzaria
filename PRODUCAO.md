@@ -1,6 +1,6 @@
 # Publicação segura
 
-Guia de atualização e publicação da v2.30.0.
+Guia de atualização e publicação da v2.31.0.
 
 ## 1. Segredos e ambiente
 
@@ -43,6 +43,8 @@ Na v2.29.0, aplique `20260915000000_central_flavor_catalog`, `20260916000000_con
 
 Na v2.30.0, aplique `20260923000000_compre_sem_fila_integration`. Ela adiciona somente tabelas e vínculos da integração com o Compre Sem Fila; pedidos e produtos existentes são preservados.
 
+Na v2.31.0, aplique `20260924000000_web_push_and_customer_counter`. Ela adiciona assinaturas Web Push ligadas aos códigos de acompanhamento e o ajuste manual do contador de clientes, sem alterar pedidos existentes.
+
 Para atualização sem Docker, com `backend/.env` configurado:
 
 ```bash
@@ -80,8 +82,9 @@ Reexecutar o seed preserva senha, catálogo, horários, taxas e configurações.
 - Se hospedar o frontend separado no Netlify, defina `VITE_API_URL` durante o build com a URL HTTPS do backend terminada em `/api` e inclua a origem do Netlify em `CORS_ORIGIN`.
 - Configure firewall, atualizações automáticas do host e logs com alerta.
 - No Mercado Pago, crie uma aplicação de **Checkout Transparente**, copie `MERCADOPAGO_PUBLIC_KEY` e `MERCADOPAGO_ACCESS_TOKEN`, configure a assinatura secreta em `MERCADOPAGO_WEBHOOK_SECRET` e cadastre `https://seu-dominio.com/api/payments/mercadopago/webhook` para eventos de pagamento. O cartão é tokenizado pelo componente oficial no navegador; o backend calcula o valor final e nunca aceita o valor enviado pelo cliente.
+- Gere um par VAPID com `npx web-push generate-vapid-keys` e configure `WEB_PUSH_PUBLIC_KEY`, `WEB_PUSH_PRIVATE_KEY` e `WEB_PUSH_SUBJECT`. O assunto deve ser `mailto:contato@seudominio.com.br` ou uma URL HTTPS. No iPhone, notificações em segundo plano exigem que o cliente instale o app na Tela de Início e abra o atalho instalado.
 - Para recuperação de senha, valide seu domínio no Resend, crie `RESEND_API_KEY` com permissão de envio e use um remetente do mesmo domínio em `EMAIL_FROM`, por exemplo `Master Pizzaria <contato@seudominio.com.br>`. O link é de uso único e expira em 30 minutos.
-- Em `/api/admin/health`, confirme `mercadoPago: true` e `passwordEmail: true` antes de liberar esses recursos.
+- Em `/api/admin/health`, confirme `mercadoPago: true`, `webPush: true` e `passwordEmail: true` antes de liberar esses recursos.
 - Para o Compre Sem Fila, mantenha `CSF_ENABLED=false` até receber `CSF_STORE_ID` e `CSF_API_KEY` de homologação. Ative primeiro a sincronização manual de produtos, confira preços, estoque, códigos e vínculos no painel e somente então habilite `CSF_PRODUCT_SYNC_ENABLED`. Habilite `CSF_ORDER_SYNC_ENABLED` depois de validar um JSON real de pedido. Em `/api/admin/health`, confirme `compreSemFila: true`.
 
 ## 5. Antes de publicar

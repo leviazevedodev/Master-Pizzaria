@@ -71,6 +71,7 @@ export default function MarketingAdmin({
         "publicReviewsEnabled",
         "reviewCollectionEnabled",
         "deliveredOrdersCounterEnabled",
+        "deliveredOrdersCounterOffset",
         "homeCatalogLayout",
         "bestSellersEnabled",
         "newProductsEnabled",
@@ -195,7 +196,8 @@ export default function MarketingAdmin({
         </div>
         <div className="settings-grid">
           <label>Exibição do cardápio na página inicial<select value={settings.homeCatalogLayout || "GRID"} onChange={(event) => set("homeCatalogLayout", event.target.value)}><option value="GRID">Grade atual</option><option value="CAROUSEL">Trilhos horizontais com setas</option></select></label>
-          <div className="satisfied-customers-admin-card"><small>Contagem automática atual</small><b>{Number(reviewStats.deliveredOrdersCount || 0)} pedidos entregues</b><span>Prévia no site: “Mais de {Number(reviewStats.deliveredOrdersCount || 0)} clientes satisfeitos”</span><span>{Number(reviewStats.pendingReviewsCount || 0)} avaliações pendentes ou ocultas na retenção.</span></div>
+          <div className="satisfied-customers-admin-card"><small>Contagem automática atual</small><b>{Number(reviewStats.automaticDeliveredOrdersCount || 0)} pedidos entregues</b><span>Prévia no site: “Mais de {Math.max(0, Number(reviewStats.automaticDeliveredOrdersCount || 0) + Number(settings.deliveredOrdersCounterOffset || 0))} clientes satisfeitos”</span><span>{Number(reviewStats.pendingReviewsCount || 0)} avaliações pendentes ou ocultas na retenção.</span></div>
+          <label>Contagem exibida no site<input type="number" min="0" max="10000000" step="1" value={Math.max(0, Number(reviewStats.automaticDeliveredOrdersCount || 0) + Number(settings.deliveredOrdersCounterOffset || 0))} onChange={(event) => set("deliveredOrdersCounterOffset", Number(event.target.value) - Number(reviewStats.automaticDeliveredOrdersCount || 0))} /><small>Você define o número atual; os próximos pedidos entregues continuam aumentando a contagem automaticamente.</small></label>
           <label>Programa de recompensa<select value={settings.rewardsMode || "DISABLED"} onChange={(event) => set("rewardsMode", event.target.value)}><option value="DISABLED">Desativado</option><option value="POINTS">Pontos</option><option value="CASHBACK">Cashback</option></select></label>
           <label>Dias como novidade<input type="number" min="1" max="365" value={settings.newProductDays || 30} onChange={(event) => set("newProductDays", Number(event.target.value))} /></label>
           {settings.rewardsMode === "POINTS" && <><label>Pontos por real<input type="number" min="0" step="0.1" value={settings.loyaltyPointsPerReal || 0} onChange={(event) => set("loyaltyPointsPerReal", Number(event.target.value))} /></label><label>Pontos para resgate<input type="number" min="1" value={settings.loyaltyRewardPoints || 500} onChange={(event) => set("loyaltyRewardPoints", Number(event.target.value))} /></label><label>Valor do resgate<input type="number" min="0" step="0.01" value={settings.loyaltyRewardValue || 0} onChange={(event) => set("loyaltyRewardValue", Number(event.target.value))} /></label></>}

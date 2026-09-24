@@ -1,5 +1,15 @@
 # Histórico de versões
 
+## 2.31.0 — Notificações, responsividade e pagamentos
+
+- adiciona Web Push com Service Worker para avisar mudanças do pedido em segundo plano no Android e no app instalado no iOS;
+- reduz o intervalo de atualização das telas do cliente de 20 para 5 segundos e atualiza assim que a tela volta ao primeiro plano;
+- corrige o payload de cartão para aceitar o identificador numérico do emissor retornado pelo Mercado Pago e variações compatíveis dos campos do Brick;
+- adapta os grids do painel à largura útil para impedir campos e ações fora dos cartões durante o zoom;
+- simplifica o atalho de instalação para um ícone e corrige a sequência e o ícone do tutorial no iOS;
+- remove textos desnecessários da cozinha e do envio de avaliação;
+- permite somar um ajuste configurável à contagem automática de clientes satisfeitos.
+
 ## 2.30.0 — Integração Compre Sem Fila
 
 - Adiciona cliente autenticado para as APIs de pedidos e produtos do Compre Sem Fila.

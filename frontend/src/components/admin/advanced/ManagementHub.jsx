@@ -223,6 +223,7 @@ export function ManagementHub({
           <span className={health?.api ? "ok" : "bad"}>API</span>
           <span className={health?.database ? "ok" : "bad"}>Banco</span>
           <span className={health?.mercadoPago ? "ok" : "warn"}>Pagamento</span>
+          <span className={health?.webPush ? "ok" : "warn"}>Notificações</span>
           <span className={health?.whatsapp ? "ok" : "warn"}>WhatsApp</span>
         </div>
       </section>

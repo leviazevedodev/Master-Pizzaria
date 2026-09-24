@@ -81,6 +81,11 @@ import {
   createCompreSemFilaService,
   registerCompreSemFilaAdminRoutes,
 } from "./compre-sem-fila-service.js";
+import {
+  createPushNotificationService,
+  readWebPushConfig,
+  registerPushNotificationRoutes,
+} from "./push-notifications.js";
 
 dotenv.config({ quiet: true });
 
@@ -123,6 +128,7 @@ const OSRM_BASE_URL = (
   process.env.OSRM_BASE_URL || "https://router.project-osrm.org"
 ).replace(/\/$/, "");
 const COMPRE_SEM_FILA_CONFIG = readCompreSemFilaConfig(process.env);
+const WEB_PUSH_CONFIG = readWebPushConfig(process.env);
 const MERCADOPAGO_PUBLIC_READY = Boolean(
   MERCADOPAGO_ACCESS_TOKEN &&
     MERCADOPAGO_PUBLIC_KEY &&
@@ -490,6 +496,7 @@ const serializeSettings = (settings) => ({
   compreSemFilaProductSyncEnabled:
     COMPRE_SEM_FILA_CONFIG.productSyncEnabled,
   compreSemFilaOrderSyncEnabled: COMPRE_SEM_FILA_CONFIG.orderSyncEnabled,
+  webPushConfigured: WEB_PUSH_CONFIG.configured,
 });
 const serializePublicSettings = (settings) => {
   const row = serializeSettings(settings);
@@ -1959,9 +1966,9 @@ async function activateDueScheduledOrders() {
     const maxMinutes = Math.max(5, Number(order.estimatedDeliveryMax || 45));
     if (!Number.isFinite(target) || now < target - maxMinutes * 60_000)
       continue;
-    await prisma
+    const activated = await prisma
       .$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${order.id}))`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${order.id}))`;
         const changed = await tx.order.updateMany({
           where: { id: order.id, status: "SCHEDULED" },
           data: { status: "RECEIVED" },
@@ -1975,8 +1982,20 @@ async function activateDueScheduledOrders() {
               changedByRole: "AUTOMAÇÃO",
             },
           });
+        return changed.count === 1;
       })
-      .catch(() => {});
+      .catch(() => false);
+    if (activated) {
+      const current = await prisma.order.findUnique({
+        where: { id: order.id },
+        include: orderInclude,
+      });
+      if (current) {
+        const serialized = serializeOrder(current);
+        compreSemFilaService.pushOrderStatus(serialized).catch(() => {});
+        pushNotificationService.notifyOrderStatus(serialized).catch(() => {});
+      }
+    }
   }
 }
 
@@ -5391,16 +5410,32 @@ app.post(
   async (req, res) => {
     const trackingCode = cleanText(req.body?.trackingCode, 100);
     const token = cleanText(req.body?.token, 320);
-    const paymentMethodId = cleanText(req.body?.payment_method_id, 80).toLowerCase();
-    const issuerId = cleanText(req.body?.issuer_id, 60);
-    const installments = boundedInteger(req.body?.installments, 1, 24);
-    const payerEmail = cleanText(req.body?.payer?.email, 180).toLowerCase();
+    const paymentMethodId = cleanText(
+      req.body?.payment_method_id || req.body?.paymentMethodId,
+      80,
+    ).toLowerCase();
+    const rawIssuerId = req.body?.issuer_id ?? req.body?.issuerId;
+    const issuerId = cleanText(
+      rawIssuerId == null ? "" : String(rawIssuerId),
+      60,
+    );
+    const installments = boundedInteger(
+      req.body?.installments ?? req.body?.selectedInstallments,
+      1,
+      24,
+    );
+    const payerEmail = cleanText(
+      req.body?.payer?.email || req.body?.email,
+      180,
+    ).toLowerCase();
     const identificationType = cleanText(
       req.body?.payer?.identification?.type,
       12,
     ).toUpperCase();
     const identificationNumber = cleanText(
-      req.body?.payer?.identification?.number,
+      req.body?.payer?.identification?.number == null
+        ? ""
+        : String(req.body.payer.identification.number),
       40,
     );
     if (
@@ -5707,6 +5742,7 @@ app.post(
       () => {},
     );
     compreSemFilaService.pushOrderStatus(canceled).catch(() => {});
+    pushNotificationService.notifyOrderStatus(canceled).catch(() => {});
     res.json({
       ...serialized,
       refundIssued: serialized.paymentStatus === "REFUNDED",
@@ -5835,6 +5871,17 @@ const compreSemFilaService = createCompreSemFilaService({
   getSettings,
   writeTechnicalLog: (event, error, details) =>
     writeTechnicalLog(event, error, null, details),
+});
+const pushNotificationService = createPushNotificationService({
+  prisma,
+  config: WEB_PUSH_CONFIG,
+  getSettings,
+  writeTechnicalLog: (event, error) => writeTechnicalLog(event, error),
+});
+registerPushNotificationRoutes({
+  app,
+  service: pushNotificationService,
+  rateLimit: trackingRateLimit,
 });
 registerCompreSemFilaAdminRoutes({
   app,
@@ -7158,6 +7205,7 @@ app.patch("/api/admin/orders/:id/status", auth, admin, async (req, res) => {
         labels[status] || status,
       ).catch(() => {});
     compreSemFilaService.pushOrderStatus(serializedResult).catch(() => {});
+    pushNotificationService.notifyOrderStatus(serializedResult).catch(() => {});
   }
   res.json(serializedResult);
 });
@@ -9941,7 +9989,12 @@ app.patch(
       });
       return tx.order.findUnique({ where: { id: current.id }, include: orderInclude });
     });
-    res.json(serializeOrder(row));
+    const serialized = serializeOrder(row);
+    if (serialized.fulfillmentType !== "DINE_IN") {
+      compreSemFilaService.pushOrderStatus(serialized).catch(() => {});
+      pushNotificationService.notifyOrderStatus(serialized).catch(() => {});
+    }
+    res.json(serialized);
   },
 );
 app.patch(
@@ -10499,6 +10552,14 @@ app.patch("/api/admin/settings", auth, admin, async (req, res) => {
       return res.status(400).json({ message: "Configuração numérica inválida." });
     data[f] = value;
   }
+  if (req.body?.deliveredOrdersCounterOffset !== undefined) {
+    const value = Number(req.body.deliveredOrdersCounterOffset);
+    if (!Number.isInteger(value) || value < -10_000_000 || value > 10_000_000)
+      return res.status(400).json({
+        message: "O ajuste do contador deve ficar entre -10.000.000 e 10.000.000.",
+      });
+    data.deliveredOrdersCounterOffset = value;
+  }
   if (req.body?.rewardsMode !== undefined) {
     const value = String(req.body.rewardsMode || "").toUpperCase();
     if (!["DISABLED", "POINTS", "CASHBACK"].includes(value))
@@ -11020,6 +11081,7 @@ app.get("/api/admin/health", auth, admin, async (req, res) => {
     api: true,
     database: db,
     mercadoPago: MERCADOPAGO_PUBLIC_READY,
+    webPush: WEB_PUSH_CONFIG.configured,
     passwordEmail: RESEND_READY,
     whatsapp: Boolean(WHATSAPP_WEBHOOK_URL),
     compreSemFila:
@@ -11357,7 +11419,11 @@ async function loadPublicHighlights({
     newProductIds: newRows
       .filter((product) => productIsNew(product, settings, now))
       .map((product) => product.id),
-    deliveredOrdersCount: Number(deliveredOrdersCount || 0),
+    deliveredOrdersCount: Math.max(
+      0,
+      Number(deliveredOrdersCount || 0) +
+        Number(settings.deliveredOrdersCounterOffset || 0),
+    ),
   };
 }
 
@@ -11467,11 +11533,23 @@ app.get("/api/me/rewards", auth, async (req, res) => {
 });
 
 app.get("/api/admin/reviews/stats", auth, admin, async (req, res) => {
-  const [deliveredOrdersCount, pendingReviewsCount] = await Promise.all([
+  const [automaticDeliveredOrdersCount, pendingReviewsCount, settings] = await Promise.all([
     prisma.order.count({ where: { status: "DELIVERED" } }),
     prisma.review.count({ where: { status: { not: "APPROVED" } } }),
+    getSettings(),
   ]);
-  res.json({ deliveredOrdersCount, pendingReviewsCount });
+  const deliveredOrdersCounterOffset = Number(
+    settings.deliveredOrdersCounterOffset || 0,
+  );
+  res.json({
+    automaticDeliveredOrdersCount,
+    deliveredOrdersCounterOffset,
+    deliveredOrdersCount: Math.max(
+      0,
+      automaticDeliveredOrdersCount + deliveredOrdersCounterOffset,
+    ),
+    pendingReviewsCount,
+  });
 });
 app.get("/api/admin/reviews", auth, admin, async (req, res) => {
   const status = cleanText(req.query?.status, 20).toUpperCase();
@@ -12055,6 +12133,11 @@ async function runDataRetention(now = new Date()) {
   summary.integrationLogs = (
     await prisma.whatsAppOutbox.deleteMany({
       where: { createdAt: { lt: cutoffs.technicalLogs } },
+    })
+  ).count;
+  summary.pushSubscriptions = (
+    await prisma.pushSubscription.deleteMany({
+      where: { lastSeenAt: { lt: cutoffs.personalData } },
     })
   ).count;
   summary.compreSemFilaSyncRuns = (

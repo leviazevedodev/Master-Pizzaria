@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Bell, BellRing, X } from "lucide-react";
-import { mediaUrl } from "../lib/api";
+import { api } from "../lib/api";
 
 const STORAGE_KEY = "master-pizzaria-customer-order-notifications";
 const STATUS_LABEL = {
@@ -24,27 +24,28 @@ function initialEnabled() {
   }
 }
 
-async function showBrowserNotification(title, options) {
-  if ("serviceWorker" in navigator) {
-    try {
-      const registration = await navigator.serviceWorker.getRegistration();
-      if (registration) {
-        await registration.showNotification(title, options);
-        return true;
-      }
-    } catch {}
-  }
-  try {
-    const notification = new Notification(title, options);
-    notification.onclick = () => {
-      window.focus();
-      if (options?.data?.url) window.location.assign(options.data.url);
-      notification.close();
-    };
-    return true;
-  } catch {
-    return false;
-  }
+function applicationServerKey(value) {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const bytes = atob(base64);
+  return Uint8Array.from(bytes, (character) => character.charCodeAt(0));
+}
+
+function trackingCodesFor(orders) {
+  return [...new Set(orders.map((order) => order.trackingCode).filter(Boolean))].slice(0, 20);
+}
+
+function isIosOutsideInstalledApp() {
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const standalone = window.matchMedia?.("(display-mode: standalone)").matches ||
+    window.navigator.standalone === true;
+  return ios && !standalone;
+}
+
+async function currentPushSubscription() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
+  const registration = await navigator.serviceWorker.getRegistration();
+  return registration?.pushManager.getSubscription() || null;
 }
 
 export default function CustomerOrderNotifications({
@@ -60,9 +61,8 @@ export default function CustomerOrderNotifications({
   const previous = useRef(new Map());
   const primed = useRef(false);
   const storeName = settings.storeName || "Pizzaria";
-  const notificationIcon =
-    mediaUrl(settings.faviconImage || settings.logoImage) ||
-    "/images/store-placeholder.svg";
+  const trackingCodes = trackingCodesFor(orders);
+  const trackingKey = trackingCodes.join("|");
 
   useEffect(() => {
     if (!ready) return;
@@ -88,23 +88,45 @@ export default function CustomerOrderNotifications({
     const title = `Pedido #${order.shortCode || ""} atualizado`;
     const body = STATUS_LABEL[order.status] || "O status do seu pedido mudou.";
     setNotice({ title, body });
-    if (typeof Notification !== "undefined" && Notification.permission === "granted")
-      void showBrowserNotification(title, {
-        body,
-        icon: notificationIcon,
-        badge: notificationIcon,
-        tag: `master-pizzaria-customer-${order.trackingCode || order.id}`,
-        renotify: true,
-        requireInteraction: true,
-        vibrate: [250, 100, 250, 100, 400],
-        data: {
-          url: order.trackingCode ? `/pedido/${order.trackingCode}` : "/seus-pedidos",
-        },
-      });
-  }, [orders, ready, enabled, notificationIcon]);
+  }, [orders, ready, enabled]);
+
+  useEffect(() => {
+    if (!enabled || !ready) return;
+    let canceled = false;
+    async function syncOrders() {
+      try {
+        const subscription = await currentPushSubscription();
+        if (canceled) return;
+        if (!subscription) {
+          setEnabled(false);
+          try { localStorage.setItem(STORAGE_KEY, "false"); } catch {}
+          return;
+        }
+        await api.post("/push/subscriptions", {
+          subscription: subscription.toJSON(),
+          trackingCodes,
+        });
+      } catch {
+        if (!canceled)
+          setNotice({
+            title: "Notificações temporariamente indisponíveis",
+            body: "Abra esta tela novamente para sincronizar os avisos dos seus pedidos.",
+          });
+      }
+    }
+    void syncOrders();
+    return () => { canceled = true; };
+  }, [enabled, ready, trackingKey]);
 
   async function toggle() {
     if (enabled) {
+      const subscription = await currentPushSubscription().catch(() => null);
+      if (subscription) {
+        await api.delete("/push/subscriptions", {
+          data: { endpoint: subscription.endpoint },
+        }).catch(() => {});
+        await subscription.unsubscribe().catch(() => {});
+      }
       setEnabled(false);
       setNotice(null);
       try {
@@ -112,8 +134,37 @@ export default function CustomerOrderNotifications({
       } catch {}
       return;
     }
-    if (typeof Notification === "undefined") {
+    if (
+      typeof Notification === "undefined" ||
+      !("serviceWorker" in navigator) ||
+      !("PushManager" in window)
+    ) {
       setPermission("unsupported");
+      setNotice({
+        title: "Navegador sem suporte",
+        body: "Este navegador não oferece notificações em segundo plano.",
+      });
+      return;
+    }
+    if (settings.pwaEnabled === false) {
+      setNotice({
+        title: "Aplicativo desativado",
+        body: "A loja precisa ativar o aplicativo instalável para enviar notificações em segundo plano.",
+      });
+      return;
+    }
+    if (settings.browserNotificationsEnabled === false) {
+      setNotice({
+        title: "Notificações desativadas pela loja",
+        body: "A pizzaria precisa ativar as notificações no painel antes deste aparelho.",
+      });
+      return;
+    }
+    if (isIosOutsideInstalledApp()) {
+      setNotice({
+        title: "Instale o app primeiro",
+        body: "No iPhone, instale a pizzaria na Tela de Início e abra o app instalado para ativar os avisos.",
+      });
       return;
     }
     const nextPermission =
@@ -122,26 +173,38 @@ export default function CustomerOrderNotifications({
         : Notification.permission;
     setPermission(nextPermission);
     if (nextPermission !== "granted") return;
-    setEnabled(true);
     try {
-      localStorage.setItem(STORAGE_KEY, "true");
-    } catch {}
-    const delivered = await showBrowserNotification(
-      `Notificações da ${storeName} ativadas`,
-      {
-        body: "Você receberá um aviso quando o status do pedido mudar.",
-        icon: notificationIcon,
-        badge: notificationIcon,
-        tag: "master-pizzaria-customer-test",
-        requireInteraction: false,
-        data: { url: "/seus-pedidos" },
-      },
-    );
-    if (!delivered)
-      setNotice({
-        title: "Permissão concedida",
-        body: "O navegador não conseguiu exibir a notificação do sistema, mas os avisos dentro do site continuam ativos.",
+      const { data: config } = await api.get("/push/config");
+      if (!config?.enabled || !config?.publicKey)
+        throw new Error("WEB_PUSH_NOT_CONFIGURED");
+      await navigator.serviceWorker.register("/sw.js");
+      const registration = await navigator.serviceWorker.ready;
+      const subscription =
+        (await registration.pushManager.getSubscription()) ||
+        (await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: applicationServerKey(config.publicKey),
+        }));
+      await api.post("/push/subscriptions", {
+        subscription: subscription.toJSON(),
+        trackingCodes,
       });
+      setEnabled(true);
+      try {
+        localStorage.setItem(STORAGE_KEY, "true");
+      } catch {}
+      setNotice({
+        title: `Notificações da ${storeName} ativadas`,
+        body: "Você receberá avisos mesmo com o app em segundo plano.",
+      });
+    } catch {
+      setEnabled(false);
+      try { localStorage.setItem(STORAGE_KEY, "false"); } catch {}
+      setNotice({
+        title: "Não foi possível ativar",
+        body: "Confira a conexão e tente novamente. A loja também precisa configurar as chaves de notificação.",
+      });
+    }
   }
 
   return (

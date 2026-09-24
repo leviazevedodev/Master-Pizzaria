@@ -63,8 +63,17 @@ export default function GuestOrdersPage({ settings = {} }) {
   }
   useEffect(() => {
     loadSaved();
-    const timer = window.setInterval(() => loadSaved(true), 20000);
-    return () => window.clearInterval(timer);
+    const refresh = () => {
+      if (document.visibilityState === "visible") void loadSaved(true);
+    };
+    const timer = window.setInterval(refresh, 5000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, []);
   const ordered = useMemo(
     () =>

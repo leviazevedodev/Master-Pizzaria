@@ -30,3 +30,14 @@ test("Pix criado é vinculado antes da reconciliação e não cai no rollback pr
       block.lastIndexOf("syncMercadoPagoPayment"),
   );
 });
+
+test("cartão preserva emissor numérico e aceita os nomes de campo do Brick", async () => {
+  const source = await readFile(serverUrl, "utf8");
+  const start = source.indexOf('"/api/payments/mercadopago/card"');
+  const end = source.indexOf('"/api/payments/mercadopago/webhook"', start);
+  const route = source.slice(start, end);
+  assert.match(route, /payment_method_id \|\| req\.body\?\.paymentMethodId/);
+  assert.match(route, /String\(rawIssuerId\)/);
+  assert.match(route, /issuer_id: issuerId/);
+  assert.match(route, /selectedInstallments/);
+});

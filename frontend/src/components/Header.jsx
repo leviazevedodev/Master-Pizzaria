@@ -3,9 +3,10 @@ import { Link } from "react-router-dom";
 import {
   Clock3,
   Download,
+  Ellipsis,
   Menu,
   Phone,
-  Share2,
+  Share,
   ShoppingBag,
   SquarePlus,
   UserRound,
@@ -153,9 +154,9 @@ export default function Header({
                 className="install-app-button"
                 onClick={installApp}
                 title={`Instalar ${storeName}`}
+                aria-label={`Instalar ${storeName}`}
               >
                 <Download size={17} />
-                <span>Instalar {storeName}</span>
               </button>
             )}
           {String(settings?.phone || "").trim() && (
@@ -229,9 +230,15 @@ export default function Header({
             </p>
             <ol>
               <li>
-                <Share2 size={21} />
+                <Ellipsis size={21} />
                 <span>
-                  Toque em <strong>Compartilhar</strong> no Safari.
+                  Toque nos <strong>três pontos</strong> no Safari.
+                </span>
+              </li>
+              <li>
+                <Share size={21} />
+                <span>
+                  Toque em <strong>Compartilhar</strong>.
                 </span>
               </li>
               <li>

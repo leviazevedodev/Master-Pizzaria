@@ -1,6 +1,6 @@
 {
   "name": "master-pizzaria-api",
-  "version": "2.30.0",
+  "version": "2.31.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -21,7 +21,8 @@
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
-    "multer": "^2.0.2"
+    "multer": "^2.0.2",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "prisma": "6.12.0"
