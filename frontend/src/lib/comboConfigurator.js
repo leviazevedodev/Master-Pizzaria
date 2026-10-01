@@ -168,6 +168,19 @@ function signedRule(rule, normalPrice = 0) {
   return 0;
 }
 
+export function comboFlavorNormalAdjustment(slot, flavor) {
+  const baseSize = (slot.baseProduct?.availableSizes || []).find((row) => row.id === slot.sizeId || row.sizeId === slot.sizeId);
+  const basePrice = Number(baseSize?.price ?? slot.baseProduct?.price ?? 0);
+  const flavorSize = (flavor.availableSizes || []).find((row) => row.id === slot.sizeId || row.sizeId === slot.sizeId);
+  const flavorPrice = flavorSize?.pricingMode === "SURCHARGE"
+    ? basePrice + Number(flavorSize.price || 0)
+    : Number(flavorSize?.price ?? basePrice);
+  const relationPrice = flavor.priceMode === "SURCHARGE"
+    ? basePrice + Number(flavor.surcharge || 0)
+    : flavorPrice;
+  return roundMoney(relationPrice - basePrice);
+}
+
 export function localComboAdjustment(combo, selections) {
   let total = 0;
   for (const slot of combo.comboSlots || []) {
@@ -184,7 +197,7 @@ export function localComboAdjustment(combo, selections) {
     );
     const flavorAdjustment = flavors.length
       ? flavors.reduce(
-          (sum, flavor) => sum + signedRule(comboFlavorRule(slot, flavor)),
+          (sum, flavor) => sum + signedRule(comboFlavorRule(slot, flavor), comboFlavorNormalAdjustment(slot, flavor)),
           0,
         ) / flavors.length
       : 0;

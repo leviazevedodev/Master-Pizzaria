@@ -47,10 +47,18 @@ test("mantém o sabor original de um produto-sabor pré-selecionado e bloqueado"
         isFlavorOption: true,
         flavorCatalogMode: "CENTRAL",
         defaultFlavorId: "flavor-calabresa",
+        requiredFlavorId: "flavor-calabresa",
       },
       flavors,
     ),
     "flavor-calabresa",
+  );
+  assert.equal(
+    originalFlavorId(
+      { id: "product-calabresa", isFlavorOption: true, flavorCatalogMode: "CENTRAL", defaultFlavorId: "flavor-marguerita", requiredFlavorId: null },
+      flavors,
+    ),
+    null,
   );
   assert.equal(
     originalFlavorId(
@@ -62,6 +70,10 @@ test("mantém o sabor original de um produto-sabor pré-selecionado e bloqueado"
 });
 
 test("explica exatamente o que falta para liberar a inclusão", () => {
+  assert.equal(
+    customizerBlockReason({ flavorsRequired: true, hasFlavorChoice: false }),
+    "Nenhum sabor disponível para este tamanho.",
+  );
   assert.equal(
     customizerBlockReason({
       sizes: [{ id: "large" }],

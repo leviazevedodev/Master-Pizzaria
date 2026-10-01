@@ -1,4 +1,4 @@
-const CACHE = "master-pizza-static-v10";
+const CACHE = "master-pizza-static-v11";
 const APP_SHELL = ["/"];
 
 self.addEventListener("install", (event) => {

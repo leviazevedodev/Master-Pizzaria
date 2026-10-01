@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { adminOrderFilter } from "../src/order-access.js";
+import { adminOrderFilter, canMarkKitchenPrinted, COURIER_DELIVERED_VISIBILITY_MS } from "../src/order-access.js";
 
 test("equipe de Pedidos recebe pedidos online e presenciais", () => {
   const where = adminOrderFilter({ role: "STAFF", userId: "staff-1" });
@@ -32,4 +32,23 @@ test("entregador recebe fila livre e somente o próprio histórico ativo", () =>
     status: "OUT_FOR_DELIVERY",
     assignedCourierId: "courier-1",
   });
+});
+
+test("entregador vê entregue há 6 dias, mas não há 7 dias; gestão mantém histórico completo", () => {
+  const now = new Date("2026-09-30T12:00:00.000Z");
+  const courier = adminOrderFilter({ role: "DELIVERY", userId: "courier-1", now });
+  const cutoff = courier.OR[2].deliveredAt.gt;
+  assert.equal(cutoff.getTime(), now.getTime() - COURIER_DELIVERED_VISIBILITY_MS);
+  assert.ok(new Date(now.getTime() - 6 * 86400000) > cutoff);
+  assert.ok(!(new Date(now.getTime() - 7 * 86400000) > cutoff));
+  assert.equal(courier.OR[2].OR[0].assignedCourierId, "courier-1");
+  const admin = adminOrderFilter({ role: "STAFF", userId: "staff-1", now });
+  assert.equal(admin.OR[0].paymentStatus.in.includes("APPROVED"), true);
+  assert.equal(admin.deliveredAt, undefined);
+});
+
+test("entregador não consegue registrar impressão mesmo com permissão indevida", () => {
+  assert.equal(canMarkKitchenPrinted("DELIVERY", true), false);
+  assert.equal(canMarkKitchenPrinted("STAFF", true), true);
+  assert.equal(canMarkKitchenPrinted("STAFF", false), false);
 });

@@ -7,9 +7,9 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { api } from "../lib/api";
+import { api, authHeaders } from "../lib/api";
 import { etaRange, money } from "../lib/format";
-import { readStoredStringArray } from "../lib/storage";
+import { readStoredStringArray, writeStoredJson } from "../lib/storage";
 import CustomerOrderNotifications from "../components/CustomerOrderNotifications";
 import CustomerCancelOrderButton from "../components/CustomerCancelOrderButton";
 
@@ -35,8 +35,9 @@ const OPEN_STATUS = new Set([
 ]);
 
 function readCodes() {
-  return readStoredStringArray(localStorage, "master-pizza-guest-orders", 12);
+  return readStoredStringArray(localStorage, "master-pizza-guest-orders", 20);
 }
+const GUEST_ACCESS_KEY = "master-pizza-guest-access";
 
 export default function GuestOrdersPage({ settings = {} }) {
   const navigate = useNavigate();
@@ -44,6 +45,14 @@ export default function GuestOrdersPage({ settings = {} }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [guestAccess, setGuestAccess] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(GUEST_ACCESS_KEY) || "null"); }
+    catch { return null; }
+  });
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
+  const [accessBusy, setAccessBusy] = useState(false);
   async function loadSaved(silent = false) {
     if (!silent) setLoading(true);
     if (!silent) setError("");
@@ -58,7 +67,18 @@ export default function GuestOrdersPage({ settings = {} }) {
         }
       }),
     );
-    setOrders(results.filter(Boolean));
+    let remote = [];
+    if (guestAccess?.token) {
+      try {
+        remote = (await api.get("/guest-orders", authHeaders(guestAccess.token))).data;
+      } catch (err) {
+        if (err.response?.status === 401) {
+          localStorage.removeItem(GUEST_ACCESS_KEY);
+          setGuestAccess(null);
+        } else if (!silent) setError("Não foi possível atualizar o histórico. Tente novamente.");
+      }
+    }
+    setOrders([...new Map([...results.filter(Boolean), ...remote].map((order) => [order.trackingCode, order])).values()]);
     if (!silent) setLoading(false);
   }
   useEffect(() => {
@@ -74,7 +94,33 @@ export default function GuestOrdersPage({ settings = {} }) {
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", refresh);
     };
-  }, []);
+  }, [guestAccess?.token]);
+  async function requestAccess(event) {
+    event.preventDefault();
+    setAccessBusy(true);
+    setError("");
+    try {
+      await api.post("/guest-orders/request-access", { email: email.trim().toLowerCase() });
+      setCodeSent(true);
+    } catch (err) {
+      setError(err.response?.data?.message || "Não foi possível enviar o código. Tente novamente.");
+    } finally { setAccessBusy(false); }
+  }
+  async function verifyAccess(event) {
+    event.preventDefault();
+    setAccessBusy(true);
+    setError("");
+    try {
+      const { data } = await api.post("/guest-orders/verify", { email: email.trim().toLowerCase(), code });
+      localStorage.setItem(GUEST_ACCESS_KEY, JSON.stringify(data));
+      await Promise.allSettled(readCodes().map((trackingCode) =>
+        api.post("/guest-orders/claim", { trackingCode }, authHeaders(data.token))));
+      setGuestAccess(data);
+      setCode("");
+    } catch (err) {
+      setError(err.response?.data?.message || "Não foi possível confirmar o código.");
+    } finally { setAccessBusy(false); }
+  }
   const ordered = useMemo(
     () =>
       [...orders].sort((a, b) => {
@@ -85,10 +131,17 @@ export default function GuestOrdersPage({ settings = {} }) {
       }),
     [orders],
   );
-  function submit(e) {
+  async function submit(e) {
     e.preventDefault();
     const code = input.trim();
-    if (!code) return setError("Digite o código do pedido.");
+    if (!/^[a-f0-9-]{36}$/i.test(code)) return setError("Digite o código completo do pedido.");
+    writeStoredJson(localStorage, "master-pizza-guest-orders", [code, ...readCodes().filter((value) => value !== code)].slice(0, 20));
+    if (guestAccess?.token) {
+      try { await api.post("/guest-orders/claim", { trackingCode: code }, authHeaders(guestAccess.token)); }
+      catch (error) {
+        if (error.response?.status !== 404) setError("Não foi possível salvar este pedido no histórico, mas você ainda pode acompanhá-lo pelo código.");
+      }
+    }
     navigate(`/pedido/${code}`);
   }
   return (
@@ -106,8 +159,7 @@ export default function GuestOrdersPage({ settings = {} }) {
               Acompanhe sem precisar <em>criar conta.</em>
             </h1>
             <p>
-              Os pedidos feitos neste navegador aparecem abaixo. Se estiver em
-              outro aparelho, use o código recebido ao finalizar a compra.
+              Seus pedidos neste navegador aparecem abaixo. Para ver também os pedidos do app instalado ou de outro aparelho, confirme o e-mail usado na compra.
             </p>
           </div>
           <form className="guest-order-search" onSubmit={submit}>
@@ -115,10 +167,20 @@ export default function GuestOrdersPage({ settings = {} }) {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Código do pedido"
+              placeholder="Código completo do pedido"
             />
             <button className="primary-btn">Acompanhar</button>
           </form>
+          {guestAccess?.token ? (
+            <div className="guest-access-status">Histórico sincronizado com {guestAccess.email}. <button type="button" className="text-button" onClick={() => { localStorage.removeItem(GUEST_ACCESS_KEY); setGuestAccess(null); }}>Trocar e-mail</button></div>
+          ) : (
+            <form className="guest-access-form" onSubmit={codeSent ? verifyAccess : requestAccess}>
+              <label>E-mail usado na compra<input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="voce@exemplo.com" /></label>
+              {codeSent && <label>Código enviado por e-mail<input inputMode="numeric" pattern="[0-9]{6}" maxLength="6" required value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} placeholder="000000" /></label>}
+              <button type="submit" className="primary-btn" disabled={accessBusy}>{accessBusy ? "Aguarde..." : codeSent ? "Confirmar código" : "Receber código de acesso"}</button>
+              {codeSent && <button type="button" className="text-button" onClick={() => { setCodeSent(false); setCode(""); }}>Alterar e-mail ou reenviar</button>}
+            </form>
+          )}
           <CustomerOrderNotifications
             orders={orders}
             ready={!loading}
@@ -128,13 +190,13 @@ export default function GuestOrdersPage({ settings = {} }) {
         {error && <div className="form-error">{error}</div>}
         {loading ? (
           <div className="history-empty">
-            Buscando pedidos deste aparelho...
+            Buscando seus pedidos...
           </div>
         ) : ordered.length ? (
           <section className="orders-history">
             <div className="section-heading compact-heading">
               <div>
-                <span className="eyebrow dark">Neste aparelho</span>
+                <span className="eyebrow dark">Seu histórico</span>
                 <h2>Pedidos recentes.</h2>
                 <p>Pedidos em andamento e agendados ficam no topo.</p>
               </div>
@@ -248,7 +310,7 @@ export default function GuestOrdersPage({ settings = {} }) {
         ) : (
           <div className="history-empty">
             <ShoppingBag />
-            <h3>Nenhum pedido salvo neste navegador</h3>
+            <h3>Nenhum pedido encontrado</h3>
             <p>
               Você ainda pode acompanhar qualquer compra usando o código do
               pedido acima.

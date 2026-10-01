@@ -18,6 +18,7 @@ import {
   availableComboModifierOptions,
   comboCartKey,
   comboFlavorRule,
+  comboFlavorNormalAdjustment,
   comboSelectionBlockReason,
   comboSlotMaxFlavors,
   initialComboSelections,
@@ -402,9 +403,9 @@ export default function ConfigurableComboFlow({
                       )}
                       <span>
                         <b>{flavor.name}</b>
-                        <small>
-                          {adjustmentLabel(ruleAdjustment(rule))}
-                        </small>
+                        {flavor.priceMode !== "HIDDEN_PRICE" && <small>
+                          {adjustmentLabel(ruleAdjustment(rule, comboFlavorNormalAdjustment(slot, flavor)))}
+                        </small>}
                       </span>
                       <i>{active ? <Check size={16} /> : <Plus size={16} />}</i>
                     </button>

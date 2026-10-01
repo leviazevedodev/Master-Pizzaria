@@ -7,8 +7,9 @@ function minimumForGroup(group) {
 export function originalFlavorId(product, eligibleFlavors = []) {
   if (!product?.isFlavorOption) return null;
   const candidate =
-    product.defaultFlavorId ||
-    (product.flavorCatalogMode === "CENTRAL" ? null : product.id);
+    product.flavorCatalogMode === "CENTRAL"
+      ? product.requiredFlavorId
+      : product.defaultFlavorId || product.id;
   return eligibleFlavors.some((flavor) => flavor.id === candidate)
     ? candidate
     : null;
@@ -41,12 +42,15 @@ export function customizerBlockReason({
   sizes = [],
   selectedSize,
   hasFlavorChoice,
+  flavorsRequired = false,
   chosenCount,
   targetCount,
   modifierGroups = [],
   selectedOptions = {},
 }) {
   if (sizes.length && !selectedSize) return "Escolha um tamanho.";
+  if (flavorsRequired && !hasFlavorChoice)
+    return "Nenhum sabor disponível para este tamanho.";
   if (hasFlavorChoice && chosenCount !== targetCount)
     return `Escolha ${targetCount} sabor(es) para continuar.`;
 

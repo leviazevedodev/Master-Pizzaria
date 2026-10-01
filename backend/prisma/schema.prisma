@@ -118,6 +118,18 @@ model PasswordResetToken {
   @@index([createdAt])
 }
 
+model GuestOrderVerification {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  codeHash  String
+  attempts  Int       @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([expiresAt])
+}
+
 model Category {
   id            String        @id @default(cuid())
   name          String        @unique
@@ -427,6 +439,9 @@ model ProductFlavor {
   productId String
   flavorId  String
   sortOrder Int     @default(0)
+  enabled   Boolean @default(true)
+  priceMode String  @default("BASE_PRICE")
+  surcharge Decimal @default(0) @db.Decimal(10, 2)
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   flavor    Flavor  @relation(fields: [flavorId], references: [id], onDelete: Cascade)
 
@@ -584,6 +599,7 @@ model Order {
   trackingCode           String                  @unique @default(uuid())
   customerName           String
   customerPhone          String
+  customerEmail          String?
   fulfillmentType        FulfillmentType         @default(DELIVERY)
   postalCode             String?
   street                 String?
@@ -654,6 +670,7 @@ model Order {
   @@index([paymentStatus, createdAt])
   @@index([scheduledAt])
   @@index([customerPhone])
+  @@index([customerEmail, createdAt])
   @@index([userId, createdAt])
   @@index([deliveryAreaId])
   @@index([assignedCourierId, status])

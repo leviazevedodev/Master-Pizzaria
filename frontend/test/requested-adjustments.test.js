@@ -59,7 +59,7 @@ test("vitrine oferece trilhos dinâmicos e contador de entregues", async () => {
   assert.match(home, /homeCatalogLayout === "CAROUSEL"/);
   assert.match(home, /categories\.map/);
   assert.match(home, /scrollBy/);
-  assert.match(home, /Mais de \{Number\(highlights\.deliveredOrdersCount/);
+  assert.match(home, /Mais de \{compactCount\(highlights\.deliveredOrdersCount\)/);
   assert.match(marketing, /deliveredOrdersCounterEnabled/);
   assert.match(marketing, /Trilhos horizontais com setas/);
   assert.match(marketing, /Excluir esta avaliação definitivamente/);

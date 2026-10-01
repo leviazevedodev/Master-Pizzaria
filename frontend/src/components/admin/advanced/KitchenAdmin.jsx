@@ -1,7 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Bell,
-  BellOff,
   Check,
   ChefHat,
   Maximize2,
@@ -14,6 +12,7 @@ import {
 } from "lucide-react";
 import { api, authHeaders } from "../../../lib/api";
 import { money } from "../../../lib/format";
+import { fullscreenThemeClass } from "../../../lib/adminTheme";
 import { kitchenCountdown, OPERATION_REFRESH_MS } from "../../../lib/operations";
 import {
   comboSnapshotDetailLines,
@@ -108,6 +107,7 @@ function KitchenCountdown({ order, now, fallbackMinutes }) {
 export function KitchenAdmin({
   session,
   settings,
+  dark = false,
   notify = () => {},
   fail = () => {},
 }) {
@@ -126,20 +126,6 @@ export function KitchenAdmin({
   const loadInFlight = useRef(false);
   const screenRef = useRef(null);
   const known = useRef(new Set());
-  const [permission, setPermission] = useState(
-    typeof Notification !== "undefined"
-      ? Notification.permission
-      : "unsupported",
-  );
-  const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
-    try {
-      return (
-        localStorage.getItem("master-pizza-kitchen-notifications") !== "off"
-      );
-    } catch {
-      return true;
-    }
-  });
   async function load(first = false) {
     if (loadInFlight.current) return;
     loadInFlight.current = true;
@@ -150,9 +136,8 @@ export function KitchenAdmin({
       if (!first && fresh.length) {
         if (settings?.newOrderSoundEnabled !== false) beep();
         if (
-          notificationsEnabled &&
           settings?.browserNotificationsEnabled !== false &&
-          permission === "granted"
+          typeof Notification !== "undefined" && Notification.permission === "granted"
         )
           fresh.forEach(
             (o) =>
@@ -187,8 +172,6 @@ export function KitchenAdmin({
     settings?.newOrderSoundEnabled,
     settings?.browserNotificationsEnabled,
     settings?.autoPrintEnabled,
-    permission,
-    notificationsEnabled,
   ]);
   useEffect(() => {
     const timer = setInterval(() => {
@@ -204,32 +187,6 @@ export function KitchenAdmin({
     return () =>
       document.removeEventListener("fullscreenchange", syncFullscreenState);
   }, []);
-  async function toggleNotifications() {
-    if (notificationsEnabled && permission === "granted") {
-      setNotificationsEnabled(false);
-      try {
-        localStorage.setItem("master-pizza-kitchen-notifications", "off");
-      } catch {}
-      notify("Notificações da cozinha desativadas neste navegador.");
-      return;
-    }
-    if (typeof Notification === "undefined") {
-      notify("Este navegador não oferece notificações.");
-      return;
-    }
-    let nextPermission = permission;
-    if (permission !== "granted") {
-      nextPermission = await Notification.requestPermission();
-      setPermission(nextPermission);
-    }
-    if (nextPermission === "granted") {
-      setNotificationsEnabled(true);
-      try {
-        localStorage.setItem("master-pizza-kitchen-notifications", "on");
-      } catch {}
-      notify("Notificações da cozinha ativadas neste navegador.");
-    } else notify("O navegador não autorizou notificações.");
-  }
   function manualPrint(order) {
     printKitchenOrder(order);
     api
@@ -258,18 +215,6 @@ export function KitchenAdmin({
       setAdvancingId(null);
     }
   }
-  async function markServed(order) {
-    setAdvancingId(order.id);
-    try {
-      await api.post(`/admin/table-orders/${order.id}/served`, {}, headers);
-      notify(`${order.table?.name || "Mesa"} marcada como servida.`);
-      await load(true);
-    } catch (error) {
-      fail(error, "Não foi possível marcar o pedido como servido.");
-    } finally {
-      setAdvancingId(null);
-    }
-  }
   function openFocus(view) {
     setFocusView(view);
     const request = screenRef.current?.requestFullscreen?.();
@@ -282,7 +227,6 @@ export function KitchenAdmin({
     }
     setFocusView(null);
   }
-  const notificationsActive = notificationsEnabled && permission === "granted";
   const salonView = focusView === "SALON";
   const screenOrders = salonView
     ? orders.filter((order) => order.fulfillmentType === "DINE_IN")
@@ -310,7 +254,7 @@ export function KitchenAdmin({
   return (
     <div
       ref={screenRef}
-      className={`kitchen-page ${focusView ? "focus-screen" : ""} ${salonView ? "salon-screen" : ""}`}
+      className={`kitchen-page ${focusView ? "focus-screen" : ""} ${salonView ? "salon-screen" : ""} ${fullscreenThemeClass(dark)}`}
     >
       <section className="admin-panel kitchen-toolbar">
         <div>
@@ -361,23 +305,6 @@ export function KitchenAdmin({
             </>
           ) : (
             <>
-              <button
-                className={
-                  notificationsActive
-                    ? "ghost-dark-btn notification-toggle active"
-                    : "ghost-dark-btn notification-toggle"
-                }
-                onClick={toggleNotifications}
-              >
-                {notificationsActive ? (
-                  <BellOff size={16} />
-                ) : (
-                  <Bell size={16} />
-                )}{" "}
-                {notificationsActive
-                  ? "Desativar notificações"
-                  : "Ativar notificações"}
-              </button>
               <button
                 type="button"
                 className="ghost-dark-btn kitchen-fullscreen-btn"
@@ -472,16 +399,6 @@ export function KitchenAdmin({
                     : o.status === "RECEIVED"
                       ? "Iniciar preparo"
                       : "Marcar pronto"}
-                </button>
-              )}
-              {salonView && o.status === "READY_FOR_TABLE" && (
-                <button
-                  className="kitchen-advance-btn"
-                  disabled={advancingId === o.id}
-                  onClick={() => markServed(o)}
-                >
-                  <Check size={15} />
-                  {advancingId === o.id ? "Salvando..." : "Confirmar servido"}
                 </button>
               )}
             </div>

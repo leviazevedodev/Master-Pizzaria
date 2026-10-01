@@ -143,6 +143,8 @@ function LegacyPizzaBuilderModal({
     );
   }
   function flavorOriginalPrice(flavor) {
+    if (flavor.priceMode === "SURCHARGE")
+      return baseOriginalPrice + Number(flavor.surcharge || 0);
     if (
       baseProduct.flavorCatalogMode !== "CENTRAL" &&
       flavor.id === baseProduct.id
@@ -163,6 +165,8 @@ function LegacyPizzaBuilderModal({
     );
   }
   function flavorPrice(flavor) {
+    if (flavor.priceMode === "SURCHARGE")
+      return basePrice + Number(flavor.surcharge || 0);
     if (
       baseProduct.flavorCatalogMode !== "CENTRAL" &&
       flavor.id === baseProduct.id
@@ -291,6 +295,7 @@ function LegacyPizzaBuilderModal({
     sizes,
     selectedSize,
     hasFlavorChoice,
+    flavorsRequired: baseProduct.allowFlavorSplit,
     chosenCount: chosen.length,
     targetCount,
     modifierGroups,
@@ -486,11 +491,11 @@ function LegacyPizzaBuilderModal({
                     )}
                     <span>
                       <b>{flavor.name}</b>
-                      <small>
-                        {locked ? "Seu sabor escolhido • " : ""}
-                        {money(flavorPrice(flavor))}
-                      </small>
-                      {averageFlavorPricing && active && (
+                      {(locked || flavor.priceMode !== "HIDDEN_PRICE") && <small>
+                        {locked ? "Seu sabor escolhido" : ""}
+                        {flavor.priceMode !== "HIDDEN_PRICE" ? `${locked ? " • " : ""}${money(flavorPrice(flavor))}` : ""}
+                      </small>}
+                      {averageFlavorPricing && active && flavor.priceMode !== "HIDDEN_PRICE" && (
                         <em className="flavor-price-calculation">
                           {money(flavorPrice(flavor))} ÷ {sumDivisor} ={" "}
                           <b>{money(flavorContribution(flavor))}</b>
@@ -515,10 +520,10 @@ function LegacyPizzaBuilderModal({
                   {chosen.map((flavor) => (
                     <span key={flavor.id}>
                       <i>{flavor.name}</i>
-                      <small>
+                      {flavor.priceMode !== "HIDDEN_PRICE" && <><small>
                         {money(flavorPrice(flavor))} ÷ {sumDivisor}
                       </small>
-                      <b>{money(flavorContribution(flavor))}</b>
+                      <b>{money(flavorContribution(flavor))}</b></>}
                     </span>
                   ))}
                 </div>

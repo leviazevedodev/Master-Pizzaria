@@ -18366,3 +18366,71 @@ html.dark-mode textarea {
     bottom: calc(76px + env(safe-area-inset-bottom));
   }
 }
+/* A tela cheia usa o mesmo tema persistido pelo painel de gestão. */
+.kitchen-page.focus-screen.theme-light,
+.kitchen-page.salon-screen.focus-screen.theme-light {
+  background: #f4f6f5;
+  color: #1c2422;
+}
+.kitchen-page.focus-screen.theme-light .kitchen-toolbar {
+  background: rgba(255, 255, 255, .96);
+  border-color: #d9e2dc;
+  color: #1c2422;
+  box-shadow: 0 14px 40px rgba(16, 45, 30, .1);
+}
+.kitchen-page.focus-screen.theme-light .kitchen-toolbar h2,
+.kitchen-page.focus-screen.theme-light .kitchen-empty h3 { color: #1c2422; }
+.kitchen-page.focus-screen.theme-light .kitchen-toolbar p,
+.kitchen-page.focus-screen.theme-light .kitchen-empty p { color: #5b6962; }
+.kitchen-page.focus-screen.theme-light .kitchen-ticket {
+  background: #fff;
+  border-color: #d8e3dc;
+  color: #1c2422;
+  box-shadow: 0 15px 42px rgba(16, 45, 30, .08);
+}
+.kitchen-page.focus-screen.theme-light .kitchen-ticket-head > span { background: #eff3f0; color: #263d30; }
+.kitchen-page.focus-screen.theme-light .kitchen-items { border-color: #e1e8e3; }
+.kitchen-page.focus-screen.theme-light .kitchen-items small,
+.kitchen-page.focus-screen.theme-light .kitchen-ticket-footer > small { color: #5b6962; }
+.kitchen-page.focus-screen.theme-light .kitchen-ticket-footer button:not(.kitchen-advance-btn),
+.kitchen-page.focus-screen.theme-light .kitchen-screen-close { background: #fff; border-color: #cbd8cf; color: #263d30; }
+.kitchen-page.focus-screen.theme-light .kitchen-screen-switch { background: #f0f4f1; border-color: #cbd8cf; }
+.kitchen-page.focus-screen.theme-light .kitchen-screen-switch button:not(.active) { color: #263d30; }
+@media (max-width: 760px) {
+  .table-grid {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(225px, 78vw);
+    grid-template-columns: none;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 12px;
+    -webkit-overflow-scrolling: touch;
+    padding: 8px 12px 18px;
+    margin-inline: -12px;
+  }
+  .table-grid .table-card { scroll-snap-align: start; }
+}
+.quality-summary { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 18px 0; }
+.quality-summary strong { font-size: 1.7rem; color: #d18900; }
+.quality-courier-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.quality-courier-grid article { display: grid; gap: 5px; padding: 15px; border: 1px solid var(--line); border-radius: 14px; }
+.quality-courier-grid strong { color: #d18900; font-size: 1.25rem; }
+.quality-courier-grid small { color: var(--muted); }
+.order-detail-review { display: grid; gap: 5px; }
+.order-detail-review p { margin: 0; white-space: pre-wrap; }
+.flavor-catalog-checkboxes { display: grid; gap: 8px; }
+.flavor-setting-row { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+.flavor-setting-row.selected { border-color: #dbadb0; }
+.flavor-setting-row > label { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.flavor-setting-row > label span { display: grid; gap: 2px; }
+.flavor-setting-row details { margin: 8px 0 0 25px; }
+.flavor-setting-row summary { cursor: pointer; font-size: .82rem; font-weight: 700; }
+.flavor-price-choices { display: grid; gap: 6px; padding: 10px 0 0; }
+.flavor-price-choices label { display: flex; align-items: center; gap: 7px; font-size: .8rem; }
+.flavor-price-choices input[type="number"] { width: 110px; }
+.guest-access-form { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; padding: 14px; border: 1px solid #dfd9d2; border-radius: 14px; background: #fff; }
+.guest-access-form label { display: grid; gap: 5px; flex: 1 1 210px; font-weight: 700; font-size: .82rem; }
+.guest-access-form input { width: 100%; min-height: 43px; box-sizing: border-box; border: 1px solid #cfc8c1; border-radius: 9px; padding: 9px 11px; font: inherit; }
+.guest-access-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .88rem; font-weight: 700; }

@@ -41,6 +41,7 @@ import MotoIcon from "../components/MotoIcon";
 import { fitImageFile } from "../lib/imageFit";
 import { money } from "../lib/format";
 import { buildOrderBuckets } from "../lib/orderBuckets";
+import { ADMIN_THEME_KEY, readAdminDarkTheme } from "../lib/adminTheme";
 import {
   CancelOrderModal,
   OrderDetailModal,
@@ -127,6 +128,7 @@ const EMPTY_PRODUCT = {
   maxFlavors: 1,
   flavorPricingMode: "MAX",
   flavorIds: [],
+  flavorConfigs: [],
   modifierGroupIds: [],
   isFlavorOption: false,
   sizePrices: [],
@@ -174,6 +176,7 @@ export default function AdminPage({
     [dashboard, setDashboard] = useState(null),
     [analytics, setAnalytics] = useState(null),
     [orders, setOrders] = useState([]),
+    [deliveredHistory, setDeliveredHistory] = useState([]),
     [products, setProducts] = useState([]),
     [combos, setCombos] = useState([]),
     [flavors, setFlavors] = useState([]),
@@ -215,13 +218,7 @@ export default function AdminPage({
     [installPrompt, setInstallPrompt] = useState(null),
     [installHelp, setInstallHelp] = useState(""),
     [catalogSection, setCatalogSection] = useState("products"),
-    [adminDark, setAdminDark] = useState(() => {
-      try {
-        return localStorage.getItem("master-pizza-admin-theme") === "dark";
-      } catch {
-        return false;
-      }
-    });
+    [adminDark, setAdminDark] = useState(readAdminDarkTheme);
   const [categoryForm, setCategoryForm] = useState({
       name: "",
       slug: "",
@@ -287,7 +284,7 @@ export default function AdminPage({
   useEffect(() => {
     try {
       localStorage.setItem(
-        "master-pizza-admin-theme",
+        ADMIN_THEME_KEY,
         adminDark ? "dark" : "light",
       );
     } catch {}
@@ -500,6 +497,20 @@ export default function AdminPage({
     isDeliveryStaff,
   ]);
 
+  const deliveredSelected =
+    (tab === "orders" && orderView === "DELIVERED") ||
+    (tab === "overview" && overviewView === "DELIVERED");
+  useEffect(() => {
+    if (!deliveredSelected || isDeliveryStaff || isWaiter) return undefined;
+    let active = true;
+    api.get("/admin/orders?status=DELIVERED", authHeaders(session.token))
+      .then(({ data }) => { if (active) setDeliveredHistory(data); })
+      .catch((err) => {
+        if (active) setError(err.response?.data?.message || "Não foi possível carregar o histórico de entregues.");
+      });
+    return () => { active = false; };
+  }, [deliveredSelected, isDeliveryStaff, isWaiter, session.token]);
+
   function notify(text) {
     setMessage(text);
     window.clearTimeout(messageTimer.current);
@@ -509,22 +520,27 @@ export default function AdminPage({
     setError(err.response?.data?.message || fallback);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+  const visibleOrders = useMemo(() => {
+    if (!deliveredHistory.length) return orders;
+    const recentIds = new Set(orders.map((order) => order.id));
+    return [...orders, ...deliveredHistory.filter((order) => !recentIds.has(order.id))];
+  }, [orders, deliveredHistory]);
   const orderBuckets = useMemo(
     () =>
-      buildOrderBuckets(isWaiter ? orders.filter((order) =>
-        order.fulfillmentType === "DINE_IN" && order.status === "READY_FOR_TABLE") : orders, {
+      buildOrderBuckets(isWaiter ? visibleOrders.filter((order) =>
+        order.fulfillmentType === "DINE_IN" && order.status === "READY_FOR_TABLE") : visibleOrders, {
         includeDineIn: !isDeliveryStaff,
         deliveryOnly: isDeliveryStaff,
       }),
-    [orders, isDeliveryStaff, isWaiter],
+    [visibleOrders, isDeliveryStaff, isWaiter],
   );
   const overviewBuckets = useMemo(
     () =>
-      buildOrderBuckets(orders, {
+      buildOrderBuckets(visibleOrders, {
         includeDineIn: !isDeliveryStaff,
         deliveryOnly: isDeliveryStaff,
       }),
-    [orders, isDeliveryStaff],
+    [visibleOrders, isDeliveryStaff],
   );
   useEffect(() => {
     if (isWaiter && orderView !== "READY_FOR_TABLE") setOrderView("READY_FOR_TABLE");
@@ -718,6 +734,7 @@ export default function AdminPage({
         ? "AVERAGE"
         : "MAX",
       flavorIds: p.flavorIds || [],
+      flavorConfigs: p.flavorConfigs || [],
       modifierGroupIds: p.modifierGroupIds || [],
       sizePrices: (p.availableSizes || []).map((size) => ({
         sizeId: size.id,
@@ -1514,7 +1531,7 @@ export default function AdminPage({
               onStatus: changeStatus,
               onCancel: setCancelTarget,
               onPayment: setPaymentTarget,
-              onPrint: (order) => printOrderReceipt(order, settings),
+              onPrint: isDeliveryStaff ? undefined : (order) => printOrderReceipt(order, settings),
               onOpen: openOrder,
               deliveryOnly: isDeliveryStaff,
               savingId: statusSavingId,
@@ -1540,7 +1557,7 @@ export default function AdminPage({
               onStatus: changeStatus,
               onCancel: isWaiter ? undefined : setCancelTarget,
               onPayment: isWaiter ? undefined : setPaymentTarget,
-              onPrint: (order) => printOrderReceipt(order, settings),
+              onPrint: isDeliveryStaff ? undefined : (order) => printOrderReceipt(order, settings),
               onOpen: openOrder,
               deliveryOnly: isDeliveryStaff,
               savingId: statusSavingId,
@@ -1552,6 +1569,7 @@ export default function AdminPage({
           <KitchenAdmin
             session={session}
             settings={settings}
+            dark={adminDark}
             notify={notify}
             fail={fail}
           />
@@ -1998,7 +2016,7 @@ export default function AdminPage({
           onStatus={changeStatus}
           onCancel={isWaiter ? undefined : setCancelTarget}
           onPayment={isWaiter ? undefined : setPaymentTarget}
-          onPrint={(order) => printOrderReceipt(order, settings)}
+          onPrint={isDeliveryStaff ? undefined : (order) => printOrderReceipt(order, settings)}
           deliveryOnly={isDeliveryStaff}
           savingId={statusSavingId}
         />

@@ -23,7 +23,7 @@ import ProductCard from "../components/ProductCard";
 import MotoIcon from "../components/MotoIcon";
 import Footer from "../components/Footer";
 import { mediaUrl } from "../lib/api";
-import { money } from "../lib/format";
+import { compactCount, money } from "../lib/format";
 
 function HorizontalRail({
   title,
@@ -548,7 +548,7 @@ export default function HomePage({
           <section className="reviews-public-section container">
             {settings.deliveredOrdersCounterEnabled && (
               <div className="satisfied-customers-public">
-                Mais de {Number(highlights.deliveredOrdersCount || 0)} clientes satisfeitos
+                Mais de {compactCount(highlights.deliveredOrdersCount)} clientes satisfeitos
               </div>
             )}
             <div className="section-heading">

@@ -30,12 +30,22 @@ export default function ProductEditorModal({
     });
   }
   function toggleFlavor(id) {
-    const current = productForm.flavorIds || [];
-    setProductForm({
-      ...productForm,
-      flavorIds: current.includes(id)
-        ? current.filter((value) => value !== id)
-        : [...current, id],
+    setProductForm((current) => ({
+      ...current,
+      flavorIds: (current.flavorIds || []).includes(id)
+        ? current.flavorIds.filter((value) => value !== id)
+        : [...(current.flavorIds || []), id],
+    }));
+  }
+  function setFlavorRule(flavorId, change) {
+    setProductForm((current) => {
+      const configs = current.flavorConfigs || [];
+      const previous = configs.find((row) => row.flavorId === flavorId) ||
+        { flavorId, priceMode: "BASE_PRICE", surcharge: 0 };
+      return {
+        ...current,
+        flavorConfigs: [...configs.filter((row) => row.flavorId !== flavorId), { ...previous, ...change }],
+      };
     });
   }
   function sizeRow(id) {
@@ -348,8 +358,7 @@ export default function ProductEditorModal({
                   <div>
                     <b>Sabores permitidos</b>
                     <small>
-                      Sabores vindos de Produtos são incluídos automaticamente.
-                      Sabores independentes continuam opcionais.
+                      Escolha os sabores disponíveis neste produto e ajuste o preço de cada um.
                     </small>
                   </div>
                   <div className="modifier-group-checkboxes flavor-catalog-checkboxes">
@@ -357,28 +366,24 @@ export default function ProductEditorModal({
                       .filter((flavor) => flavor.active !== false)
                       .map((flavor) => {
                         const automatic = Boolean(flavor.sourceProductId);
-                        const selected =
-                          automatic ||
-                          (productForm.flavorIds || []).includes(flavor.id);
+                        const selected = (productForm.flavorIds || []).includes(flavor.id);
+                        const rule = (productForm.flavorConfigs || []).find((row) => row.flavorId === flavor.id) ||
+                          { priceMode: "BASE_PRICE", surcharge: 0 };
                         return (
-                          <label key={flavor.id} className={selected ? "selected" : ""}>
-                            <input
-                              type="checkbox"
-                              checked={selected}
-                              disabled={automatic}
-                              onChange={() => toggleFlavor(flavor.id)}
-                            />
-                            <span>
-                              <b>{flavor.name}</b>
-                              <small>
-                                {flavor.group?.name || "Sem grupo"} •{" "}
-                                {flavor.sizes?.filter((size) => size.available)
-                                  .length || 0}{" "}
-                                tamanho(s)
-                                {automatic ? " • automático via Produtos" : ""}
-                              </small>
-                            </span>
-                          </label>
+                          <div key={flavor.id} className={`flavor-setting-row ${selected ? "selected" : ""}`}>
+                            <label>
+                              <input type="checkbox" checked={selected} onChange={() => toggleFlavor(flavor.id)} />
+                              <span><b>{flavor.name}</b><small>{flavor.group?.name || "Sem grupo"} • {flavor.sizes?.filter((size) => size.available).length || 0} tamanho(s){automatic ? " • origem em Produtos" : ""}</small></span>
+                            </label>
+                            {selected && <details>
+                              <summary>Preço neste produto: {rule.priceMode === "SURCHARGE" ? "acréscimo personalizado" : rule.priceMode === "HIDDEN_PRICE" ? "não mostrar valor" : "manter valor base"}</summary>
+                              <div className="flavor-price-choices">
+                                {[["BASE_PRICE", "Manter valor base"], ["HIDDEN_PRICE", "Não mostrar valor"], ["SURCHARGE", "Acréscimo personalizado"]].map(([mode, label]) =>
+                                  <label key={mode}><input type="radio" name={`flavor-price-${flavor.id}`} checked={rule.priceMode === mode} onChange={() => setFlavorRule(flavor.id, { priceMode: mode })} /> {label}</label>)}
+                                {rule.priceMode === "SURCHARGE" && <label>Valor adicional (R$)<input type="number" min="0" step="0.01" required value={rule.surcharge ?? 0} onChange={(event) => setFlavorRule(flavor.id, { surcharge: event.target.value })} /></label>}
+                              </div>
+                            </details>}
+                          </div>
                         );
                       })}
                   </div>

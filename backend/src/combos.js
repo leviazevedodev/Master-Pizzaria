@@ -87,7 +87,7 @@ export function comboSlotIsAvailable(slot, date, timezone, orderQuantity = 1) {
       )
     )
       return false;
-    return (base.productFlavors || []).some(({ flavor }) => {
+    return (base.productFlavors || []).filter((link) => link.enabled !== false).some(({ flavor }) => {
       const rule = flavor && resolveComboFlavorRule(slot, flavor);
       return (
         flavor?.active &&
@@ -214,13 +214,14 @@ export function resolveComboSelection(
         `${slot.name || "A pizza"} permite ${limit === 1 ? "1 sabor" : `até ${limit} sabores`}.`,
       );
     const catalog = new Map(
-      (base.productFlavors || []).map(({ flavor }) => [flavor.id, flavor]),
+      (base.productFlavors || []).filter((link) => link.enabled !== false).map((link) => [link.flavor.id, link]),
     );
-    const flavors = flavorIds.map((id) => catalog.get(id));
+    const links = flavorIds.map((id) => catalog.get(id));
+    const flavors = links.map((link) => link?.flavor);
     if (flavors.some((flavor) => !flavor))
       comboFail("COMBO_FLAVOR_NOT_ALLOWED", "Este sabor não faz parte do combo.");
     let flavorAdjustment = 0;
-    const flavorSnapshots = flavors.map((flavor) => {
+    const flavorSnapshots = flavors.map((flavor, index) => {
       const rule = resolveComboFlavorRule(slot, flavor);
       if (
         !flavor.active ||
@@ -243,7 +244,15 @@ export function resolveComboSelection(
         Number(flavor.stockQuantity || 0) < slot.quantity * orderQuantity
       )
         comboFail("OUT_OF_STOCK", `O sabor ${flavor.name} está sem estoque.`, 409);
-      const value = signedRuleAmount(rule);
+      const baseSizePrice = Number((base.productSizes || []).find((row) => row.sizeId === slot.sizeId)?.price ?? base.price ?? 0);
+      const sizeRule = (flavor.sizes || []).find((row) => row.sizeId === slot.sizeId);
+      const flavorBasePrice = sizeRule?.pricingMode === "SURCHARGE"
+        ? baseSizePrice + Number(sizeRule.price || 0)
+        : Number(sizeRule?.price ?? baseSizePrice);
+      const relationPrice = links[index].priceMode === "SURCHARGE"
+        ? baseSizePrice + Number(links[index].surcharge || 0)
+        : flavorBasePrice;
+      const value = signedRuleAmount(rule, roundMoney(relationPrice - baseSizePrice));
       flavorAdjustment += value / flavors.length;
       return {
         flavorId: flavor.id,

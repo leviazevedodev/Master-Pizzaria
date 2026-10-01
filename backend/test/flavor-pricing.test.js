@@ -94,6 +94,19 @@ test("SURCHARGE soma somente o acréscimo configurado no backend ao preço base"
   assert.equal(result.breakdown[0].effectivePrice, 45.15);
 });
 
+test("regra Produto × Sabor preserva base, oculta só exibição e aplica acréscimo por produto", () => {
+  const base = quote({ flavorRules: [{ flavorId: "calabresa", priceMode: "BASE_PRICE" }] });
+  const hidden = quote({ flavorRules: [{ flavorId: "calabresa", priceMode: "HIDDEN_PRICE" }] });
+  const small = quote({ basePrice: 30, flavorRules: [{ flavorId: "calabresa", priceMode: "SURCHARGE", surcharge: 2 }] });
+  const large = quote({ basePrice: 40, flavorRules: [{ flavorId: "calabresa", priceMode: "SURCHARGE", surcharge: 4 }] });
+  assert.equal(base.price, 42.9);
+  assert.equal(hidden.price, 42.9);
+  assert.equal(hidden.breakdown[0].productPriceMode, "HIDDEN_PRICE");
+  assert.equal(small.price, 32);
+  assert.equal(large.price, 44);
+  assert.equal(large.breakdown[0].productSurcharge, 4);
+});
+
 test("AVERAGE substitui os modos antigos equivalentes e arredonda em centavos", () => {
   const flavors = [flavor("a", 40), flavor("b", 40.01)];
   for (const pricingMode of ["AVERAGE", "PROPORTIONAL", "SUM"]) {
@@ -129,6 +142,13 @@ test("identifica o sabor central obrigatório do produto escolhido", () => {
   );
   assert.equal(
     requiredBaseFlavorId({ id: "product", isFlavorOption: false }, []),
+    null,
+  );
+  assert.equal(
+    requiredBaseFlavorId(
+      { id: "product-calabresa", isFlavorOption: true },
+      [{ flavorId: "flavor-queijo", flavor: { sourceProductId: "product-queijo" } }],
+    ),
     null,
   );
 });

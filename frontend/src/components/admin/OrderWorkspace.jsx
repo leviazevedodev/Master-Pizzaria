@@ -36,7 +36,7 @@ const DEFAULT_VIEWS = [
   "DELIVERED",
   "CANCELED",
 ];
-const OVERVIEW_VIEWS = DEFAULT_VIEWS.filter((view) => view !== "CANCELED");
+const OVERVIEW_VIEWS = ["OPEN", "RECEIVED", "PREPARING", "DELIVERED", ...DEFAULT_VIEWS.filter((view) => !["OPEN", "RECEIVED", "PREPARING", "DELIVERED", "CANCELED"].includes(view))];
 const DELIVERY_VIEWS = ["READY_FOR_DELIVERY", "OUT_FOR_DELIVERY", "DELIVERED"];
 const WAITER_VIEWS = ["READY_FOR_TABLE"];
 
@@ -222,7 +222,7 @@ export function OrderList({
             <strong>{money(order.total)}</strong>
             <div className="order-actions">
               <OrderStatusActions order={order} onStatus={onStatus} onCancel={onCancel} onPayment={onPayment} deliveryOnly={deliveryOnly} compact saving={savingId === order.id} />
-              {onPrint && (
+              {onPrint && !deliveryOnly && (
                 <button type="button" className="order-print-btn" onClick={(event) => { event.stopPropagation(); onPrint(order); }} title={`Imprimir pedido ${order.shortCode}`} aria-label={`Imprimir pedido ${order.shortCode}`}>
                   <Printer size={17} /> Imprimir
                 </button>
@@ -255,7 +255,7 @@ export function OrderDetailModal({ order, onClose, onStatus, onCancel, onPayment
           <div><span className="eyebrow dark">{dineIn ? "Pedido presencial" : "Pedido"} #{order.shortCode}</span><h2>{order.customerName}</h2><p>{new Date(order.createdAt).toLocaleString("pt-BR")}</p></div>
           <button type="button" className="icon-close" onClick={onClose} aria-label="Fechar"><X /></button>
         </div>
-        {onPrint && <button type="button" className="outline-btn order-detail-print" onClick={() => onPrint(order)}><Printer size={17} /> Imprimir pedido</button>}
+        {onPrint && !deliveryOnly && <button type="button" className="outline-btn order-detail-print" onClick={() => onPrint(order)}><Printer size={17} /> Imprimir pedido</button>}
         {eta && !dineIn && <div className="order-detail-eta"><Clock3 /><span><small>{order.fulfillmentType === "PICKUP" ? "Previsão para ficar pronto" : "Previsão de entrega"}</small><b>{eta}</b></span></div>}
         <div className="order-detail-grid">
           <article><small>Status</small><b>{STATUS_LABEL[order.status] || order.status}</b><OrderStatusActions order={order} onStatus={onStatus} onCancel={onCancel} onPayment={onPayment} deliveryOnly={deliveryOnly} saving={savingId === order.id} /></article>
@@ -269,6 +269,7 @@ export function OrderDetailModal({ order, onClose, onStatus, onCancel, onPayment
           {order.acceptedAt && <article><small>Aceito pela loja</small><b>{new Date(order.acceptedAt).toLocaleString("pt-BR")}</b></article>}
           {!dineIn && <article><small>Troco para</small><b>{order.changeFor ? money(order.changeFor) : "Não informado"}</b></article>}
           {order.status === "CANCELED" && order.cancelReason && <article className="span-2 cancel-reason-admin"><small>Motivo do cancelamento</small><b>{order.cancelReason}</b></article>}
+          {order.status === "DELIVERED" && !deliveryOnly && <article className="span-2 order-detail-review"><small>Avaliação do cliente</small>{order.review ? <><b>{"★".repeat(order.review.rating)}{"☆".repeat(5 - order.review.rating)} • {order.review.rating}/5</b>{order.review.foodRating && <span>Comida: {order.review.foodRating}/5</span>}{order.review.deliveryRating && <span>Entrega: {order.review.deliveryRating}/5</span>}{order.review.comment && <p>{order.review.comment}</p>}<small>{new Date(order.review.createdAt).toLocaleString("pt-BR")}{order.assignedCourier?.name ? ` • Entregador: ${order.assignedCourier.name}` : ""}</small></> : <b>Ainda não avaliado</b>}</article>}
         </div>
         <div className="order-detail-items">
           <h3>Itens do pedido</h3>

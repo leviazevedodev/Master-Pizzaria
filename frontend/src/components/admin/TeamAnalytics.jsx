@@ -8,6 +8,7 @@ export default function TeamAnalytics({ data }) {
   const [teamScope, setTeamScope] = useState("ALL");
   const [selectedMember, setSelectedMember] = useState(null);
   const [paymentFilter, setPaymentFilter] = useState("ALL");
+  const [foodHours, setFoodHours] = useState(null);
   if (!data)
     return (
       <section className="admin-panel analytics-loading">
@@ -114,6 +115,7 @@ export default function TeamAnalytics({ data }) {
       : teamScope === "DELIVERY"
         ? "Entregadores"
         : "Funcionários";
+  const foodQuality = data.quality?.food?.find((row) => row.hours === foodHours);
 
   return (
     <div className="analytics-page">
@@ -137,6 +139,19 @@ export default function TeamAnalytics({ data }) {
               })}
             </b>
           </span>
+        </div>
+      </section>
+
+      <section className="admin-panel quality-analytics-panel">
+        <div className="panel-title"><div><span>Avaliações internas</span><h2>Qualidade da comida e das entregas</h2><p>Inclui avaliações pendentes. A vitrine pública continua sujeita à aprovação.</p></div><Activity /></div>
+        <div className="financial-period-tabs" aria-label="Período de preparo">
+          {[[null, "Total"], [3, "Últimas 3 horas"], [6, "Últimas 6 horas"], [12, "Últimas 12 horas"]].map(([hours, label]) =>
+            <button type="button" key={hours ?? "all"} className={foodHours === hours ? "active" : ""} onClick={() => setFoodHours(hours)}>{label}</button>)}
+        </div>
+        <div className="quality-summary"><strong>{foodQuality?.average == null ? "Sem avaliações" : `★ ${foodQuality.average.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}`}</strong><span>{foodQuality?.count || 0} avaliações da comida • {foodHours == null ? "Todo o período" : `Preparos das últimas ${foodHours} horas`}</span></div>
+        <h3>Entregadores</h3>
+        <div className="quality-courier-grid">
+          {(data.quality?.couriers || []).map((row) => <article key={row.id}><b>{row.name}</b><strong>{row.average == null ? "Sem nota" : `★ ${row.average.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}`}</strong><small>{row.deliveriesRated} entregas avaliadas • {row.reviewCount} avaliações</small></article>)}
         </div>
       </section>
 
@@ -608,4 +623,3 @@ export default function TeamAnalytics({ data }) {
     </div>
   );
 }
-

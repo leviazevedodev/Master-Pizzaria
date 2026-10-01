@@ -3,6 +3,16 @@ export const money = (value) =>
     Number(value || 0),
   );
 
+export function compactCount(value) {
+  const count = Math.max(0, Math.floor(Number(value) || 0));
+  if (count < 1000) return new Intl.NumberFormat("pt-BR").format(count);
+  const unit = count >= 1_000_000 ? 1_000_000 : 1000;
+  const suffix = unit === 1_000_000 ? "M" : "k";
+  const scaled = count / unit;
+  const rounded = scaled >= 10 ? Math.floor(scaled) : Math.floor(scaled * 10) / 10;
+  return `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(rounded)}${suffix}`;
+}
+
 export const shortOrder = (value = "") =>
   value.toString().replaceAll("-", "").slice(-8).toUpperCase();
 

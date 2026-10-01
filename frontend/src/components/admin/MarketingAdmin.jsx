@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Check, EyeOff, Gift, Megaphone, Pencil, Plus, Save, Star, Trash2, X } from "lucide-react";
 import { api, authHeaders, mediaUrl } from "../../lib/api";
+import { compactCount } from "../../lib/format";
 import CouponsAdmin from "./CouponsAdmin";
 
 const EMPTY_CAMPAIGN = {
@@ -196,7 +197,7 @@ export default function MarketingAdmin({
         </div>
         <div className="settings-grid">
           <label>Exibição do cardápio na página inicial<select value={settings.homeCatalogLayout || "GRID"} onChange={(event) => set("homeCatalogLayout", event.target.value)}><option value="GRID">Grade atual</option><option value="CAROUSEL">Trilhos horizontais com setas</option></select></label>
-          <div className="satisfied-customers-admin-card"><small>Contagem automática atual</small><b>{Number(reviewStats.automaticDeliveredOrdersCount || 0)} pedidos entregues</b><span>Prévia no site: “Mais de {Math.max(0, Number(reviewStats.automaticDeliveredOrdersCount || 0) + Number(settings.deliveredOrdersCounterOffset || 0))} clientes satisfeitos”</span><span>{Number(reviewStats.pendingReviewsCount || 0)} avaliações pendentes ou ocultas na retenção.</span></div>
+          <div className="satisfied-customers-admin-card"><small>Contagem automática atual</small><b>{Number(reviewStats.automaticDeliveredOrdersCount || 0)} pedidos entregues</b><span>Prévia no site: “Mais de {compactCount(Number(reviewStats.automaticDeliveredOrdersCount || 0) + Number(settings.deliveredOrdersCounterOffset || 0))} clientes satisfeitos”</span><span>{Number(reviewStats.pendingReviewsCount || 0)} avaliações pendentes ou ocultas na retenção.</span></div>
           <label>Contagem exibida no site<input type="number" min="0" max="10000000" step="1" value={Math.max(0, Number(reviewStats.automaticDeliveredOrdersCount || 0) + Number(settings.deliveredOrdersCounterOffset || 0))} onChange={(event) => set("deliveredOrdersCounterOffset", Number(event.target.value) - Number(reviewStats.automaticDeliveredOrdersCount || 0))} /><small>Você define o número atual; os próximos pedidos entregues continuam aumentando a contagem automaticamente.</small></label>
           <label>Programa de recompensa<select value={settings.rewardsMode || "DISABLED"} onChange={(event) => set("rewardsMode", event.target.value)}><option value="DISABLED">Desativado</option><option value="POINTS">Pontos</option><option value="CASHBACK">Cashback</option></select></label>
           <label>Dias como novidade<input type="number" min="1" max="365" value={settings.newProductDays || 30} onChange={(event) => set("newProductDays", Number(event.target.value))} /></label>

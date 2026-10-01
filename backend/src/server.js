@@ -52,7 +52,10 @@ import {
   customerVisibleStatus,
 } from "./customer-order.js";
 import { buildFinancialSummaryFromTotals } from "./financial-report.js";
-import { adminOrderFilter } from "./order-access.js";
+import { adminOrderFilter, canMarkKitchenPrinted } from "./order-access.js";
+import { guestCodeHash, guestCodeMatches, guestOrderWhere, signGuestOrderToken, verifyGuestOrderToken } from "./guest-order-access.js";
+import { buildReviewAnalytics } from "./review-analytics.js";
+import { syncProductFlavors } from "./product-flavors.js";
 import { canManageDineInOrders } from "./dine-in-access.js";
 import { cleanText, safeExternalUrl, safeMediaUrl } from "./sanitization.js";
 import { registerComboAdminRoutes } from "./combo-admin.js";
@@ -980,10 +983,15 @@ const serializeProduct = (product) => ({
   stockAvailable:
     !product.stockTracked || Number(product.stockQuantity || 0) > 0,
   promotion: serializePromotion(product.promotion),
-  availableFlavors: (product.productFlavors || [])
+  availableFlavors: (product.productFlavors || []).filter((entry) => entry.enabled !== false)
     .map((entry) => serializeFlavor(entry.flavor))
     .sort((a, b) => Number(a.sortOrder) - Number(b.sortOrder)),
-  flavorIds: (product.productFlavors || []).map((entry) => entry.flavorId),
+  flavorIds: (product.productFlavors || []).filter((entry) => entry.enabled !== false).map((entry) => entry.flavorId),
+  flavorConfigs: (product.productFlavors || []).map((entry) => ({
+    flavorId: entry.flavorId,
+    priceMode: entry.priceMode || "BASE_PRICE",
+    surcharge: Number(entry.surcharge || 0),
+  })),
   availableModifierGroups: (product.modifierGroups || [])
     .map((entry) => serializeModifierGroup(entry.group))
     .filter((group) => group.active !== false)
@@ -1082,7 +1090,8 @@ const serializeComboSlotBaseProduct = (product) =>
           }))
           .filter((size) => size.active),
         availableFlavors: (product.productFlavors || [])
-          .map((entry) => serializePublicFlavor(entry.flavor))
+          .filter((entry) => entry.enabled !== false)
+          .map((entry) => ({ ...serializePublicFlavor(entry.flavor), priceMode: entry.priceMode || "BASE_PRICE", surcharge: Number(entry.surcharge || 0) }))
           .filter((flavor) => flavor.active && flavor.stockAvailable),
         availableModifierGroups: (product.modifierGroups || [])
           .filter((entry) => entry.group?.active !== false)
@@ -1236,10 +1245,12 @@ const serializePublicProduct = (product) => {
       .filter((size) => size.active)
       .sort((a, b) => a.sortOrder - b.sortOrder),
     availableFlavors: (product.productFlavors || [])
-      .map((entry) => serializePublicFlavor(entry.flavor))
+      .filter((entry) => entry.enabled !== false)
+      .map((entry) => ({ ...serializePublicFlavor(entry.flavor), priceMode: entry.priceMode || "BASE_PRICE", surcharge: Number(entry.surcharge || 0) }))
       .filter((flavor) => flavor.active && flavor.stockAvailable)
       .sort((a, b) => Number(a.sortOrder) - Number(b.sortOrder)),
-    flavorIds: (product.productFlavors || []).map((entry) => entry.flavorId),
+    hasCentralFlavorLinks: (product.productFlavors || []).length > 0,
+    flavorIds: (product.productFlavors || []).filter((entry) => entry.enabled !== false).map((entry) => entry.flavorId),
     availableModifierGroups: (product.modifierGroups || [])
       .filter((entry) => entry.group?.active !== false)
       .map((entry) => serializePublicModifierGroup(entry.group))
@@ -1280,7 +1291,7 @@ const attachProductFlavorOptions = (serialized, flavorProducts) => {
   const centralFlavors = (serialized.availableFlavors || []).filter(
     (flavor) => flavor.active !== false && flavor.stockAvailable !== false,
   );
-  if (centralFlavors.length) {
+  if (centralFlavors.length || serialized.hasCentralFlavorLinks || serialized.flavorConfigs?.length) {
     const defaultFlavor =
       centralFlavors.find(
         (flavor) => flavor.sourceProductId === serialized.id,
@@ -1289,6 +1300,7 @@ const attachProductFlavorOptions = (serialized, flavorProducts) => {
       ...serialized,
       flavorCatalogMode: "CENTRAL",
       defaultFlavorId: defaultFlavor?.id || null,
+      requiredFlavorId: centralFlavors.find((flavor) => flavor.sourceProductId === serialized.id)?.id || null,
       availableFlavors: centralFlavors,
     };
   }
@@ -1332,7 +1344,7 @@ const serializeTableSession = (session) => {
   };
 };
 const serializeOrder = (order) => {
-  const { stockSnapshot: _stockSnapshot, ...orderData } = order;
+  const { stockSnapshot: _stockSnapshot, customerEmail: _customerEmail, ...orderData } = order;
   const etaMinMinutes = Number(order.estimatedDeliveryMin ?? 30);
   const etaMaxMinutes = Number(order.estimatedDeliveryMax ?? 45);
   const accepted = order.acceptedAt ? new Date(order.acceptedAt) : null;
@@ -1405,6 +1417,14 @@ const serializeOrder = (order) => {
       });
     })(),
   };
+};
+
+const serializeOrderForStaff = (order, role) => {
+  const data = serializeOrder(order);
+  if (role === "DELIVERY") {
+    delete data.review;
+  }
+  return data;
 };
 
 const serializeCustomerOrder = (order) => {
@@ -3109,6 +3129,7 @@ const orderInclude = {
     },
   },
   assignedCourier: { select: { id: true, name: true, phone: true } },
+  review: { select: { id: true, rating: true, foodRating: true, deliveryRating: true, comment: true, status: true, createdAt: true } },
   items: {
     include: {
       product: { include: productInclude },
@@ -3837,9 +3858,110 @@ app.get("/api/me/orders", auth, async (req, res) => {
     where: { userId: req.user.id },
     include: orderInclude,
     orderBy: { createdAt: "desc" },
-    take: 100,
   });
   res.json(orders.map(serializeCustomerOrder));
+});
+
+function guestOrderAuth(req, res, next) {
+  try {
+    const header = String(req.headers.authorization || "");
+    if (!header.startsWith("Bearer ")) throw new Error("MISSING_TOKEN");
+    const email = verifyGuestOrderToken(header.slice(7), JWT_SECRET);
+    if (!validEmail(email)) throw new Error("INVALID_TOKEN");
+    req.guestOrderEmail = email;
+    next();
+  } catch {
+    res.status(401).json({
+      code: "GUEST_SESSION_INVALID",
+      message: "Confirme seu e-mail para consultar estes pedidos.",
+    });
+  }
+}
+
+app.post("/api/guest-orders/request-access", authRateLimit, async (req, res) => {
+  const email = cleanText(req.body?.email, 180).toLowerCase();
+  if (!validEmail(email))
+    return res.status(400).json({ message: "Informe um e-mail válido." });
+  if (!RESEND_READY)
+    return res.status(503).json({
+      code: "EMAIL_UNAVAILABLE",
+      message: "A recuperação por e-mail ainda não está configurada pela loja. Use o código completo do pedido.",
+    });
+  const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+  const codeHash = guestCodeHash(email, code, JWT_SECRET);
+  const expiresAt = new Date(Date.now() + 10 * 60_000);
+  const row = await prisma.guestOrderVerification.upsert({
+    where: { email },
+    create: { email, codeHash, expiresAt },
+    update: { codeHash, expiresAt, attempts: 0, usedAt: null },
+  });
+  let response;
+  try {
+    response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      signal: AbortSignal.timeout(10_000),
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": `guest-orders-${row.id}-${Date.now()}`,
+      },
+      body: JSON.stringify({
+        from: process.env.EMAIL_FROM,
+        to: [email],
+        subject: "Código para consultar seus pedidos • Master Pizzaria",
+        text: `Seu código de acesso aos pedidos é ${code}. Ele expira em 10 minutos. Se você não pediu este código, ignore esta mensagem.`,
+      }),
+    });
+  } catch {
+    return res.status(503).json({ message: "Não foi possível enviar o código agora. Tente novamente mais tarde." });
+  }
+  if (!response.ok)
+    return res.status(503).json({ message: "Não foi possível enviar o código agora. Tente novamente mais tarde." });
+  res.json({ ok: true, message: "Se o e-mail estiver correto, o código chegará em instantes." });
+});
+
+app.post("/api/guest-orders/verify", authRateLimit, async (req, res) => {
+  const email = cleanText(req.body?.email, 180).toLowerCase();
+  const code = cleanText(req.body?.code, 6);
+  if (!validEmail(email) || !/^\d{6}$/.test(code))
+    return res.status(400).json({ message: "Informe o e-mail e o código de seis números." });
+  const row = await prisma.guestOrderVerification.findUnique({ where: { email } });
+  if (!row || row.usedAt || row.expiresAt <= new Date() || row.attempts >= 5)
+    return res.status(401).json({ message: "Código inválido ou expirado. Solicite outro." });
+  if (!guestCodeMatches(row.codeHash, email, code, JWT_SECRET)) {
+    await prisma.guestOrderVerification.updateMany({
+      where: { id: row.id, codeHash: row.codeHash, usedAt: null },
+      data: { attempts: { increment: 1 } },
+    });
+    return res.status(401).json({ message: "Código inválido ou expirado. Solicite outro." });
+  }
+  const used = await prisma.guestOrderVerification.updateMany({
+    where: { id: row.id, codeHash: row.codeHash, usedAt: null, expiresAt: { gt: new Date() }, attempts: { lt: 5 } },
+    data: { usedAt: new Date() },
+  });
+  if (used.count !== 1) return res.status(401).json({ message: "Código já utilizado ou expirado." });
+  res.json({ token: signGuestOrderToken(email, JWT_SECRET), email });
+});
+
+app.get("/api/guest-orders", guestOrderAuth, async (req, res) => {
+  const orders = await prisma.order.findMany({
+    where: guestOrderWhere(req.guestOrderEmail), include: orderInclude,
+    orderBy: { createdAt: "desc" },
+  });
+  res.json(orders.map(serializeCustomerOrder));
+});
+
+app.post("/api/guest-orders/claim", guestOrderAuth, async (req, res) => {
+  const trackingCode = cleanText(req.body?.trackingCode, 80);
+  if (!/^[a-f0-9-]{36}$/i.test(trackingCode))
+    return res.status(400).json({ message: "Código completo do pedido inválido." });
+  const updated = await prisma.order.updateMany({
+    where: { trackingCode, userId: null, customerEmail: null, fulfillmentType: { not: "DINE_IN" } },
+    data: { customerEmail: req.guestOrderEmail },
+  });
+  if (!updated.count) return res.status(404).json({ message: "Pedido não encontrado ou já vinculado a outro e-mail." });
+  const order = await prisma.order.findUnique({ where: { trackingCode }, include: orderInclude });
+  res.json(serializeCustomerOrder(order));
 });
 
 app.get("/api/me/orders/:id/reorder", auth, async (req, res) => {
@@ -3959,7 +4081,7 @@ app.get("/api/me/orders/:id/reorder", auth, async (req, res) => {
     let reorderFlavorPrices = new Map();
     if (availableFlavors.length && usesCentralFlavors) {
       const linkedIds = new Set(
-        (item.product.productFlavors || []).map((entry) => entry.flavorId),
+        (item.product.productFlavors || []).filter((entry) => entry.enabled !== false).map((entry) => entry.flavorId),
       );
       if (
         !savedSize ||
@@ -3974,6 +4096,7 @@ app.get("/api/me/orders/:id/reorder", auth, async (req, res) => {
           sizeId: savedSize.sizeId,
           flavorIds: availableFlavors.map((flavor) => flavor.id),
           flavors: availableFlavors,
+          flavorRules: (item.product.productFlavors || []).filter((entry) => entry.enabled !== false),
           maxFlavors: Math.min(
             4,
             Math.max(1, Number(item.product.maxFlavors || 1)),
@@ -4184,11 +4307,11 @@ app.post(
     return res.status(400).json({ message: "Carrinho inválido." });
   if (
     !isDineIn &&
-    ["CARD", "PIX"].includes(paymentMethod) &&
+    (!req.user?.isAdmin || ["CARD", "PIX"].includes(paymentMethod)) &&
     !validEmail(customerEmail)
   )
     return res.status(400).json({
-      message: "Informe um e-mail válido para receber a confirmação do pagamento.",
+      message: "Informe um e-mail válido para acompanhar seus pedidos em qualquer dispositivo.",
     });
   if (!isDineIn && req.user?.id) {
     const account = await prisma.user.findUnique({
@@ -4493,9 +4616,9 @@ app.post(
           .status(400)
           .json({ message: `Escolha pelo menos um sabor para ${base.name}.` });
       const centralLinks = (base.productFlavors || []).filter(
-        (entry) => entry.flavor,
+        (entry) => entry.flavor && entry.enabled !== false,
       );
-      if (centralLinks.length) {
+      if ((base.productFlavors || []).length) {
         const allowedFlavorIds = new Set(
           centralLinks.map((entry) => entry.flavorId),
         );
@@ -4537,6 +4660,7 @@ app.post(
             sizeId: chosenSize?.sizeId,
             flavorIds,
             flavors: chosenFlavors,
+            flavorRules: centralLinks,
             maxFlavors,
             allowFlavorSplit: base.allowFlavorSplit,
             pricingMode: base.flavorPricingMode,
@@ -5130,6 +5254,7 @@ app.post(
       data: {
         customerName,
         customerPhone,
+        customerEmail: validEmail(customerEmail) ? customerEmail : null,
         fulfillmentType,
         postalCode: fulfillmentType === "DELIVERY" ? postalCode : null,
         street: fulfillmentType === "DELIVERY" ? street : null,
@@ -6890,6 +7015,20 @@ app.get("/api/admin/team-analytics", auth, admin, async (req, res) => {
     monthly: [...monthlyMap.values()].map(finalize),
     yearly: [...yearlyMap.values()].map(finalize),
   };
+  const reviewRows = await prisma.review.findMany({
+    where: { orderId: { not: null } },
+    select: {
+      rating: true,
+      foodRating: true,
+      deliveryRating: true,
+      order: { select: { id: true, readyAt: true, fulfillmentType: true, assignedCourierId: true } },
+    },
+  });
+  const quality = buildReviewAnalytics(
+    reviewRows,
+    teamRows.filter((row) => row.role === "DELIVERY"),
+    { deliveredByOrder },
+  );
   res.json({
     updatedAt: new Date().toISOString(),
     timezone,
@@ -6897,22 +7036,24 @@ app.get("/api/admin/team-analytics", auth, admin, async (req, res) => {
     monthly: history.monthly,
     history,
     team: teamRows,
+    quality,
   });
 });
 
 app.get("/api/admin/orders", auth, admin, async (req, res) => {
   await activateDueScheduledOrders();
-  const where = adminOrderFilter({
+  const staffFilter = adminOrderFilter({
     role: req.adminUser?.staffRole,
     userId: req.adminUser.id,
   });
+  const deliveredHistory = req.query.status === "DELIVERED";
   const orders = await prisma.order.findMany({
-    where,
+    where: deliveredHistory ? { AND: [staffFilter, { status: "DELIVERED" }] } : staffFilter,
     include: orderInclude,
     orderBy: { createdAt: "desc" },
-    take: 250,
+    ...(!deliveredHistory ? { take: 250 } : {}),
   });
-  res.json(orders.map(serializeOrder));
+  res.json(orders.map((order) => serializeOrderForStaff(order, req.adminUser?.staffRole)));
 });
 app.get("/api/admin/orders/:id", auth, admin, async (req, res) => {
   const where = {
@@ -6928,7 +7069,7 @@ app.get("/api/admin/orders/:id", auth, admin, async (req, res) => {
       message:
         "Pedido não encontrado, já aceito por outro entregador ou não atribuído a você.",
     });
-  res.json(serializeOrder(order));
+  res.json(serializeOrderForStaff(order, req.adminUser?.staffRole));
 });
 app.patch("/api/admin/orders/:id/status", auth, admin, async (req, res) => {
   if (req.adminUser?.staffRole === "WAITER")
@@ -7006,7 +7147,7 @@ app.patch("/api/admin/orders/:id/status", auth, admin, async (req, res) => {
         include: orderInclude,
       });
     });
-    return res.json({ ...serializeOrder(same), idempotent: true });
+    return res.json({ ...serializeOrderForStaff(same, req.adminUser?.staffRole), idempotent: true });
   }
 
   if (isDeliveryRole) {
@@ -7182,7 +7323,7 @@ app.patch("/api/admin/orders/:id/status", auth, admin, async (req, res) => {
     return { order, changed: true };
   });
   const serializedResult = {
-    ...serializeOrder(result.order),
+    ...serializeOrderForStaff(result.order, req.adminUser?.staffRole),
     idempotent: !result.changed,
   };
   if (result.changed) {
@@ -8378,31 +8519,6 @@ app.post("/api/admin/products/reorder", auth, admin, async (req, res) => {
   );
   res.json({ ok: true, orderedIds });
 });
-async function syncProductFlavors(tx, productId, flavorIds) {
-  await tx.productFlavor.deleteMany({ where: { productId } });
-  const unique = [
-    ...new Set(
-      (flavorIds || []).map((id) => cleanText(id, 80)).filter(Boolean),
-    ),
-  ];
-  const standalone = unique.length
-    ? await tx.flavor.findMany({
-        where: { id: { in: unique }, sourceProductId: null },
-        select: { id: true },
-      })
-    : [];
-  const standaloneIds = new Set(standalone.map((flavor) => flavor.id));
-  const orderedStandaloneIds = unique.filter((id) => standaloneIds.has(id));
-  if (orderedStandaloneIds.length)
-    await tx.productFlavor.createMany({
-      data: orderedStandaloneIds.map((flavorId, index) => ({
-        productId,
-        flavorId,
-        sortOrder: index,
-      })),
-    });
-}
-
 async function syncAutomaticSourceFlavorLinks(tx, categoryIds) {
   const ids = [...new Set(categoryIds.filter(Boolean))];
   for (const categoryId of ids) {
@@ -8415,7 +8531,7 @@ async function syncAutomaticSourceFlavorLinks(tx, categoryIds) {
     await tx.productFlavor.deleteMany({
       where: {
         productId: { in: productIds },
-        flavor: { sourceProductId: { not: null } },
+        flavor: { sourceProductId: { not: null }, sourceProduct: { is: { categoryId: { not: categoryId } } } },
       },
     });
     const sourceFlavors = await tx.flavor.findMany({
@@ -8776,7 +8892,7 @@ app.post("/api/admin/products", auth, admin, async (req, res) => {
     });
     await syncProductModifierGroups(tx, p.id, modifierGroupIds, categoryId);
     await syncProductSizes(tx, p.id, sizePrices);
-    await syncProductFlavors(tx, p.id, flavorIds);
+    await syncProductFlavors(tx, p.id, flavorIds, req.body?.flavorConfigs);
     await syncProductSourceFlavor(tx, p.id);
     await syncAutomaticSourceFlavorLinks(tx, [categoryId]);
     return tx.product.findUnique({
@@ -8916,7 +9032,7 @@ app.patch("/api/admin/products/:id", auth, admin, async (req, res) => {
       data,
     });
     if (Array.isArray(req.body?.flavorIds))
-      await syncProductFlavors(tx, req.params.id, req.body.flavorIds);
+      await syncProductFlavors(tx, req.params.id, req.body.flavorIds, req.body?.flavorConfigs);
     if (
       Array.isArray(req.body?.modifierGroupIds) ||
       req.body?.categoryId !== undefined
@@ -10033,10 +10149,10 @@ app.patch(
   auth,
   admin,
   async (req, res) => {
-    if (!hasKitchenAccess(req))
+    if (!canMarkKitchenPrinted(req.adminUser?.staffRole, hasKitchenAccess(req)))
       return res
         .status(403)
-        .json({ message: "Acesso à cozinha não autorizado." });
+        .json({ message: "Impressão não autorizada para este perfil." });
     const existing = await prisma.order.findFirst({
       where: {
         id: req.params.id,
@@ -12043,6 +12159,7 @@ async function runDataRetention(now = new Date()) {
     })
   ).count;
   const orderPersonalFields = [
+    "customerEmail",
     "postalCode",
     "street",
     "addressNumber",
@@ -12065,6 +12182,7 @@ async function runDataRetention(now = new Date()) {
       },
       data: {
         customerPhone: "",
+        customerEmail: null,
         postalCode: null,
         street: null,
         addressNumber: null,
@@ -12124,6 +12242,9 @@ async function runDataRetention(now = new Date()) {
     await prisma.passwordResetToken.deleteMany({
       where: { createdAt: { lt: cutoffs.abandonedSessions } },
     })
+  ).count;
+  summary.expiredGuestCodes = (
+    await prisma.guestOrderVerification.deleteMany({ where: { expiresAt: { lt: now } } })
   ).count;
   summary.technicalLogs = (
     await prisma.technicalLog.deleteMany({

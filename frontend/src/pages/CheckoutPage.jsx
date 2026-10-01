@@ -17,7 +17,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { CardPayment, initMercadoPago } from "@mercadopago/sdk-react";
+import CardPaymentBrick from "../components/CardPaymentBrick";
 import { api, authHeaders } from "../lib/api";
 import { formatCep, formatPhone, money } from "../lib/format";
 import { readStoredStringArray, writeStoredJson } from "../lib/storage";
@@ -198,10 +198,6 @@ export default function CheckoutPage({
     settings.customPaymentMethods,
     form.paymentMethod,
   ]);
-  useEffect(() => {
-    if (onlineAvailable && settings.mercadoPagoPublicKey)
-      initMercadoPago(settings.mercadoPagoPublicKey, { locale: "pt-BR" });
-  }, [onlineAvailable, settings.mercadoPagoPublicKey]);
   const subtotal = cart.reduce(
     (sum, item) => sum + Number(item.price) * item.quantity,
     0,
@@ -251,8 +247,7 @@ export default function CheckoutPage({
   const customerInfoComplete =
     String(form.customerName || "").trim().length >= 2 &&
     /^\d{10,11}$/.test(String(form.customerPhone || "").replace(/\D/g, "")) &&
-    (!["CARD", "PIX"].includes(form.paymentMethod) ||
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(form.customerEmail || "").trim()));
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(form.customerEmail || "").trim());
   const maxDelivery = Number(settings.estimatedDeliveryMax || 45);
   const openDates = useMemo(
     () =>
@@ -640,13 +635,12 @@ export default function CheckoutPage({
         "A loja não disponibilizou uma forma de pagamento neste momento.",
       );
     if (
-      ["CARD", "PIX"].includes(form.paymentMethod) &&
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
         String(form.customerEmail || "").trim(),
       )
     )
       return setError(
-        "Informe um e-mail válido para confirmar o pagamento online.",
+        "Informe um e-mail válido para acompanhar seus pedidos em qualquer dispositivo.",
       );
     const estimatedDelivery =
       form.fulfillmentType === "PICKUP" ? 0 : Number(quote?.ok ? quote.fee : 0);
@@ -789,7 +783,7 @@ export default function CheckoutPage({
               ? `Entrega agendada para ${new Date(success.scheduledAt).toLocaleString("pt-BR")}. A loja começa o preparo automaticamente quando entrar no prazo necessário.`
               : session?.user
                 ? "Ele já foi salvo em Seus pedidos."
-                : "O código abaixo também ficou salvo neste navegador."}
+                : "O código abaixo ficou salvo neste navegador. Para recuperar seus pedidos no app instalado, confirme seu e-mail em Seus pedidos."}
           </p>
           <div className="tracking-code">
             <small>Código de acompanhamento</small>
@@ -1010,8 +1004,8 @@ export default function CheckoutPage({
               <UserRound /> Seus dados
             </h3>
             <p className="checkout-required-note">
-              Nome e telefone são obrigatórios para identificar o pedido e
-              permitir contato da loja.
+              Nome, telefone e e-mail são obrigatórios para identificar o pedido,
+              permitir contato da loja e recuperar o histórico em outros dispositivos.
             </p>
             <div className="form-grid">
               <label>
@@ -1036,9 +1030,8 @@ export default function CheckoutPage({
                   placeholder="(79) 99999-9999"
                 />
               </label>
-              {["CARD", "PIX"].includes(form.paymentMethod) && (
                 <label className="span-2">
-                  E-mail para confirmação do pagamento <em>*</em>
+                  E-mail para acompanhar pedidos em qualquer dispositivo <em>*</em>
                   <input
                     required
                     type="email"
@@ -1049,7 +1042,6 @@ export default function CheckoutPage({
                     autoComplete="email"
                   />
                 </label>
-              )}
             </div>
             {form.fulfillmentType === "DELIVERY" ? (
               <>
@@ -1592,34 +1584,19 @@ function Clock3Fallback() {
   return <CalendarClock size={14} />;
 }
 
-const CARD_PAYMENT_CUSTOMIZATION = Object.freeze({
-  paymentMethods: {
-    minInstallments: 1,
-    maxInstallments: 12,
-  },
-});
-
 function EmbeddedPaymentStep({ payment, payerEmail, onApproved, onRetry }) {
   const [paymentError, setPaymentError] = useState("");
   const [paymentMessage, setPaymentMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [retrying, setRetrying] = useState(false);
-  const [cardSdkReady, setCardSdkReady] = useState(false);
+  const [brickAttempt, setBrickAttempt] = useState(0);
   const onApprovedRef = useRef(onApproved);
   const cardRequestRef = useRef(null);
-  const cardReadyRef = useRef(false);
   const order = payment.order;
   const isPix = payment.type === "PIX";
   const qrImage = payment.qrCodeBase64
     ? `data:image/png;base64,${String(payment.qrCodeBase64).replace(/\s/g, "")}`
     : "";
-  const cardInitialization = useMemo(
-    () => ({
-      amount: Number(payment.amount),
-      payer: { email: payerEmail },
-    }),
-    [payment.amount, payerEmail],
-  );
 
   useEffect(() => {
     onApprovedRef.current = onApproved;
@@ -1628,8 +1605,6 @@ function EmbeddedPaymentStep({ payment, payerEmail, onApproved, onRetry }) {
   useEffect(() => {
     if (isPix) return undefined;
     const publicKey = String(payment.publicKey || "").trim();
-    cardReadyRef.current = false;
-    setCardSdkReady(false);
     setPaymentError("");
     if (!publicKey) {
       setPaymentMessage("");
@@ -1638,18 +1613,8 @@ function EmbeddedPaymentStep({ payment, payerEmail, onApproved, onRetry }) {
       );
       return undefined;
     }
-    initMercadoPago(publicKey, { locale: "pt-BR" });
-    setCardSdkReady(true);
     setPaymentMessage("Carregando o formulário seguro do cartão...");
-    const timeout = window.setTimeout(() => {
-      if (!cardReadyRef.current) {
-        setPaymentMessage("");
-        setPaymentError(
-          "O formulário do cartão demorou para carregar. Verifique a conexão e tente novamente.",
-        );
-      }
-    }, 15_000);
-    return () => window.clearTimeout(timeout);
+    return undefined;
   }, [isPix, payment.publicKey, order.trackingCode]);
 
   async function copyPix() {
@@ -1722,22 +1687,21 @@ function EmbeddedPaymentStep({ payment, payerEmail, onApproved, onRetry }) {
   }
 
   const handleCardReady = useCallback(() => {
-    cardReadyRef.current = true;
     setPaymentError("");
     setPaymentMessage("");
   }, []);
   const handleCardError = useCallback((brickError) => {
-    cardReadyRef.current = false;
     setPaymentMessage("");
-    const detail =
-      brickError?.message ||
-      brickError?.cause?.message ||
-      (typeof brickError?.cause === "string" ? brickError.cause : "");
-    setPaymentError(
-      detail
-        ? `Não foi possível carregar o cartão: ${String(detail)}`
-        : "Não foi possível carregar o formulário do cartão.",
-    );
+    const code = String(brickError?.code || brickError?.error?.type || "CARD_BRICK_ERROR").replace(/[^A-Z0-9_]/gi, "").slice(0, 50);
+    if (import.meta.env.DEV) console.warn("Falha na inicialização do cartão", { code });
+    const messages = {
+      CARD_SDK_CSP_BLOCKED: "O navegador bloqueou o componente seguro de pagamento. Avise a loja e tente outro navegador.",
+      CARD_SDK_LOAD_FAILED: "Não foi possível carregar o serviço seguro do cartão. Verifique a conexão e tente novamente.",
+      CARD_SDK_NETWORK_TIMEOUT: "A conexão com o serviço seguro do cartão não respondeu. Tente carregar novamente.",
+      CARD_PUBLIC_KEY_MISSING: "A chave pública do pagamento está ausente. Avise a loja.",
+      CARD_BRICK_NOT_READY: "O serviço do cartão carregou, mas o formulário não ficou disponível. Tente carregar novamente.",
+    };
+    setPaymentError(messages[code] || "Não foi possível iniciar o formulário seguro do cartão. Tente carregar novamente.");
   }, []);
 
   return (
@@ -1804,12 +1768,12 @@ function EmbeddedPaymentStep({ payment, payerEmail, onApproved, onRetry }) {
                   </small>
                 </div>
               </div>
-              {cardSdkReady ? (
-                <CardPayment
-                  key={`${order.trackingCode}-${payment.amount}-${payment.publicKey}`}
-                  initialization={cardInitialization}
-                  customization={CARD_PAYMENT_CUSTOMIZATION}
-                  locale="pt-BR"
+              {payment.publicKey ? (
+                <CardPaymentBrick
+                  key={`${order.trackingCode}-${payment.amount}-${brickAttempt}`}
+                  publicKey={payment.publicKey}
+                  amount={payment.amount}
+                  payerEmail={payerEmail}
                   onSubmit={submitCard}
                   onReady={handleCardReady}
                   onError={handleCardError}
@@ -1836,6 +1800,9 @@ function EmbeddedPaymentStep({ payment, payerEmail, onApproved, onRetry }) {
           >
             Acompanhar pedido
           </Link>
+          {!isPix && paymentError && (
+            <button type="button" className="text-button" onClick={() => { setBrickAttempt((value) => value + 1); setPaymentError(""); setPaymentMessage("Carregando o formulário seguro do cartão..."); }}>Carregar formulário novamente</button>
+          )}
           {!isPix && paymentError && (
             <button
               type="button"

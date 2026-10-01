@@ -5,11 +5,18 @@ import {
   availableComboModifierOptions,
   comboCartKey,
   comboFlavorRule,
+  comboFlavorNormalAdjustment,
   comboSelectionBlockReason,
   initialComboSelections,
   localComboAdjustment,
   serializeComboSelections,
 } from "../src/lib/comboConfigurator.js";
+
+test("prévia do combo usa acréscimo do produto e não o preço global do sabor", () => {
+  const slot = { sizeId: "grande", baseProduct: { availableSizes: [{ id: "grande", price: 40 }] } };
+  assert.equal(comboFlavorNormalAdjustment(slot, { priceMode: "SURCHARGE", surcharge: 3, availableSizes: [{ sizeId: "grande", price: 80 }] }), 3);
+  assert.equal(comboFlavorNormalAdjustment(slot, { priceMode: "BASE_PRICE", availableSizes: [{ sizeId: "grande", price: 43 }] }), 3);
+});
 
 const flavor = (id, groupId) => ({
   id,

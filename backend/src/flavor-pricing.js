@@ -5,6 +5,7 @@ const PIZZA_PRICING_MODES = new Set([
   "SUM",
 ]);
 const FLAVOR_SIZE_PRICING_MODES = new Set(["FIXED", "SURCHARGE"]);
+export const PRODUCT_FLAVOR_PRICE_MODES = new Set(["BASE_PRICE", "HIDDEN_PRICE", "SURCHARGE"]);
 
 export class FlavorPricingError extends Error {
   constructor(code, message, details = {}, httpStatus = 400) {
@@ -48,7 +49,9 @@ export function requiredBaseFlavorId(product, productFlavorLinks = []) {
   const central = productFlavorLinks.find(
     (entry) => entry?.flavor?.sourceProductId === product.id,
   );
-  return central?.flavorId || central?.flavor?.id || product.id || null;
+  if (productFlavorLinks.length)
+    return central?.flavorId || central?.flavor?.id || null;
+  return product.id || null;
 }
 
 function normalizeFlavorIds(flavorIds) {
@@ -118,7 +121,7 @@ function sizeRuleFor(flavor, sizeId) {
   return rule;
 }
 
-function quoteFlavor(flavor, sizeId, basePriceCents) {
+function quoteFlavor(flavor, sizeId, basePriceCents, productRule = {}) {
   const rule = sizeRuleFor(flavor, sizeId);
   const pricingMode = String(rule.pricingMode || "").trim().toUpperCase();
   if (!FLAVOR_SIZE_PRICING_MODES.has(pricingMode))
@@ -133,8 +136,13 @@ function quoteFlavor(flavor, sizeId, basePriceCents) {
     "flavorSize.price",
     "INVALID_FLAVOR_SIZE_PRICE",
   );
-  const effectivePriceCents =
-    pricingMode === "SURCHARGE"
+  const productPriceMode = productRule.priceMode || "BASE_PRICE";
+  if (!PRODUCT_FLAVOR_PRICE_MODES.has(productPriceMode))
+    fail("INVALID_PRODUCT_FLAVOR_PRICE_MODE", "A regra de preço do produto é inválida.", { flavorId: flavor.id }, 500);
+  const surchargeCents = moneyToCents(productRule.surcharge ?? 0, "productFlavor.surcharge");
+  const effectivePriceCents = productPriceMode === "SURCHARGE"
+    ? basePriceCents + surchargeCents
+    : pricingMode === "SURCHARGE"
       ? basePriceCents + configuredPriceCents
       : configuredPriceCents;
   if (!Number.isSafeInteger(effectivePriceCents))
@@ -151,6 +159,8 @@ function quoteFlavor(flavor, sizeId, basePriceCents) {
     groupId: flavor.groupId || null,
     sizeId,
     pricingMode,
+    productPriceMode,
+    productSurcharge: productPriceMode === "SURCHARGE" ? centsToMoney(surchargeCents) : 0,
     configuredPrice: centsToMoney(configuredPriceCents),
     basePriceApplied:
       pricingMode === "SURCHARGE" ? centsToMoney(basePriceCents) : null,
@@ -169,6 +179,7 @@ export function quoteFlavorSelection({
   sizeId,
   flavorIds,
   flavors,
+  flavorRules = [],
   maxFlavors = 1,
   allowFlavorSplit = true,
   pricingMode = "MAX",
@@ -241,15 +252,16 @@ export function quoteFlavorSelection({
     return flavor;
   });
 
+  const rulesByFlavorId = new Map(flavorRules.map((rule) => [rule.flavorId, rule]));
   const internalBreakdown = selected.map((flavor) =>
-    quoteFlavor(flavor, normalizedSizeId, basePriceCents),
+    quoteFlavor(flavor, normalizedSizeId, basePriceCents, rulesByFlavorId.get(flavor.id)),
   );
   const quotedCents = internalBreakdown.map(
     (entry) => entry.effectivePriceCents,
   );
   const priceCents =
     normalizedMode === "MAX"
-      ? Math.max(...quotedCents)
+      ? Math.max(basePriceCents, ...quotedCents)
       : Math.round(
           quotedCents.reduce((total, value) => total + value, 0) /
             quotedCents.length,

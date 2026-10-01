@@ -50,6 +50,8 @@ export function OverviewAdmin({
             ? "Pedidos do salão concluídos pela cozinha e aguardando o garçom."
             : overviewView === "SERVED"
               ? "Mesas já servidas que aguardam conferência, pagamento e liberação."
+              : overviewView === "DELIVERED"
+                ? "Consulte pedidos concluídos para responder aos clientes."
               : "Visualização separada para facilitar o trabalho da equipe.";
 
   return (
